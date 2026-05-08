@@ -1,0 +1,775 @@
+> Author: Darren H. Chen  
+> Direction: Automotive Safe-IC Functional Safety Analysis and Fault Injection Practice  
+> Demo: `D01_safeic_closed_loop`  
+> Tags: `SafeIC`, `Functional Safety`, `Fault Injection`, `FIT/DC`, `FMEDA`
+
+# What Are We Actually Verifying in Automotive Chip Functional Safety?
+
+---
+
+## 1. Why this series exists
+
+Automotive chip functional safety is often described with high-level terms such as ISO 26262, ASIL, FIT, FMEDA, diagnostic coverage, safety mechanisms, and fault injection. These terms are important, but they can easily become disconnected from the actual engineering question:
+
+**If a random hardware fault occurs inside the chip, can the design detect it, tolerate it, mask it, or prove that it cannot violate the safety goal?**
+
+This series builds a practical, modular, and explainable Safe-IC platform called **Laycore SafeIC**. The purpose is not to clone any commercial tool. The purpose is to decompose the functional safety workflow into small, inspectable tools that can be understood, tested, demonstrated, and extended.
+
+The first article defines the foundation:
+
+```text
+Design structure
++ safety mechanisms
++ operating context
++ fault model
++ fault campaign evidence
++ safety metric roll-up
+= functional safety verification evidence
+```
+
+In other words, functional safety verification is not just simulation. It is an evidence pipeline.
+
+---
+
+## 2. Functional safety is about random hardware faults, not only design bugs
+
+Traditional verification asks whether the design implements its intended function correctly.
+
+Functional safety asks a different question:
+
+> When the design is already functionally correct, what happens when hardware randomly misbehaves during operation?
+
+This distinction matters because systematic bugs and random hardware faults are handled differently.
+
+Systematic faults are usually handled by design verification, code review, lint, CDC, formal verification, simulation, emulation, manufacturing test, and silicon validation. Random hardware faults are different: they may occur during the lifetime of the product, after the chip has already shipped.
+
+For a safety-critical chip, the design therefore needs **safety mechanisms** such as parity, ECC, lockstep comparison, watchdogs, protocol checkers, range checkers, duplicated logic, triplication, or end-to-end data protection.
+
+A functional safety platform must answer three questions:
+
+1. **Where can faults matter?**  
+   This is the structural analysis problem.
+
+2. **Which safety mechanisms cover those faults?**  
+   This is the diagnostic coverage problem.
+
+3. **Do those safety mechanisms actually respond under realistic stimulus?**  
+   This is the fault campaign problem.
+
+Laycore SafeIC separates these questions into a tool chain instead of hiding them inside one monolithic executable.
+
+---
+
+## 3. The two evidence paths: metric estimation and fault validation
+
+A practical Safe-IC flow has two major evidence paths.
+
+The first path is **metric estimation**. It answers:
+
+```text
+How much random hardware failure exposure does the design have?
+How much of that exposure is covered by safety mechanisms?
+What are the estimated FIT, SPFM, LFM, PMHF, and DC values?
+```
+
+The second path is **fault validation**. It answers:
+
+```text
+If we inject representative faults under realistic operating context,
+which faults are detected, safe, unsafe, or unresolved?
+```
+
+The two paths must eventually meet. A metric without fault evidence may be too optimistic. A fault campaign without metric roll-up may be hard to connect to ASIL targets.
+
+The core closed loop is:
+
+```mermaid
+flowchart LR
+    A[RTL / Netlist] --> B[Design Structure Analysis]
+    B --> C[FIT / DC Estimation]
+    B --> D[Fault List Generation]
+    E[Simulation VCD / FSDB] --> F[Safety Context Extraction]
+    D --> G[Fault Campaign]
+    F --> G
+    H[Alarm / Observe Points] --> G
+    G --> I[Fault Classification]
+    I --> J[Metric Validation]
+    C --> J
+    J --> K[FMEDA / Safety Report]
+```
+
+This article focuses on setting up this closed loop at the architectural level. Later articles implement each block as a standalone command-line tool.
+
+---
+
+## 4. Bottom-up safety analysis: from transistors to endpoints
+
+A chip is too large to reason about as a flat block. Functional safety analysis needs a way to connect low-level hardware elements to high-level safety goals.
+
+A useful mental model is:
+
+```text
+Elementary hardware element
+    -> subpart
+        -> part
+            -> component
+                -> system-level safety goal
+```
+
+At the hardware analysis level, three structural concepts are especially useful.
+
+### 4.1 Startpoints
+
+A **startpoint** is where a fault effect can begin propagating through logic. Typical examples are:
+
+- primary inputs,
+- state element outputs,
+- black-box outputs,
+- memory outputs.
+
+### 4.2 Endpoints
+
+An **endpoint** is where the effect is observed or captured. Typical examples are:
+
+- state element inputs,
+- primary outputs,
+- black-box inputs,
+- memory inputs.
+
+### 4.3 Cones
+
+A **cone** is the combinational logic between startpoints and endpoints.
+
+This gives us a structural model:
+
+```mermaid
+flowchart LR
+    SP1((SP)) --> G1[Logic]
+    SP2((SP)) --> G1
+    G1 --> G2[Logic]
+    G2 --> EP1((EP))
+    G1 --> EP2((EP))
+```
+
+Why does this matter?
+
+Because not every fault has equal safety significance. A fault in a tiny isolated cone may have low impact. A fault in a high-fanout control path can influence many endpoints and become a dominant contributor to residual risk.
+
+So the first methodological rule is:
+
+> Functional safety analysis must be structural before it is numerical.
+
+Without structure, FIT and DC numbers become disconnected from the actual design.
+
+---
+
+## 5. FIT: measuring the raw exposure to random hardware failure
+
+**FIT** means Failure In Time. One FIT means one failure per billion operating hours.
+
+In a simplified engineering model, the chip-level FIT is a weighted sum of the failure exposure of its hardware elements:
+
+```text
+FIT_design = sum(FIT_endpoint_i)
+```
+
+Each endpoint contribution may include:
+
+```text
+endpoint storage element
++ fan-in combinational cone
++ related startpoints
++ memory or black-box contribution
++ technology / mission profile factors
+```
+
+A full production-grade calculation may involve technology-specific lambda values, mission profiles, temperature factors, package data, and permanent/transient fault models. In Laycore SafeIC, the first implementation intentionally starts with a simplified, auditable model:
+
+```yaml
+process: MOS.ASIC.STDCELL
+mission_profile: passenger_compartment_demo
+logic_gate_transient_fit: 1.0e-6
+ff_transient_fit: 1.0e-3
+sram_bit_transient_fit: 1.0e-6
+```
+
+The key is not to pretend that a toy formula is a sign-off model. The key is to build the data path correctly:
+
+```text
+design statistics -> endpoint contribution -> metric report -> later replacement by calibrated model
+```
+
+Once the data path is correct, the mathematical model can be refined.
+
+---
+
+## 6. Diagnostic Coverage: measuring how much risk is covered
+
+A safety mechanism does not eliminate all hardware faults. It detects, corrects, masks, or contains a subset of them.
+
+Diagnostic Coverage, or DC, is the portion of relevant fault exposure covered by a safety mechanism.
+
+A simplified form is:
+
+```text
+DC = covered_fault_exposure / total_fault_exposure
+```
+
+However, real hardware coverage is structural. A safety mechanism may cover only endpoints, or endpoints plus cones, or endpoints plus cones plus startpoints.
+
+For example:
+
+| Safety mechanism | Endpoint coverage | Cone coverage | Startpoint coverage | Typical idea |
+|---|---:|---:|---:|---|
+| Endpoint parity | high | low | low | checks stored or transferred value |
+| Duplicated fan-in cone | high | high | low | compares recomputed logic result |
+| Lockstep-like duplication | high | high | high | compares broader state transition |
+| ECC on memory | high | limited | limited | detects/corrects memory bit errors |
+
+This is why Laycore SafeIC will represent safety mechanisms using a structured library:
+
+```yaml
+ATD_EP_PARITY_DEMO:
+  description: "Endpoint parity demonstration mechanism"
+  permanent:
+    ep_dc: 0.90
+    sp_dc: 0.00
+    cone_dc: 0.00
+  transient:
+    ep_dc: 0.90
+    sp_dc: 0.00
+    cone_dc: 0.00
+
+DUP_CONE_DEMO:
+  description: "Duplicated fan-in cone demonstration mechanism"
+  permanent:
+    ep_dc: 0.90
+    sp_dc: 0.00
+    cone_dc: 0.90
+  transient:
+    ep_dc: 0.90
+    sp_dc: 0.00
+    cone_dc: 0.90
+```
+
+The methodology is simple:
+
+```text
+Do not assign a single magic coverage number to the whole design.
+Assign coverage to the structural region that the safety mechanism actually protects.
+```
+
+---
+
+## 7. Fault campaign: turning estimated coverage into behavioral evidence
+
+Metric estimation is necessary, but it is not enough. A safety mechanism must be tested under operating context.
+
+A **fault campaign** injects faults into selected safety-critical nodes and checks whether the safety mechanism detects them.
+
+A minimal campaign needs five classes of input:
+
+```text
+1. Design files
+2. Simulation context, such as VCD
+3. Fault list
+4. Alarm list
+5. Observe point list or equivalent checking policy
+```
+
+The conceptual data flow is:
+
+```mermaid
+flowchart LR
+    A[Fault List] --> C[Fault Campaign Engine]
+    B[VCD Safety Context] --> C
+    D[Design Model] --> C
+    E[Alarm List] --> C
+    F[Observe Points] --> C
+    C --> G[Fault Result Table]
+    G --> H[Detected]
+    G --> I[Safe]
+    G --> J[Unsafe]
+    G --> K[Unresolved]
+```
+
+Fault injection should always compare against a **golden context**. The golden context is the fault-free behavior under the same stimulus.
+
+In a simplified model:
+
+```text
+same design
+same stimulus
+same observation window
+one injected fault
+compare golden trace vs fault trace
+check alarm behavior
+classify result
+```
+
+The first implementation does not need a proprietary parallel fault engine. It only needs to make the evidence model explicit.
+
+---
+
+## 8. The four essential fault outcomes
+
+A fault campaign is useful only if its results are classified clearly.
+
+Laycore SafeIC uses four top-level categories.
+
+### 8.1 Detected
+
+The fault changes the machine state or an observed value, and the configured alarm is triggered in time.
+
+```text
+state differs from golden
++ alarm fires
+= detected
+```
+
+### 8.2 Safe
+
+The fault does not affect the safety-relevant machine state, or it is masked before it matters.
+
+```text
+state does not differ from golden
+or difference is not safety relevant
+= safe
+```
+
+### 8.3 Unsafe
+
+The fault changes the safety-relevant state or output, but no alarm is triggered.
+
+```text
+state differs from golden
++ alarm does not fire
+= unsafe
+```
+
+### 8.4 Unresolved
+
+The tool cannot classify the fault with the available evidence. Common reasons include missing simulation data, black-box propagation, unmodeled analog behavior, insufficient observe points, or incomplete context.
+
+```text
+state differs or propagation is incomplete
++ evidence is insufficient
+= unresolved
+```
+
+A good platform should not hide unresolved faults. It should explain why they are unresolved and suggest the next debug step.
+
+---
+
+## 9. Why we split the platform into single-function tools
+
+A commercial functional safety tool is often a large integrated system. That is appropriate for sign-off production flows, but it is not ideal for learning, research, demo construction, or IP generation.
+
+Laycore SafeIC follows a different architecture:
+
+```text
+many small tools
++ stable file schemas
++ reproducible demos
++ composable flow runner
+```
+
+The first set of tools will be:
+
+| Tool | Responsibility |
+|---|---|
+| `layfusa-init` | create a SafeIC project skeleton |
+| `layfusa-inputcheck` | check whether the input package is complete |
+| `layfusa-bfr` | compute a simplified Base FIT Rate |
+| `layfusa-structure` | extract SP / EP / Cone structure |
+| `layfusa-dc` | compute diagnostic coverage from safety mechanism maps |
+| `layfusa-faultgen` | generate stuck-at and transient fault lists |
+| `layfusa-vcdctx` | extract safety context from VCD |
+| `layfusa-classify` | classify fault campaign results |
+| `layfusa-report` | generate human-readable reports |
+
+The design rule is:
+
+```text
+A tool should be replaceable without changing the rest of the flow.
+```
+
+For example, the first `layfusa-bfr` implementation may use a simplified FIT model. Later, it can be replaced by a calibrated IEC 62380-like or SN29500-like model while preserving the same input and output schema.
+
+---
+
+## 10. Tool architecture
+
+The proposed architecture has five layers.
+
+```mermaid
+flowchart TB
+    A[Layer 1: Project and Input Layer]
+    B[Layer 2: Structural Analysis Layer]
+    C[Layer 3: Metric Layer]
+    D[Layer 4: Fault Evidence Layer]
+    E[Layer 5: Report and Benchmark Layer]
+
+    A --> B
+    B --> C
+    B --> D
+    C --> E
+    D --> E
+```
+
+### Layer 1: Project and input layer
+
+This layer standardizes the project directory and checks required files.
+
+```text
+layfusa-init
+layfusa-inputcheck
+```
+
+### Layer 2: Structural analysis layer
+
+This layer converts RTL/netlist information into analyzable graph data.
+
+```text
+layfusa-designstats
+layfusa-structure
+layfusa-epcont
+```
+
+### Layer 3: Metric layer
+
+This layer estimates FIT, diagnostic coverage, and roll-up metrics.
+
+```text
+layfusa-bfr
+layfusa-fitmodel
+layfusa-dc
+layfusa-dce
+```
+
+### Layer 4: Fault evidence layer
+
+This layer creates and executes fault campaigns.
+
+```text
+layfusa-faultgen
+layfusa-vcdctx
+layfusa-campaign
+layfusa-classify
+```
+
+### Layer 5: Report and benchmark layer
+
+This layer converts raw data into engineering evidence.
+
+```text
+layfusa-report
+layfusa-benchmark
+```
+
+---
+
+## 11. The project manifest
+
+The project manifest is the contract between tools.
+
+Example `manifest.yaml`:
+
+```yaml
+project:
+  name: D01_safeic_closed_loop
+  top: toy_counter_safe
+  asil_target: D
+
+inputs:
+  rtl_filelist: inputs/filelist.f
+  clkdef: inputs/clkdef.clk
+  vcd: inputs/sim.vcd
+  fault_list: inputs/fault.list
+  alarm_list: inputs/alarm.list
+  observe_points: inputs/observe_points.list
+
+safety:
+  failure_modes: inputs/failure_modes.yaml
+  safety_mechanisms: inputs/sm_library.yaml
+  ep_to_sm_map: inputs/ep_to_sm_map.csv
+
+outputs:
+  database: outputs/safeic.sqlite
+  report_dir: outputs/reports
+```
+
+A manifest may look simple, but it is one of the most important parts of the platform. It makes the flow reproducible.
+
+---
+
+## 12. Demo D01: the minimum closed-loop project
+
+The first demo does not calculate real sign-off metrics. Its job is to create the reproducible skeleton used by all later demos.
+
+```text
+D01_safeic_closed_loop/
+  README.md
+  manifest.yaml
+  run_demo.csh
+  run_demo.sh
+  inputs/
+    rtl/
+      toy_counter_safe.v
+    filelist.f
+    clkdef.clk
+    fit_inputs.yaml
+    failure_modes.yaml
+    sm_library.yaml
+    ep_to_sm_map.csv
+    fault.list
+    alarm.list
+    observe_points.list
+    sim.vcd
+  outputs/
+    safeic.sqlite
+    reports/
+      input_check.md
+      flow_summary.md
+  notes/
+    article_outline.md
+    soft_copyright_notes.md
+    patent_notes.md
+```
+
+The first CLI command is:
+
+```bash
+layfusa-init --project D01_safeic_closed_loop --top toy_counter_safe
+```
+
+Expected output:
+
+```text
+[LAYFUSA] project created: D01_safeic_closed_loop
+[LAYFUSA] manifest created: manifest.yaml
+[LAYFUSA] input directories created
+[LAYFUSA] output directories created
+[LAYFUSA] next step: layfusa-inputcheck --manifest manifest.yaml
+```
+
+The csh-compatible version:
+
+```csh
+#!/bin/csh -f
+set PROJECT = D01_safeic_closed_loop
+set TOP = toy_counter_safe
+
+layfusa-init --project $PROJECT --top $TOP
+layfusa-inputcheck --manifest $PROJECT/manifest.yaml
+```
+
+This is intentionally basic. A safety platform must first be reproducible before it becomes sophisticated.
+
+---
+
+## 13. Methodology: separate estimation, evidence, and reporting
+
+A common mistake is to mix everything into one output number.
+
+Laycore SafeIC keeps three types of artifacts separate.
+
+### 13.1 Estimation artifacts
+
+These come from structure and metric models.
+
+```text
+design_stats.json
+structure_graph.json
+ep_contribution.csv
+base_fit_report.csv
+dc_report.csv
+```
+
+### 13.2 Evidence artifacts
+
+These come from simulation and fault campaigns.
+
+```text
+vcd_context.json
+fault.list
+campaign_result.raw.csv
+fault_result.csv
+class_summary.csv
+```
+
+### 13.3 Reporting artifacts
+
+These are human-facing deliverables.
+
+```text
+metric_summary.md
+fault_report.html
+fmeda_summary.xlsx
+benchmark_score.md
+```
+
+The rule is:
+
+```text
+Never let a report become the source of truth.
+The database and intermediate machine-readable artifacts are the source of truth.
+```
+
+---
+
+## 14. Data model preview
+
+The first database can be SQLite.
+
+Minimal tables:
+
+```sql
+CREATE TABLE project (
+  id INTEGER PRIMARY KEY,
+  name TEXT,
+  top TEXT,
+  asil_target TEXT
+);
+
+CREATE TABLE endpoint (
+  id INTEGER PRIMARY KEY,
+  path TEXT,
+  type TEXT,
+  bit_width INTEGER,
+  cone_size INTEGER
+);
+
+CREATE TABLE safety_mechanism (
+  id INTEGER PRIMARY KEY,
+  name TEXT,
+  ep_dc REAL,
+  sp_dc REAL,
+  cone_dc REAL
+);
+
+CREATE TABLE fault (
+  id INTEGER PRIMARY KEY,
+  node TEXT,
+  fault_type TEXT,
+  inject_time INTEGER,
+  duration INTEGER
+);
+
+CREATE TABLE fault_result (
+  id INTEGER PRIMARY KEY,
+  fault_id INTEGER,
+  result_class TEXT,
+  fail_time INTEGER,
+  alarm_time INTEGER,
+  rationale TEXT
+);
+```
+
+This database is not only for storage. It is the foundation for traceability.
+
+Traceability matters because safety evidence must answer:
+
+```text
+Which design version?
+Which safety mechanism?
+Which fault list?
+Which stimulus?
+Which alarm?
+Which result?
+Which report?
+```
+
+---
+
+## 15. What this article does not claim
+
+This first demo is not a sign-off flow.
+
+It does not claim to replace commercial functional safety tools. It does not claim ISO 26262 certification. It does not implement a production-grade FIT model or a high-performance parallel fault engine.
+
+It establishes the engineering foundation:
+
+```text
+clear concepts
+clean tool boundaries
+stable file schemas
+reproducible demo structure
+traceable artifacts
+```
+
+That foundation is valuable because every later capability can be added without changing the core methodology.
+
+---
+
+## 16. Roadmap after D01
+
+The next demos will progressively implement the closed loop.
+
+| Demo | Tool | Topic |
+|---|---|---|
+| D02 | `layfusa-inputcheck` | input package validation |
+| D03 | `layfusa-bfr` | Base FIT Rate |
+| D06 | `layfusa-structure` | SP / EP / Cone extraction |
+| D08 | `layfusa-dc` | Diagnostic Coverage engine |
+| D15 | `layfusa-faultgen` | fault list generation |
+| D17 | `layfusa-vcdctx` | VCD safety context extraction |
+| D20 | `layfusa-classify` | fault result classification |
+| D21 | `layfusa-report` | engineering report generation |
+
+Once these eight demos are complete, Laycore SafeIC will have a minimum viable closed loop:
+
+```text
+project initialization
+-> input validation
+-> structural analysis
+-> FIT/DC estimation
+-> fault list generation
+-> VCD context extraction
+-> fault classification
+-> report generation
+```
+
+That is the first milestone.
+
+---
+
+## 17. Summary
+
+Functional safety verification is not one tool command. It is a structured evidence system.
+
+The underlying methodology is:
+
+```text
+1. Understand the design structure.
+2. Identify where random hardware faults can matter.
+3. Estimate the raw FIT exposure.
+4. Map safety mechanisms to protected structural regions.
+5. Estimate diagnostic coverage.
+6. Generate representative fault lists.
+7. Inject faults under realistic safety context.
+8. Classify results as detected, safe, unsafe, or unresolved.
+9. Roll the evidence back into safety metrics and FMEDA.
+10. Preserve everything as reproducible artifacts.
+```
+
+Laycore SafeIC starts from this methodology and builds a modular tool chain around it.
+
+The first tool, `layfusa-init`, is deliberately simple. It creates the project skeleton that makes the rest of the flow reproducible.
+
+In safety engineering, reproducibility is not a convenience. It is the beginning of evidence.
+
+---
+
+## Appendix: D01 acceptance criteria
+
+The demo is considered complete when the following are true:
+
+- `layfusa-init` creates the standard directory tree.
+- `manifest.yaml` is generated.
+- `run_demo.csh` and `run_demo.sh` are generated.
+- Placeholder input files are created.
+- `layfusa-inputcheck` can report which inputs are present or missing.
+- `outputs/reports/flow_summary.md` is generated.
+- The project can be committed directly to GitHub as a reproducible demo.
+
