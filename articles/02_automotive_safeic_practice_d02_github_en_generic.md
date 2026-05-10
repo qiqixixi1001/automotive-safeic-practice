@@ -1,972 +1,1502 @@
-# [Automotive Safe-IC Practice 02] What Input Files Does a Functional Safety Verification Project Need?
+# [Automotive Safe-IC Practice 02] What Input Package Does a Functional Safety Verification Project Need?
 
-**Author:** Darren H. Chen  
-**Direction:** Automotive chip functional safety analysis and fault injection practice  
-**Demo:** `D02_input_package`  
-**Tags:** `Automotive Chip`, `Functional Safety`, `SafeIC`, `Input Package`, `FIT/DC`, `Fault Injection`, `VCD`, `FMEDA`
+**Author**: Darren H. Chen  
+**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
+**Demo**: D02_input_package  
+**Tags**: Automotive Chip, Functional Safety, Input Package, FIT, Diagnostic Coverage, FMEDA, Fault List, Alarm List, Observe Point, VCD, Fault Campaign
 
 ---
 
-## Demo scope
+## 1. Why the Input Package Matters
 
-`D02_input_package` defines a standardized input package for an automotive Safe-IC functional safety and fault injection practice flow.
+In functional safety analysis and fault injection, tool execution is only the visible part of the workflow.
 
-The corresponding generic tool module is:
+The real foundation is the input package.
+
+A safety verification run cannot be trusted if the input package is incomplete, inconsistent, or ambiguous.
+
+Before discussing FIT calculation, diagnostic coverage, fault list generation, VCD-based safety context, or fault campaign classification, we must answer a more basic question:
+
+> What information must be available before a chip-level functional safety verification flow can produce meaningful evidence?
+
+The second demo in this repository is:
+
+```text
+D02_input_package
+```
+
+Its purpose is to define and validate a minimal but extensible input package for automotive chip functional safety analysis and fault injection practice.
+
+This article focuses on the underlying principles:
+
+```text
+design context
+reliability context
+structural context
+safety mechanism context
+fault campaign context
+FMEDA context
+reporting context
+```
+
+The generic tool introduced in this article is:
 
 ```text
 safeic-inputcheck
 ```
 
-Its purpose is not to calculate FIT, run a fault campaign, or classify fault results.
-
-Its purpose is simpler and more fundamental:
-
-```text
-Check whether a functional safety verification project has enough well-structured inputs
-before any downstream analysis or fault injection step starts.
-```
-
-The demo validates the following engineering idea:
-
-```text
-No reproducible input package
-= no reproducible safety metric
-= no reproducible fault campaign
-= no credible functional safety evidence
-```
-
-`D02_input_package` therefore provides a reusable folder structure, manifest file, example input files, and input checking reports that later demos can consume.
+The goal of `safeic-inputcheck` is not to run the safety analysis itself. Its goal is to verify that the project contains enough consistent information for later safety analysis and fault campaign steps.
 
 ---
 
-## 1. Why the input package is part of the architecture
+## 2. The Core Idea: Safety Evidence Is Only as Good as Its Inputs
 
-In a normal RTL verification project, the minimum runnable unit may look like this:
+A functional safety workflow transforms inputs into evidence.
 
-```text
-RTL files
-+ testbench
-+ simulation script
-= functional simulation result
+```mermaid
+flowchart LR
+    A[Input Package] --> B[Analysis and Validation Flow]
+    B --> C[Safety Evidence]
+    C --> D[Engineering Review]
 ```
 
-In a functional safety verification project, this is not enough.
+**Figure 1. A functional safety workflow transforms an input package into reviewable safety evidence.**
 
-A functional safety flow must connect several evidence domains:
-
-```text
-design structure
-+ reliability model
-+ safety mechanism definition
-+ operating context
-+ fault model
-+ alarm and observation model
-+ metric reporting
-+ traceable project database
-```
-
-The input package is the boundary where all these domains become explicit.
-
-If the input package is weak, every downstream result becomes fragile:
-
-```text
-FIT cannot be explained.
-Diagnostic coverage cannot be reproduced.
-Fault lists cannot be traced back to the design.
-Fault campaign results cannot be mapped back to safety mechanisms.
-Reports cannot be compared across revisions.
-```
-
-This is why the second demo focuses on input organization rather than algorithm complexity.
-
-A safety verification project should not begin with a command line. It should begin with a well-defined input contract.
-
----
-
-## 2. The core question: what must be known before analysis starts?
-
-Before any functional safety analysis or fault campaign can run, the flow must answer at least seven questions:
-
-| Question | Required input category |
-|---|---|
-| What design is being analyzed? | Design input |
-| Which abstraction level is used? | Architecture / RTL / netlist stage input |
-| What operating context is used? | Clock, reset, simulation waveform input |
-| What reliability model is used? | FIT setup input |
-| What safety mechanisms exist? | Safety mechanism and FMEDA input |
-| Where can faults be injected? | Fault list or fault generation input |
-| How do we know whether a fault is detected? | Alarm and observe point input |
-
-These questions are not independent.
+If the input package is weak, the evidence is weak.
 
 For example:
 
-```text
-A fault node must exist in the design.
-An alarm signal should appear in the waveform.
-A safety mechanism should map to endpoints or failure modes.
-A FIT model should match the design abstraction and technology assumptions.
-A report should record which input revision produced which metric.
-```
+| Missing Input | Likely Consequence |
+|---|---|
+| Missing clock definition | Fault injection timing cannot be interpreted reliably |
+| Missing alarm list | Detected vs unsafe classification becomes ambiguous |
+| Missing observe points | Safe vs unsafe classification becomes incomplete |
+| Missing VCD signals | Fault propagation may become unresolved |
+| Missing safety mechanism map | DC estimation becomes unsupported |
+| Missing failure mode mapping | FMEDA reporting becomes disconnected from hardware |
+| Missing FIT assumptions | Base failure rate becomes meaningless |
+| Missing filelist or top module | The design cannot be analyzed consistently |
 
-The input package is the engineering mechanism that keeps these relationships explicit.
+A safety tool can sometimes run with incomplete inputs, but a successful run does not automatically mean the result is meaningful.
+
+The first engineering rule is:
+
+> Validate the input package before trusting any safety metric.
 
 ---
 
-## 3. A Safe-IC input package has six layers
+## 3. What Makes Functional Safety Inputs Different from Normal Verification Inputs?
 
-For this practice flow, the input package is divided into six layers.
+A normal RTL simulation may require:
+
+```text
+RTL files
+testbench
+clock/reset handling
+simulation command
+waveform dump
+```
+
+A functional safety workflow requires more.
+
+It must connect:
+
+```text
+hardware structure
+random hardware failure model
+safety mechanisms
+fault injection scope
+diagnostic signals
+FMEDA semantics
+metric reporting
+```
+
+A typical safety input package therefore contains:
+
+```text
+design files
+design hierarchy
+clock definitions
+reset assumptions
+simulation activity
+FIT input assumptions
+safety mechanism definitions
+diagnostic coverage definitions
+endpoint-to-safety-mechanism mapping
+fault list
+alarm list
+observe point list
+failure mode library
+part/sub-part model
+database or session metadata
+report configuration
+```
+
+This is why D02 is important. It turns a loose collection of files into a controlled engineering package.
+
+---
+
+## 4. Input Package as a Contract
+
+The input package should be treated as a contract between engineers and tools.
 
 ```mermaid
 flowchart TD
-    A[Safe-IC Input Package] --> B[Design Inputs]
-    A --> C[Simulation Context Inputs]
-    A --> D[Safety Metric Inputs]
-    A --> E[FMEDA and Safety Mechanism Inputs]
-    A --> F[Fault Campaign Inputs]
-    A --> G[Project Manifest and Session Inputs]
+    A[Design Engineer] --> P[Input Package]
+    B[Verification Engineer] --> P
+    C[Safety Engineer] --> P
+    D[Tool Flow] --> P
+    P --> E[Repeatable Safety Run]
+    E --> F[Reviewable Evidence]
 ```
 
-Each layer answers a different engineering question.
+**Figure 2. The input package is a contract between design, verification, safety, and tool execution.**
 
-| Layer | Main role | Typical files |
-|---|---|---|
-| Design inputs | Define the circuit under analysis | RTL, netlist, filelist, top module |
-| Simulation context inputs | Define the operating scenario | clkdef, reset, VCD/FSDB, simulation window |
-| Safety metric inputs | Define reliability and metric assumptions | FIT setup, lambda file, mission profile, process data |
-| FMEDA and safety mechanism inputs | Define failure modes and protection mechanisms | failure mode library, SM library, EP-to-SM map, DCE-like files |
-| Fault campaign inputs | Define fault injection and detection evidence | fault list, alarm list, observe points |
-| Project manifest and session inputs | Define traceability and reproducibility | manifest.yaml, session name, output directory, database path |
+Each role contributes different information:
 
-The key point is that these layers should be checked before they are used.
+| Role | Typical Contribution |
+|---|---|
+| Design engineer | RTL, hierarchy, implementation assumptions, safety mechanism signals |
+| Verification engineer | Testbench, stimulus, VCD, reset/clock behavior, scenario definition |
+| Safety engineer | Failure modes, safety goals, FMEDA hierarchy, diagnostic assumptions |
+| Tool flow engineer | Filelist, run scripts, data schemas, report configuration |
+| Review owner | Checklist, traceability, versioning, approval status |
 
-A missing VCD, an invalid top module, or an alarm signal that is absent from the waveform should be detected early, not after a long fault campaign run.
+A good input package should be:
+
+```text
+complete
+consistent
+versioned
+inspectable
+machine-readable
+human-readable
+portable
+repeatable
+```
 
 ---
 
-## 4. Recommended demo directory structure
+## 5. The Seven Input Domains
 
-`D02_input_package` uses the following project skeleton:
+For D02, the input package is divided into seven domains.
+
+```mermaid
+flowchart TD
+    A[Functional Safety Input Package]
+    A --> B[Design Context]
+    A --> C[Reliability / FIT Context]
+    A --> D[Structural Safety Context]
+    A --> E[Safety Mechanism Context]
+    A --> F[Fault Campaign Context]
+    A --> G[FMEDA Context]
+    A --> H[Reporting / Session Context]
+```
+
+**Figure 3. A functional safety input package should separate input domains instead of mixing everything into one script.**
+
+The separation is important because each domain answers a different question.
+
+| Domain | Core Question |
+|---|---|
+| Design context | What design is being analyzed? |
+| Reliability / FIT context | What random failure assumptions are used? |
+| Structural safety context | Which nodes, endpoints, cones, and hierarchy matter? |
+| Safety mechanism context | What detects, corrects, masks, or controls faults? |
+| Fault campaign context | Which faults are injected and how are outcomes observed? |
+| FMEDA context | How does hardware evidence map to failure modes and metrics? |
+| Reporting / session context | How is evidence stored, reviewed, and reproduced? |
+
+This article defines each domain and shows how the demo checks them.
+
+---
+
+## 6. Domain 1: Design Context
+
+The design context defines what hardware is being analyzed.
+
+Minimum files:
+
+```text
+inputs/rtl/
+inputs/filelist.f
+inputs/top.yaml
+inputs/clkdef.clk
+```
+
+A minimal filelist:
+
+```text
+inputs/rtl/toy_counter.v
+inputs/rtl/toy_counter_tb.v
+```
+
+A minimal top configuration:
+
+```yaml
+design:
+  name: toy_counter_project
+  top_module: toy_counter
+  language:
+    - systemverilog
+  abstraction:
+    - rtl
+```
+
+A minimal clock definition:
+
+```text
+clock clk period=10ns
+reset rst_n active_low
+```
+
+The input checker should verify:
+
+```text
+Does the filelist exist?
+Do all listed RTL files exist?
+Is the top module declared?
+Are clock and reset signals known?
+Is the design abstraction declared?
+Are generated files separated from source files?
+```
+
+A design context is not complete just because RTL files exist. It must also define the entry point and timing assumptions.
+
+---
+
+## 7. Why Clock and Reset Matter
+
+Fault injection is time-dependent.
+
+A fault injected before reset release may be overwritten. A fault injected during idle mode may not propagate. A fault injected during active operation may cause a safety-relevant deviation.
+
+Therefore, the input package must define:
+
+```text
+clock signals
+reset signals
+reset polarity
+reset release window
+simulation time unit
+active test window
+fault injection window
+```
+
+A simplified timing model:
+
+```mermaid
+sequenceDiagram
+    participant R as Reset
+    participant C as Clock
+    participant G as Golden Simulation
+    participant F as Fault Injection
+    participant A as Alarm / Observe Points
+
+    R->>G: Reset asserted
+    R->>G: Reset released
+    C->>G: Normal active cycles
+    F->>G: Fault injection window
+    G->>A: Compare golden vs faulted behavior
+```
+
+**Figure 4. Fault injection must be aligned with clock, reset, and active operation windows.**
+
+Example configuration:
+
+```yaml
+timing:
+  timescale: 1ns
+  clock:
+    name: clk
+    period: 10
+    unit: ns
+  reset:
+    name: rst_n
+    active: low
+    release_time: 20
+  active_window:
+    start: 30
+    end: 200
+```
+
+The input checker should warn if fault injection windows overlap reset unless this is intentional.
+
+---
+
+## 8. Domain 2: Reliability and FIT Context
+
+Reliability context defines the assumptions used to estimate random hardware failure rate.
+
+Minimum files:
+
+```text
+inputs/fit_inputs.yaml
+inputs/design_stats.yaml
+```
+
+A simplified FIT input file:
+
+```yaml
+fit_model:
+  standard: simplified
+  mission_profile: demo_profile
+  temperature_profile: demo_temperature
+  package_model: demo_package
+
+design_statistics:
+  logic_gates: 120
+  flip_flops: 16
+  memory_bits: 0
+
+transient_fit:
+  logic_gate_fit: 1.0e-6
+  ff_fit: 1.0e-3
+  memory_bit_fit: 1.0e-6
+
+permanent_fit:
+  logic_base_fit: 0.02
+  ff_base_fit: 0.05
+  package_fit: 0.01
+```
+
+For a real industrial flow, FIT inputs may be much richer:
+
+```text
+technology-dependent lambda values
+mission profile
+temperature profile
+package information
+memory definition
+transistor count
+library-to-design-type mapping
+memory-to-design-type mapping
+process assumptions
+```
+
+D02 does not need to implement the complete FIT calculation. It validates that the required information is present and internally consistent.
+
+The input checker should verify:
+
+```text
+Is a FIT model selected?
+Are mission profile assumptions available?
+Are design statistics present?
+Are memory bits defined if memory faults are enabled?
+Are transient and permanent assumptions separated?
+Are units explicit?
+Are values numeric and non-negative?
+```
+
+The key principle is:
+
+> FIT calculation is not a magic number generator. It is a structured transformation from design statistics and reliability assumptions into a failure-rate baseline.
+
+---
+
+## 9. Domain 3: Structural Safety Context
+
+Structural safety context describes how faults may propagate through the design.
+
+In early demos, structure can be generated automatically later. But the input package still needs a place for structural artifacts.
+
+Suggested files:
+
+```text
+intermediate/structure_graph.json
+intermediate/sp.csv
+intermediate/ep.csv
+intermediate/cone.csv
+```
+
+For D02, these may not exist yet. The input checker can distinguish between:
+
+```text
+required now
+generated later
+optional
+```
+
+Example manifest:
+
+```yaml
+artifacts:
+  structure_graph:
+    path: intermediate/structure_graph.json
+    role: generated_later
+  endpoints:
+    path: intermediate/ep.csv
+    role: generated_later
+  startpoints:
+    path: intermediate/sp.csv
+    role: generated_later
+```
+
+A structural model contains:
+
+```text
+startpoints
+endpoints
+cones
+hierarchy
+instance names
+signal names
+node types
+fan-in / fan-out information
+```
+
+The structural model is needed for:
+
+```text
+endpoint FIT contribution
+diagnostic coverage calculation
+safety mechanism mapping
+fault list generation
+fault result grouping
+```
+
+The input package should not treat structure as a temporary internal result. It should treat structure as an inspectable artifact.
+
+---
+
+## 10. Domain 4: Safety Mechanism Context
+
+Safety mechanism context defines what protection exists or is assumed.
+
+Minimum files:
+
+```text
+inputs/safety_mechanisms.yaml
+inputs/ep_to_sm_map.csv
+```
+
+A simple safety mechanism library:
+
+```yaml
+mechanisms:
+  endpoint_parity:
+    type: endpoint
+    description: Detects parity mismatch on protected endpoint state.
+    suitable_for:
+      - register_group
+      - scalar_ff
+    coverage_scope:
+      ep: 0.90
+      cone: 0.00
+      path: 0.00
+    alarm_required: true
+    corrects: false
+
+  memory_ecc:
+    type: memory
+    description: Detects and corrects selected memory bit errors.
+    suitable_for:
+      - memory
+      - register_file
+    coverage_scope:
+      memory: 0.99
+    alarm_required: true
+    corrects: true
+
+  end_to_end_crc:
+    type: path
+    description: Detects transaction-level data corruption.
+    suitable_for:
+      - bus
+      - interface
+      - datapath
+    coverage_scope:
+      path: 0.95
+    alarm_required: true
+    corrects: false
+```
+
+A simple endpoint-to-safety-mechanism map:
+
+```csv
+endpoint,safety_mechanism,alarm,coverage_assumption,comment
+toy_counter.count[7:0],endpoint_parity,toy_counter.alarm,0.90,parity protects counter state
+toy_counter.count_parity,none,,0.00,parity bit itself is not protected
+toy_counter.alarm,none,,0.00,alarm path protection not modeled in D02
+```
+
+The input checker should verify:
+
+```text
+Are all referenced safety mechanisms defined?
+Are coverage values between 0 and 1?
+Are alarms defined when the mechanism requires alarm reporting?
+Are mapped endpoints syntactically valid?
+Are comments or assumptions present?
+Are unsupported mechanisms flagged?
+```
+
+The key idea is:
+
+> A safety mechanism should not be represented only by its name. It should have scope, assumptions, alarm behavior, and traceability.
+
+---
+
+## 11. Domain 5: Fault Campaign Context
+
+Fault campaign context defines what to inject and how to observe the result.
+
+Minimum files:
+
+```text
+inputs/fault.list
+inputs/alarm.list
+inputs/observe_points.list
+inputs/sim.vcd
+inputs/campaign.yaml
+```
+
+A minimal fault list:
+
+```text
+toy_counter.count[0] stuck_at_0
+toy_counter.count[0] stuck_at_1
+toy_counter.count_parity stuck_at_0
+toy_counter.alarm stuck_at_0
+```
+
+A minimal alarm list:
+
+```text
+toy_counter.alarm
+```
+
+A minimal observe point list:
+
+```text
+toy_counter.count
+toy_counter.count_parity
+toy_counter.alarm
+```
+
+A minimal campaign configuration:
+
+```yaml
+campaign:
+  name: d02_input_package_campaign
+  golden_context: inputs/sim.vcd
+  fault_list: inputs/fault.list
+  alarm_list: inputs/alarm.list
+  observe_points: inputs/observe_points.list
+  injection_window:
+    start: 30
+    end: 200
+  classification:
+    outcomes:
+      - detected
+      - safe
+      - unsafe
+      - unresolved
+```
+
+The input checker should verify:
+
+```text
+Does fault.list exist and contain valid entries?
+Does alarm.list exist?
+Do alarm signals appear in VCD or design hierarchy?
+Do observe points appear in VCD or design hierarchy?
+Does sim.vcd exist?
+Does the VCD cover the active window?
+Are fault injection windows inside simulation time?
+Are fault nodes mapped to known design objects or allowed as unresolved placeholders?
+```
+
+This is where many practical errors happen.
+
+---
+
+## 12. Why Alarm List and Observe Points Are Separate
+
+An alarm is not the same thing as an observe point.
+
+| Item | Meaning |
+|---|---|
+| Alarm | A diagnostic indication from a safety mechanism |
+| Observe point | A signal used to check whether behavior changed |
+| Golden value | Expected value from non-fault simulation |
+| Faulted value | Value after fault injection |
+| Outcome | Classification derived from comparison and alarm behavior |
+
+A fault can change an observe point without triggering an alarm. That may be unsafe.
+
+A fault can trigger an alarm while also changing observe points. That may be detected.
+
+A fault may not change any relevant observe point. That may be safe.
+
+A fault may lack enough data to determine what happened. That may be unresolved.
+
+```mermaid
+flowchart TD
+    A[Faulted Run] --> B[Compare Observe Points]
+    A --> C[Check Alarm List]
+    B --> D{Deviation?}
+    C --> E{Alarm?}
+    D -- No --> F[Safe]
+    D -- Yes --> E
+    E -- Yes --> G[Detected]
+    E -- No --> H[Unsafe or Unresolved]
+```
+
+**Figure 5. Alarm list and observe points serve different purposes in fault outcome classification.**
+
+The input package must keep them separate.
+
+---
+
+## 13. VCD as Safety Context
+
+The VCD file should not be treated only as a waveform dump.
+
+In a fault campaign, it becomes the golden safety context.
+
+It tells the flow:
+
+```text
+what the non-fault behavior was
+which signals were active
+when reset was released
+which time windows are meaningful
+which alarms were originally inactive or active
+which observe points can be compared
+```
+
+A good VCD safety context extractor can generate:
+
+```text
+vcd_context.json
+signal_activity.csv
+state_window.json
+missing_signal_report.csv
+```
+
+A simplified VCD context:
+
+```json
+{
+  "timescale": "1ns",
+  "start_time": 0,
+  "end_time": 250,
+  "clock": "clk",
+  "reset": "rst_n",
+  "active_window": {
+    "start": 30,
+    "end": 200
+  },
+  "signals": {
+    "toy_counter.count": {
+      "present": true,
+      "toggles": 17
+    },
+    "toy_counter.alarm": {
+      "present": true,
+      "toggles": 0
+    }
+  }
+}
+```
+
+The input checker should flag:
+
+```text
+missing alarm signal
+missing observe point signal
+empty VCD
+VCD time shorter than campaign window
+no clock activity
+reset never released
+signal naming mismatch
+```
+
+A fault campaign without a valid VCD context can easily produce unresolved or misleading results.
+
+---
+
+## 14. Domain 6: FMEDA Context
+
+FMEDA context connects hardware evidence to safety reporting.
+
+Minimum files:
+
+```text
+inputs/failure_modes.yaml
+inputs/fmeda_tree.yaml
+```
+
+A simplified failure mode library:
+
+```yaml
+failure_modes:
+  - id: FM_DATA_CORRUPTION
+    name: data_corruption
+    category: data_integrity
+    applicable_to:
+      - datapath
+      - register_group
+      - bus
+    recommended_mechanisms:
+      - endpoint_parity
+      - end_to_end_crc
+      - duplication
+    review_status: draft
+
+  - id: FM_ALARM_NOT_ASSERTED
+    name: alarm_not_asserted
+    category: diagnostic_failure
+    applicable_to:
+      - alarm_path
+      - monitor
+      - safety_mechanism
+    recommended_mechanisms:
+      - redundant_alarm
+      - alarm_monitor
+    review_status: draft
+```
+
+A simplified FMEDA tree:
+
+```yaml
+component: toy_soc
+parts:
+  - id: PART_COUNTER
+    name: toy_counter
+    block_type: register_group
+    instances:
+      - toy_counter
+    failure_modes:
+      - FM_DATA_CORRUPTION
+      - FM_ALARM_NOT_ASSERTED
+```
+
+The input checker should verify:
+
+```text
+Are failure mode IDs unique?
+Are failure mode names unique?
+Are categories valid?
+Are referenced safety mechanisms defined?
+Are part IDs unique?
+Are block types known?
+Are mapped instances valid or explicitly unresolved?
+Is review status present?
+```
+
+Why is FMEDA context needed so early?
+
+Because without it, fault injection results remain raw signal-level data:
+
+```text
+toy_counter.count[0] stuck_at_0 detected
+```
+
+With FMEDA context, the same result becomes safety evidence:
+
+```text
+PART_COUNTER / FM_DATA_CORRUPTION / endpoint_parity / detected
+```
+
+That is a much more useful engineering result.
+
+---
+
+## 15. Domain 7: Reporting and Session Context
+
+Safety evidence must be reproducible.
+
+The input package should define how a run is identified:
+
+```text
+project name
+demo name
+session name
+tool version
+input version
+timestamp
+run mode
+output directory
+report format
+```
+
+A simple manifest:
+
+```yaml
+project:
+  name: automotive_safeic_practice
+  demo: D02_input_package
+  top_module: toy_counter
+
+session:
+  name: d02_input_check_baseline
+  run_mode: input_validation
+  output_dir: outputs
+
+tools:
+  input_checker: safeic-inputcheck
+  expected_schema_version: 0.1
+
+reports:
+  input_check_report: outputs/input_check.rpt
+  manifest_summary: outputs/manifest_summary.md
+  package_index: outputs/input_package_index.csv
+```
+
+The input checker should produce:
+
+```text
+outputs/input_check.rpt
+outputs/input_package_index.csv
+outputs/manifest_summary.md
+outputs/missing_inputs.csv
+outputs/schema_warnings.csv
+```
+
+This turns the input package into a controlled run artifact.
+
+---
+
+## 16. The D02 Input Package Directory
+
+The D02 demo uses the following directory structure:
 
 ```text
 D02_input_package/
   README.md
-  run_demo.csh
   run_demo.sh
+  run_demo.csh
   manifest.yaml
+
   inputs/
-    design/
-      rtl/
-        toy_counter.v
-        toy_counter_checker.v
-      filelist.f
-      design.yaml
-    sim/
-      clkdef.clk
-      golden.vcd
-    safety/
-      fit_inputs.yaml
-      sm_library.yaml
-      failure_modes.yaml
-      ep_to_sm_map.csv
-    fault/
-      fault.list
-      alarm.list
-      observe_points.list
+    rtl/
+      toy_counter.v
+      toy_counter_tb.v
+
+    filelist.f
+    top.yaml
+    clkdef.clk
+
+    fit_inputs.yaml
+    design_stats.yaml
+
+    safety_mechanisms.yaml
+    ep_to_sm_map.csv
+
+    failure_modes.yaml
+    fmeda_tree.yaml
+
+    fault.list
+    alarm.list
+    observe_points.list
+    campaign.yaml
+    sim.vcd
+
+  intermediate/
+    .gitkeep
+
   outputs/
     input_check.rpt
-    normalized_manifest.json
-    missing_files.csv
-    demo_summary.md
-  expected/
-    golden_input_check.rpt
+    input_package_index.csv
+    manifest_summary.md
+    missing_inputs.csv
+    schema_warnings.csv
+
+  schemas/
+    manifest_schema.yaml
+    safety_mechanisms_schema.yaml
+    failure_modes_schema.yaml
+    campaign_schema.yaml
 ```
 
-This structure makes every input role visible.
+The directory layout itself is part of the methodology.
 
-It also prevents a common project failure pattern:
+It separates:
 
 ```text
-all files placed in one directory
-+ paths hard-coded inside scripts
-+ no manifest
-+ no input validation
-= difficult to reproduce or compare
+source inputs
+generated intermediate artifacts
+final outputs
+schemas
+scripts
 ```
 
-A functional safety demo should be understandable from the directory structure alone.
+This avoids mixing source assumptions with generated reports.
 
 ---
 
-## 5. Design inputs: RTL, netlist, filelist, and top module
+## 17. The `manifest.yaml` File
 
-Design inputs answer the first question:
+The manifest is the central index of the project.
 
-```text
-What circuit is being analyzed?
-```
-
-A minimal design input package contains:
-
-```text
-inputs/design/rtl/toy_counter.v
-inputs/design/rtl/toy_counter_checker.v
-inputs/design/filelist.f
-inputs/design/design.yaml
-```
-
-Example `filelist.f`:
-
-```text
-./rtl/toy_counter.v
-./rtl/toy_counter_checker.v
-```
-
-Example `design.yaml`:
+Example:
 
 ```yaml
-top: toy_counter_top
-language: verilog
-stage: rtl
-```
-
-The `stage` field is important because the same safety flow may be executed at different abstraction levels:
-
-```text
-architecture stage: estimate from counts or abstract configuration
-RTL stage: estimate from synthesizable design structure
-gate-level netlist stage: validate with implementation-level structure
-```
-
-In a practical project, different stages serve different purposes.
-
-| Stage | Main purpose | Typical limitation |
-|---|---|---|
-| Architecture | Early estimation before RTL is complete | Less structural accuracy |
-| RTL | Early safety exploration and mechanism planning | Fault nodes may differ after synthesis |
-| Netlist | Final structural metric and fault campaign preparation | Requires synthesis and mapping discipline |
-
-The input checker should not try to perform full synthesis.
-
-It should only verify that the design input contract is valid:
-
-```text
-filelist exists
-listed files exist
-files are readable
-top module is specified
-stage is valid
-language is known
-```
-
-This simple check prevents many later failures.
-
----
-
-## 6. Simulation context inputs: clock, reset, and VCD
-
-Fault injection is meaningful only under an operating context.
-
-A fault injected during reset, idle state, bus transfer, memory access, or safety-critical computation may produce different outcomes.
-
-This is why the waveform is not just a debug artifact.
-
-In this practice flow, the golden VCD is treated as safety context:
-
-```text
-RTL or netlist simulation
-→ golden waveform
-→ state activity extraction
-→ fault injection time windows
-→ alarm timing comparison
-```
-
-A minimal simulation context package contains:
-
-```text
-inputs/sim/clkdef.clk
-inputs/sim/golden.vcd
-```
-
-Example `clkdef.clk`:
-
-```text
-clk 10ns rising
-reset_n active_low
-```
-
-The input checker should verify:
-
-```text
-clock definition file exists
-at least one clock is specified
-golden VCD exists
-VCD is not empty
-VCD contains expected top-level scope or key signals
-```
-
-The flow can be visualized as:
-
-```mermaid
-flowchart LR
-    A[Design Simulation] --> B[Golden VCD]
-    B --> C[VCD Context Extraction]
-    C --> D[State Activity]
-    C --> E[Injection Windows]
-    C --> F[Alarm Timing Reference]
-```
-
-Later demos will use this context for fault result classification.
-
-For D02, we only check that the context is present and structurally usable.
-
----
-
-## 7. Safety metric inputs: FIT setup and reliability assumptions
-
-Functional safety metrics are not calculated from RTL alone.
-
-A metric calculation also requires reliability assumptions.
-
-A simplified `fit_inputs.yaml` may look like this:
-
-```yaml
-fit_standard: simplified_iec62380
-mission_profile: passenger_compartment
-temperature_ja: 65
-manufacturing_year: 2026
-default_process: MOS.ASIC.STDCELL
-lambda_file: inputs/safety/lambda.csv
-transistor_count_file: inputs/safety/lib.tc
-```
-
-These fields represent the engineering assumptions behind a FIT calculation.
-
-The input checker should verify:
-
-```text
-fit_standard is specified
-mission_profile is specified
-temperature setting exists
-manufacturing year exists
-default process exists
-referenced reliability files exist when required
-```
-
-The important methodology point is this:
-
-```text
-A FIT number without its assumptions is not engineering evidence.
-It is only a number.
-```
-
-Therefore, every metric output should be traceable back to the FIT input configuration that produced it.
-
----
-
-## 8. Safety mechanism inputs: SM library and coverage model
-
-A safety mechanism is a design feature intended to detect, control, or mitigate a fault.
-
-Examples include:
-
-```text
-parity check
-ECC
-lockstep compare
-duplication and comparison
-watchdog
-timeout monitor
-bus protocol checker
-range checker
-```
-
-In this practice flow, the safety mechanism library defines reusable mechanism types.
-
-Example `sm_library.yaml`:
-
-```yaml
-parity_check:
-  description: endpoint parity checker
-  coverage:
-    endpoint: 0.90
-    startpoint: 0.00
-    cone: 0.00
-
-logic_dup_compare:
-  description: duplicated logic with comparator
-  coverage:
-    endpoint: 0.90
-    startpoint: 0.00
-    cone: 0.90
-
-lockstep_compare:
-  description: redundant execution path with compare alarm
-  coverage:
-    endpoint: 0.90
-    startpoint: 0.90
-    cone: 0.90
-```
-
-This library is not a replacement for real safety analysis.
-
-It is an explicit modeling layer.
-
-It answers:
-
-```text
-When this safety mechanism is mapped to a design object,
-which structural regions can receive diagnostic coverage credit?
-```
-
-A robust input checker should verify:
-
-```text
-SM names are unique
-coverage fields are present
-coverage values are between 0 and 1
-required coverage dimensions are not missing
-unknown SM references are reported
-```
-
----
-
-## 9. Failure mode inputs: from system-level hazards to module-level handles
-
-Failure modes provide the semantic bridge between system safety goals and chip-level structures.
-
-A failure mode is not just a free-text description. It is a handle used to organize FMEDA.
-
-Example `failure_modes.yaml`:
-
-```yaml
-FM_COUNTER_WRONG_VALUE:
-  description: counter output has an erroneous value
-  affected_function: counter datapath
-
-FM_COUNTER_STUCK:
-  description: counter output is stuck or no longer updates
-  affected_function: counter state machine
-
-FM_ALARM_MISSED:
-  description: safety mechanism fails to report an internal error
-  affected_function: alarm generation path
-```
-
-The input checker should verify:
-
-```text
-failure mode IDs are unique
-description exists
-affected function or scope exists
-referenced failure modes in mapping files exist
-```
-
-The methodology is:
-
-```text
-Safety goal
-→ failure mode
-→ affected design part
-→ safety mechanism
-→ diagnostic coverage
-→ residual risk
-```
-
-Without failure modes, the flow becomes a signal-level exercise.
-
-With failure modes, the flow becomes an FMEDA-ready engineering process.
-
----
-
-## 10. EP-to-SM map: binding structure to safety mechanisms
-
-The safety mechanism library defines what a mechanism means.
-
-The EP-to-SM map defines where the mechanism applies.
-
-Example `ep_to_sm_map.csv`:
-
-```csv
-endpoint,safety_mechanism,failure_mode,scope
- top.u_counter.count_reg[0].D,parity_check,FM_COUNTER_WRONG_VALUE,endpoint
- top.u_counter.count_reg[1].D,parity_check,FM_COUNTER_WRONG_VALUE,endpoint
- top.u_counter.next_count,logic_dup_compare,FM_COUNTER_WRONG_VALUE,cone
-```
-
-This mapping is central to diagnostic coverage calculation.
-
-A coverage model should not silently assume that a safety mechanism protects the entire design.
-
-It should state:
-
-```text
-which endpoint is protected
-which failure mode is addressed
-which safety mechanism is used
-which structural scope receives credit
-```
-
-The input checker should verify:
-
-```text
-mapped endpoints are syntactically valid
-referenced safety mechanisms exist
-referenced failure modes exist
-scope values are valid
-no empty endpoint rows exist
-```
-
-Later demos will compute diagnostic coverage from this mapping.
-
-D02 only ensures that the mapping file is readable and internally consistent.
-
----
-
-## 11. Fault campaign inputs: fault list, alarm list, and observe points
-
-Fault campaign inputs define how evidence is generated.
-
-They answer three questions:
-
-```text
-Where is the fault injected?
-What kind of fault is injected?
-How is detection or propagation observed?
-```
-
-### 11.1 Fault list
-
-Example `fault.list`:
-
-```text
-top.u_counter.count_reg[0].Q SA0 100 -1
-top.u_counter.count_reg[1].Q SA1 100 -1
-top.u_counter.valid_reg      1   200 5
-```
-
-A practical fault list can use four columns:
-
-```text
-fault_node fault_value inject_time duration
-```
-
-Where:
-
-```text
-SA0 or 0: stuck-at 0
-SA1 or 1: stuck-at 1
--1: permanent fault
-positive duration: transient fault window
-```
-
-### 11.2 Alarm list
-
-Example `alarm.list`:
-
-```text
-top.u_checker.parity_error
-top.u_checker.compare_error
-top.u_checker.timeout_error
-```
-
-An alarm is a safety mechanism output that indicates the design detected a fault.
-
-### 11.3 Observe points
-
-Example `observe_points.list`:
-
-```text
-top.count_out[0]
-top.count_out[1]
-top.out_valid
-top.bus_error
-```
-
-An observe point is not necessarily an alarm.
-
-It is a signal used to determine whether a fault effect propagated to a meaningful observation boundary.
-
-The distinction is important:
-
-| Concept | Meaning |
-|---|---|
-| Alarm | The safety mechanism explicitly reports an error |
-| Observe point | The fault effect reaches a monitored boundary |
-| State element | The fault effect changes internal state |
-| Output | The fault effect becomes externally visible |
-
-The input checker should verify:
-
-```text
-fault list exists
-fault list has required columns
-fault values are valid
-injection times are numeric
-alarm list exists
-observe point list exists when required
-alarm and observe signals follow expected naming format
-```
-
----
-
-## 12. Manifest-driven flow
-
-Passing all files through command-line options is possible, but it does not scale well.
-
-A manifest file makes the project reproducible.
-
-Example `manifest.yaml`:
-
-```yaml
-project: automotive_safeic_practice_d02
-demo: D02_input_package
-
-session:
-  name: input_package_baseline
-  database: outputs/safeic.sqlite
+project:
+  name: automotive_safeic_practice
+  demo: D02_input_package
+  top_module: toy_counter
+  description: Minimal input package for functional safety analysis and fault injection.
 
 design:
-  top: toy_counter_top
-  stage: rtl
-  language: verilog
-  filelist: inputs/design/filelist.f
-  design_config: inputs/design/design.yaml
+  filelist: inputs/filelist.f
+  top_config: inputs/top.yaml
+  clock_def: inputs/clkdef.clk
 
-simulation:
-  clkdef: inputs/sim/clkdef.clk
-  golden_vcd: inputs/sim/golden.vcd
+reliability:
+  fit_inputs: inputs/fit_inputs.yaml
+  design_stats: inputs/design_stats.yaml
 
 safety:
-  fit_inputs: inputs/safety/fit_inputs.yaml
-  sm_library: inputs/safety/sm_library.yaml
-  failure_modes: inputs/safety/failure_modes.yaml
-  ep_to_sm_map: inputs/safety/ep_to_sm_map.csv
+  safety_mechanisms: inputs/safety_mechanisms.yaml
+  ep_to_sm_map: inputs/ep_to_sm_map.csv
+  failure_modes: inputs/failure_modes.yaml
+  fmeda_tree: inputs/fmeda_tree.yaml
 
 fault_campaign:
-  fault_list: inputs/fault/fault.list
-  alarm_list: inputs/fault/alarm.list
-  observe_points: inputs/fault/observe_points.list
+  fault_list: inputs/fault.list
+  alarm_list: inputs/alarm.list
+  observe_points: inputs/observe_points.list
+  campaign_config: inputs/campaign.yaml
+  golden_vcd: inputs/sim.vcd
 
 outputs:
   report_dir: outputs
-  normalized_manifest: outputs/normalized_manifest.json
-  input_check_report: outputs/input_check.rpt
 ```
 
-This file becomes the single entry point for the demo:
+The input checker reads the manifest first, then validates each referenced artifact.
 
-```bash
-safeic-inputcheck --manifest manifest.yaml
-```
-
-The manifest should be stored in version control.
-
-This makes the result traceable:
+This makes the project portable:
 
 ```text
-report
-→ manifest
-→ input files
-→ design revision
-→ safety assumptions
-→ fault campaign configuration
+Do not hardcode paths inside scripts.
+Put paths in manifest.yaml.
+Let tools read the manifest.
 ```
 
 ---
 
-## 13. Tool architecture of `safeic-inputcheck`
+## 18. The `safeic-inputcheck` Tool
 
-`safeic-inputcheck` is intentionally lightweight.
-
-It does not own the full functional safety flow.
-
-It checks and normalizes the input package so later tools can rely on a stable contract.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> B[Manifest Parser]
-    B --> C[Path Resolver]
-    C --> D[Existence Check]
-    C --> E[Format Check]
-    C --> F[Cross-reference Check]
-
-    D --> G[input_check.rpt]
-    E --> G
-    F --> G
-
-    B --> H[normalized_manifest.json]
-    F --> I[missing_files.csv]
-    G --> J[demo_summary.md]
-```
-
-The module can be implemented in five internal steps.
-
-| Step | Responsibility |
-|---|---|
-| Manifest parsing | Load YAML and verify required top-level sections |
-| Path resolution | Convert relative paths into normalized project paths |
-| File existence check | Report missing or unreadable files |
-| Format check | Validate minimal structure of each input file |
-| Cross-reference check | Detect broken references across files |
-
-This is not glamorous, but it is essential engineering.
-
-A mature safety flow should fail early when the input package is invalid.
-
----
-
-## 14. Three validation levels
-
-The input checker uses three validation levels.
-
-### L1: Existence check
-
-```text
-Does the file exist?
-Can it be opened?
-Is it non-empty?
-```
-
-### L2: Format check
-
-```text
-Does the file have the expected extension?
-Does a CSV file have the required columns?
-Does a YAML file contain required keys?
-Does a fault list line have enough fields?
-```
-
-### L3: Cross-reference check
-
-```text
-Does ep_to_sm_map reference existing safety mechanisms?
-Does ep_to_sm_map reference existing failure modes?
-Does the manifest point to a valid filelist?
-Does the fault list contain valid fault values?
-Does the alarm list have signals that can be searched in the VCD?
-```
-
-The tool should produce warnings and errors separately.
-
-Example policy:
-
-| Severity | Meaning | Example |
-|---|---|---|
-| ERROR | Flow should stop | missing filelist, missing VCD, invalid manifest |
-| WARNING | Flow can continue but result may be incomplete | observe point file missing for a simple demo |
-| INFO | Helpful normalization message | relative path resolved to absolute path |
-
-This makes the demo useful both for automation and for human learning.
-
----
-
-## 15. Example input check report
-
-Example `outputs/input_check.rpt`:
-
-```text
-[INFO] Project: automotive_safeic_practice_d02
-[INFO] Demo: D02_input_package
-[INFO] Session: input_package_baseline
-
-[PASS] manifest.yaml loaded successfully
-[PASS] design.filelist exists: inputs/design/filelist.f
-[PASS] design.top is specified: toy_counter_top
-[PASS] simulation.clkdef exists: inputs/sim/clkdef.clk
-[PASS] simulation.golden_vcd exists: inputs/sim/golden.vcd
-[PASS] safety.fit_inputs exists: inputs/safety/fit_inputs.yaml
-[PASS] safety.sm_library exists: inputs/safety/sm_library.yaml
-[PASS] safety.failure_modes exists: inputs/safety/failure_modes.yaml
-[PASS] safety.ep_to_sm_map exists: inputs/safety/ep_to_sm_map.csv
-[PASS] fault_campaign.fault_list exists: inputs/fault/fault.list
-[PASS] fault_campaign.alarm_list exists: inputs/fault/alarm.list
-[PASS] fault_campaign.observe_points exists: inputs/fault/observe_points.list
-
-[PASS] fault.list format check completed
-[PASS] sm_library coverage range check completed
-[PASS] failure mode reference check completed
-[PASS] safety mechanism reference check completed
-
-Summary:
-  errors   : 0
-  warnings : 0
-  status   : PASS
-```
-
-Example `outputs/missing_files.csv` when a problem exists:
-
-```csv
-severity,field,path,message
-ERROR,simulation.golden_vcd,inputs/sim/golden.vcd,file not found
-WARNING,fault_campaign.observe_points,inputs/fault/observe_points.list,optional file missing for this demo profile
-```
-
-The report should be readable by both humans and scripts.
-
----
-
-## 16. How this input package supports later demos
-
-`D02_input_package` is the bridge between the first conceptual closed loop and all later analysis modules.
+The generic tool `safeic-inputcheck` performs validation.
 
 ```mermaid
 flowchart LR
-    A[D02 Input Package] --> B[D03 Base FIT]
-    A --> C[D04 FIT Standard Models]
-    A --> D[D05 Design Stage Comparison]
-    A --> E[D06 SP/EP/Cone Extraction]
-    A --> F[D08 DC Engine]
-    A --> G[D15 Fault List Generation]
-    A --> H[D17 VCD Context]
-    A --> I[D19 Fault Campaign]
-    A --> J[D20 Fault Classification]
+    A[manifest.yaml] --> B[safeic-inputcheck]
+    C[Input Files] --> B
+    D[Schemas] --> B
+    B --> E[input_check.rpt]
+    B --> F[input_package_index.csv]
+    B --> G[missing_inputs.csv]
+    B --> H[schema_warnings.csv]
 ```
 
-This means a later demo should not invent its own file structure.
+**Figure 6. The input checker validates paths, schemas, references, and safety-flow consistency.**
 
-It should reuse the same input contract.
+It should check four levels:
 
-That is how the series becomes a coherent engineering practice rather than a collection of unrelated examples.
+```text
+file existence
+schema validity
+cross-reference consistency
+safety-flow readiness
+```
+
+### 18.1 File Existence
+
+```text
+Does each required file exist?
+Is the file empty?
+Is the file readable?
+Is the path relative and portable?
+```
+
+### 18.2 Schema Validity
+
+```text
+Does YAML parse?
+Does CSV have required columns?
+Are numeric fields valid?
+Are enumerated values legal?
+Are lists non-empty where required?
+```
+
+### 18.3 Cross-Reference Consistency
+
+```text
+Does ep_to_sm_map reference known safety mechanisms?
+Does failure_modes.yaml reference known mechanisms?
+Does campaign.yaml reference existing fault/alarm/observe files?
+Do alarm signals appear in alarm.list?
+Do observe points appear in VCD or design hierarchy?
+```
+
+### 18.4 Safety-Flow Readiness
+
+```text
+Can BFR run?
+Can structure extraction run?
+Can DC estimation run?
+Can VCD context extraction run?
+Can fault classification run?
+Which later stages are blocked?
+```
+
+A useful checker does not only say pass or fail. It should tell the engineer which stage is blocked and why.
 
 ---
 
-## 17. Common input package mistakes
+## 19. Input Readiness Levels
 
-The most common mistakes in functional safety demo projects are not advanced mathematical errors.
+Not every input package needs to be complete for every stage.
 
-They are basic input discipline problems.
+D02 introduces input readiness levels.
 
-### Mistake 1: hidden assumptions inside scripts
+| Level | Meaning | Example |
+|---|---|---|
+| L0 | Project skeleton exists | README, manifest, directory structure |
+| L1 | Design context ready | filelist, top, clock/reset |
+| L2 | FIT analysis ready | fit inputs, design stats |
+| L3 | Structure analysis ready | design files sufficient for graph extraction |
+| L4 | DC estimation ready | SM library and EP-to-SM map available |
+| L5 | Fault campaign ready | fault list, alarm list, observe points, VCD |
+| L6 | FMEDA reporting ready | failure modes and part/sub-part model |
+| L7 | Full closed-loop ready | all above plus report configuration |
 
-Bad pattern:
-
-```text
-python run.py --top toy_top --vcd ../tmp/a.vcd --fault ../../old/fault.list
+```mermaid
+flowchart TD
+    L0[L0 Skeleton] --> L1[L1 Design Ready]
+    L1 --> L2[L2 FIT Ready]
+    L2 --> L3[L3 Structure Ready]
+    L3 --> L4[L4 DC Ready]
+    L4 --> L5[L5 Fault Campaign Ready]
+    L5 --> L6[L6 FMEDA Ready]
+    L6 --> L7[L7 Closed Loop Ready]
 ```
 
-Better pattern:
+**Figure 7. Input readiness levels help engineers understand what can run and what is still blocked.**
+
+Example report:
 
 ```text
-python run.py --manifest manifest.yaml
+Readiness Summary
+=================
+
+L0 Skeleton             PASS
+L1 Design Ready         PASS
+L2 FIT Ready            PASS
+L3 Structure Ready      PASS
+L4 DC Ready             WARN
+L5 Fault Campaign Ready FAIL
+L6 FMEDA Ready          PASS
+L7 Closed Loop Ready    FAIL
+
+Blocking Issues:
+  - inputs/sim.vcd is missing
+  - observe point toy_counter.count not found in VCD
+  - ep_to_sm_map references undefined endpoint toy_counter.hidden_state
 ```
 
-### Mistake 2: no versioned reliability assumptions
+This is more useful than a single error message.
 
-Bad pattern:
+---
+
+## 20. Example `input_check.rpt`
+
+A good report is human-readable.
 
 ```text
-FIT number is generated, but temperature, process, mission profile, and lambda source are unknown.
+SafeIC Input Package Check Report
+=================================
+
+Project:
+  name : automotive_safeic_practice
+  demo : D02_input_package
+  top  : toy_counter
+
+File Existence:
+  [PASS] inputs/filelist.f
+  [PASS] inputs/top.yaml
+  [PASS] inputs/clkdef.clk
+  [PASS] inputs/fit_inputs.yaml
+  [PASS] inputs/safety_mechanisms.yaml
+  [PASS] inputs/ep_to_sm_map.csv
+  [PASS] inputs/failure_modes.yaml
+  [PASS] inputs/fmeda_tree.yaml
+  [PASS] inputs/fault.list
+  [PASS] inputs/alarm.list
+  [PASS] inputs/observe_points.list
+  [PASS] inputs/campaign.yaml
+  [WARN] inputs/sim.vcd exists but does not include toy_counter.hidden_state
+
+Schema Checks:
+  [PASS] manifest.yaml
+  [PASS] safety_mechanisms.yaml
+  [PASS] failure_modes.yaml
+  [PASS] campaign.yaml
+
+Cross References:
+  [PASS] ep_to_sm_map safety mechanism references
+  [PASS] failure mode recommended mechanisms
+  [PASS] alarm list file referenced by campaign.yaml
+  [WARN] observe point toy_counter.hidden_state not found in VCD
+
+Readiness:
+  L0 Skeleton             PASS
+  L1 Design Ready         PASS
+  L2 FIT Ready            PASS
+  L3 Structure Ready      PASS
+  L4 DC Ready             PASS
+  L5 Fault Campaign Ready WARN
+  L6 FMEDA Ready          PASS
+  L7 Closed Loop Ready    WARN
+
+Overall Status:
+  WARN
 ```
 
-Better pattern:
+The report should be strict enough to catch real mistakes but practical enough to allow staged development.
 
-```text
-FIT report records the fit_inputs.yaml used for the run.
+---
+
+## 21. Example `input_package_index.csv`
+
+The package index is machine-readable.
+
+```csv
+domain,file,role,required,status,notes
+design,inputs/filelist.f,rtl_filelist,true,PASS,
+design,inputs/top.yaml,top_config,true,PASS,
+design,inputs/clkdef.clk,clock_reset_config,true,PASS,
+reliability,inputs/fit_inputs.yaml,fit_model,true,PASS,
+reliability,inputs/design_stats.yaml,design_statistics,true,PASS,
+safety,inputs/safety_mechanisms.yaml,sm_library,true,PASS,
+safety,inputs/ep_to_sm_map.csv,endpoint_to_sm_map,true,PASS,
+fmeda,inputs/failure_modes.yaml,failure_mode_library,true,PASS,
+fmeda,inputs/fmeda_tree.yaml,part_subpart_model,true,PASS,
+campaign,inputs/fault.list,fault_list,true,PASS,
+campaign,inputs/alarm.list,alarm_list,true,PASS,
+campaign,inputs/observe_points.list,observe_points,true,PASS,
+campaign,inputs/sim.vcd,golden_vcd,true,WARN,missing toy_counter.hidden_state
 ```
 
-### Mistake 3: alarm signals not checked against waveform
-
-Bad pattern:
+This CSV can later be consumed by:
 
 ```text
-alarm.list contains a signal name that never appears in golden.vcd.
-```
-
-Better pattern:
-
-```text
-input checker reports a warning before the fault campaign starts.
-```
-
-### Mistake 4: fault list not tied to design hierarchy
-
-Bad pattern:
-
-```text
-fault.list is copied from an older design revision.
-```
-
-Better pattern:
-
-```text
-fault nodes are generated from or checked against the current design structure.
-```
-
-### Mistake 5: no normalized manifest output
-
-Bad pattern:
-
-```text
-Downstream tools parse the original manifest differently.
-```
-
-Better pattern:
-
-```text
-safeic-inputcheck writes normalized_manifest.json for later tools.
+safeic-report
+safeic-flow
+CI checks
+documentation generator
 ```
 
 ---
 
-## 18. Methodology summary
+## 22. Demo Execution
 
-A functional safety verification input package should be:
+A simple D02 run script:
 
-```text
-explicit
-structured
-checkable
-traceable
-version-controlled
-reusable across demos
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+safeic-inputcheck \
+  --manifest manifest.yaml \
+  --schema-dir schemas \
+  --output-dir outputs
 ```
 
-The core methodology is:
+A csh version:
 
-```text
-Do not let downstream tools guess the project context.
-Make the project context explicit before the flow starts.
+```csh
+#!/bin/csh -f
+
+set DEMO = D02_input_package
+echo "Running $DEMO"
+
+safeic-inputcheck \
+  --manifest manifest.yaml \
+  --schema-dir schemas \
+  --output-dir outputs
 ```
 
-`D02_input_package` therefore defines the engineering contract for the rest of the practice series.
-
-The key artifact is not only the input files themselves, but also the normalized and checked representation of those files:
-
-```text
-manifest.yaml
-→ safeic-inputcheck
-→ normalized_manifest.json
-→ downstream analysis and fault campaign tools
-```
-
-This is the foundation for reproducible functional safety analysis and fault injection practice.
-
----
-
-## 19. Demo deliverables
-
-`D02_input_package` should produce the following files:
+Expected outputs:
 
 ```text
 outputs/input_check.rpt
-outputs/normalized_manifest.json
-outputs/missing_files.csv
-outputs/demo_summary.md
+outputs/input_package_index.csv
+outputs/manifest_summary.md
+outputs/missing_inputs.csv
+outputs/schema_warnings.csv
 ```
 
-The expected result for a clean demo is:
+D02 is intentionally simple. It does not compute FIT, extract structure, or inject faults. It only validates that the project is ready for those stages.
+
+---
+
+## 23. Why D02 Should Be Built Before More Complex Demos
+
+It may be tempting to skip input checking and jump directly to fault injection.
+
+That is a mistake.
+
+A fault campaign can produce thousands of results. If the input package is wrong, all of those results may be unusable.
+
+Examples:
 
 ```text
-errors   : 0
-warnings : 0
-status   : PASS
+wrong alarm list
+  -> detected faults may be classified as unsafe
+
+missing observe point
+  -> unsafe faults may become unresolved
+
+wrong clock/reset window
+  -> faults injected during reset may look safe
+
+missing failure mode mapping
+  -> results cannot be summarized for FMEDA
+
+inconsistent safety mechanism map
+  -> DC estimate is not traceable
+
+wrong VCD scope
+  -> important state signals are missing
 ```
 
-The expected learning outcome is:
+Input validation is not a small administrative step. It is the first safety quality gate.
+
+---
+
+## 24. Common Mistakes
+
+### 24.1 Hardcoding Paths in Scripts
+
+Bad:
+
+```bash
+safeic-bfr --fit-inputs ../../my_tmp/fit.yaml
+```
+
+Better:
+
+```bash
+safeic-bfr --manifest manifest.yaml
+```
+
+The manifest should be the source of truth.
+
+### 24.2 Mixing Generated and Source Files
+
+Bad:
 
 ```text
-A Safe-IC project is not defined by one RTL file or one command.
-It is defined by a complete, checkable, and traceable input package.
+inputs/
+  fault_result.csv
+  base_fit_report.csv
+  sim.vcd
+  toy_counter.v
 ```
 
+Better:
+
+```text
+inputs/
+intermediate/
+outputs/
+reports/
+```
+
+Generated results should not be mixed with source assumptions.
+
+### 24.3 Using Informal Signal Names
+
+Bad:
+
+```text
+counter alarm
+main data
+error flag
+```
+
+Better:
+
+```text
+toy_counter.alarm
+toy_counter.count[7:0]
+top.u_bus.integrity_error
+```
+
+Signal naming should be precise and traceable.
+
+### 24.4 Treating VCD as Optional
+
+A fault campaign without golden activity context is often incomplete.
+
+VCD or equivalent simulation data is needed to compare golden and faulted behavior.
+
+### 24.5 Treating Failure Modes as Comments
+
+Failure modes should be machine-readable, not only written in notes.
+
+Bad:
+
+```text
+This block may have some data error.
+```
+
+Better:
+
+```yaml
+id: FM_DATA_CORRUPTION
+category: data_integrity
+applicable_to: [datapath, bus]
+```
+
+### 24.6 Ignoring Review Status
+
+Safety assumptions evolve.
+
+A failure mode, safety mechanism, or coverage assumption should have review status:
+
+```text
+draft
+reviewed
+approved
+deprecated
+```
+
+This prevents immature assumptions from being treated as final evidence.
+
+---
+
+## 25. Methodology: Make Inputs Reviewable Before Making Tools Smart
+
+The input package is the foundation for tool automation.
+
+A smart tool cannot compensate for ambiguous inputs.
+
+A practical development sequence is:
+
+```text
+1. Define directory structure.
+2. Define manifest format.
+3. Define schemas.
+4. Define minimal toy design.
+5. Define fault/alarm/observe lists.
+6. Define safety mechanism library.
+7. Define failure mode library.
+8. Run input checker.
+9. Fix all blocking issues.
+10. Only then run downstream analysis.
+```
+
+The principle is:
+
+> Before optimizing safety analysis, make the evidence inputs explicit and reviewable.
+
+---
+
+## 26. Summary
+
+A functional safety verification project needs more than RTL and a testbench.
+
+It needs a structured input package that connects:
+
+```text
+design context
+reliability assumptions
+structural safety model
+safety mechanism definitions
+fault campaign inputs
+alarm and observe points
+VCD safety context
+failure mode library
+FMEDA hierarchy
+reporting metadata
+```
+
+The second demo:
+
+```text
+D02_input_package
+```
+
+introduces a generic input validation tool:
+
+```text
+safeic-inputcheck
+```
+
+The tool validates:
+
+```text
+file existence
+schema correctness
+cross-reference consistency
+safety-flow readiness
+```
+
+The central lesson is:
+
+> If the input package is not explicit, traceable, and reviewable, the safety result cannot be trusted.
+
+D02 does not try to produce final safety metrics. It builds the quality gate that makes all later safety analysis and fault campaign steps meaningful.
+
+---
+
+## 27. D02 Demo Checklist
+
+For `D02_input_package`, the expected deliverables are:
+
+```text
+[ ] README.md
+[ ] run_demo.sh
+[ ] run_demo.csh
+[ ] manifest.yaml
+
+[ ] inputs/rtl/toy_counter.v
+[ ] inputs/rtl/toy_counter_tb.v
+[ ] inputs/filelist.f
+[ ] inputs/top.yaml
+[ ] inputs/clkdef.clk
+
+[ ] inputs/fit_inputs.yaml
+[ ] inputs/design_stats.yaml
+
+[ ] inputs/safety_mechanisms.yaml
+[ ] inputs/ep_to_sm_map.csv
+
+[ ] inputs/failure_modes.yaml
+[ ] inputs/fmeda_tree.yaml
+
+[ ] inputs/fault.list
+[ ] inputs/alarm.list
+[ ] inputs/observe_points.list
+[ ] inputs/campaign.yaml
+[ ] inputs/sim.vcd
+
+[ ] schemas/manifest_schema.yaml
+[ ] schemas/safety_mechanisms_schema.yaml
+[ ] schemas/failure_modes_schema.yaml
+[ ] schemas/campaign_schema.yaml
+
+[ ] outputs/input_check.rpt
+[ ] outputs/input_package_index.csv
+[ ] outputs/manifest_summary.md
+[ ] outputs/missing_inputs.csv
+[ ] outputs/schema_warnings.csv
+```
+
+A successful D02 run should answer:
+
+```text
+Is the project input package complete?
+Which files are present?
+Which files are missing?
+Which schemas are valid?
+Which cross-references are broken?
+Which downstream stages are ready?
+Which stages are blocked?
+```
