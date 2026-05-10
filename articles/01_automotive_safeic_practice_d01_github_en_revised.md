@@ -7,129 +7,158 @@
 
 ---
 
-## 1. The Central Question
+## 1. The Core Question
 
-When we say that an automotive chip has been verified for functional safety, what has actually been verified?
+When we say an automotive chip has been verified for functional safety, what has actually been verified?
 
-At first glance, the answer may sound simple:
+A simple answer is:
 
-> We verify that safety mechanisms can detect faults.
+> The safety mechanisms can detect faults.
 
-But this statement is incomplete.
+But this answer is not sufficient.
 
-A real automotive chip safety workflow must answer a deeper set of questions:
+A realistic automotive chip safety workflow must answer a chain of questions:
 
 ```text
 What can fail?
 Where can it fail?
 How likely is the failure?
 Can the failure propagate to a safety-relevant state?
-Can a safety mechanism detect or control it?
-Under which operating context is the detection valid?
-How much residual risk remains after protection?
+Can a safety mechanism detect, correct, mask, or control it?
+Under which operating context is that conclusion valid?
+How much residual risk remains?
 Can the result be traced back to FMEDA and safety metrics?
 ```
 
-This article builds the first engineering mental model for the repository:
-
-```text
-Automotive Safe-IC Functional Safety and Fault Injection Practice
-```
-
-The corresponding demo is:
+The first demo in this repository is:
 
 ```text
 D01_safeic_closed_loop
 ```
 
-The goal of the first demo is not to implement a full industrial safety verification solution. The goal is to make the closed loop visible:
+It builds a minimal closed-loop example for functional safety analysis and fault injection.
 
-```text
-Design
-→ Safety analysis
-→ Safety mechanism modeling
-→ Fault list generation
-→ Fault injection
-→ Fault classification
-→ Metric update
-→ Engineering report
+The goal is not to build a certifiable industrial safety verification solution in one demo. The goal is to make the safety verification loop visible, inspectable, and repeatable.
+
+```mermaid
+flowchart TD
+    A[Design Context<br/>RTL / Netlist / Testbench / VCD] --> B[FIT / BFR Analysis]
+    B --> C[Structural Safety Model<br/>Startpoint / Endpoint / Cone]
+    C --> D[Safety Mechanism Model<br/>Parity / ECC / CRC / Lockstep]
+    D --> E[Fault List Generation]
+    E --> F[Fault Campaign]
+    F --> G[Fault Outcome Classification]
+    G --> H[Metric Update<br/>DC / Residual FIT / FMEDA]
+    H --> I[Safety Report]
 ```
 
-The most important idea is this:
+**Figure 1. Safe-IC functional safety verification is a closed-loop evidence process, not a single simulation command.**
 
-> Functional safety verification is not only about running simulations. It is about building evidence that random hardware faults are either prevented from violating a safety goal, detected by safety mechanisms, converted into safe behavior, or explicitly left as residual risk.
+The most important idea is:
+
+> Functional safety verification is the process of building evidence that random hardware faults are either detected, corrected, masked, converted into safe behavior, or explicitly left as residual risk.
 
 ---
 
-## 2. Functional Safety Is About Random Hardware Faults, Not Only Design Bugs
+## 2. Functional Verification Is Not Functional Safety Verification
 
-Traditional functional verification mainly asks:
-
-```text
-Does the design implement the intended function correctly?
-```
-
-Functional safety verification asks a different question:
+Traditional functional verification asks:
 
 ```text
-If hardware faults occur during operation, does the system remain acceptably safe?
+Does the design implement the intended behavior correctly?
 ```
 
-This distinction is fundamental.
-
-A design bug is usually a systematic fault. It comes from specification mistakes, RTL implementation mistakes, verification gaps, integration errors, or process issues. These faults are addressed by design reviews, verification plans, simulation, formal verification, lint, CDC/RDC checks, synthesis checks, manufacturing tests, and disciplined development processes.
-
-Random hardware faults are different. They may occur during the lifetime of the product even if the RTL is correct. They may be caused by aging, radiation, electrical overstress, manufacturing variability, environmental stress, or transient disturbances.
-
-At chip level, random hardware faults can appear as:
+Functional safety verification asks:
 
 ```text
-stuck-at faults
-transient bit flips
-memory bit corruptions
-delay faults
-control state corruptions
-bus transfer corruptions
-alarm path failures
-diagnostic logic failures
+If random hardware faults occur during operation, does the system remain acceptably safe?
 ```
 
-A simplified distinction is:
+These are related but not identical.
 
-| Verification Dimension | Primary Concern | Typical Method |
+A design may pass functional verification and still be weak against random hardware faults. A counter, bus controller, CPU core, memory subsystem, or safety monitor can behave correctly under normal simulation, but still fail dangerously when a register bit flips, a memory bit corrupts, an alarm path is blocked, or a control signal is stuck.
+
+A practical distinction is:
+
+| Verification Dimension | Primary Question | Typical Method |
 |---|---|---|
-| Functional verification | Correct behavior without injected faults | Simulation, formal, emulation, regression |
-| Manufacturing test | Detect manufacturing defects before shipment | ATPG, scan test, BIST |
-| Functional safety analysis | Estimate random hardware failure impact | FIT, DC, FMEDA, structural analysis |
-| Functional safety validation | Validate safety mechanisms under faults | Fault injection, fault campaign, report classification |
+| Functional verification | Does the design behave correctly without injected faults? | Simulation, UVM, formal, emulation, regression |
+| Manufacturing test | Can manufacturing defects be detected before shipment? | Scan, ATPG, BIST, structural test |
+| Functional safety analysis | What is the random hardware failure risk? | FIT, DC, FMEDA, structural analysis |
+| Functional safety validation | Do safety mechanisms work under fault conditions? | Fault injection, fault campaign, classification |
 
-Functional safety verification does not replace functional verification. It extends it.
+Functional safety does not replace functional verification. It extends it.
 
-A design that fails ordinary functional verification cannot be considered safe. But a design that passes ordinary functional verification is not automatically safe, because it has not yet shown what happens when faults occur during operation.
+A good safety workflow reuses the functional verification environment whenever possible, because safety evidence must be collected under meaningful operating scenarios.
 
 ---
 
-## 3. The Fault-to-Failure Chain
+## 3. Systematic Faults vs Random Hardware Faults
 
-The safest way to understand this topic is to separate four words that are often mixed together:
+A systematic fault is introduced by a deterministic cause, such as:
 
 ```text
-fault
-error
-failure
-failure mode
+wrong requirement
+wrong RTL implementation
+wrong integration
+wrong reset handling
+wrong clock-domain assumption
+incorrect verification constraint
+incorrect software behavior
 ```
+
+These faults are primarily controlled by engineering process:
+
+```text
+specification review
+design review
+functional verification
+traceability
+coding guidelines
+tool qualification
+lint / CDC / RDC / formal checks
+regression methodology
+```
+
+A random hardware fault is different. It may occur during product lifetime even when the design is correct.
+
+Examples include:
+
+```text
+stuck-at behavior
+transient bit flip
+memory cell upset
+delay fault
+aging-related degradation
+electrical overstress effect
+radiation-induced soft error
+```
+
+In a safety-oriented chip workflow, random hardware faults must be analyzed and validated because the product is expected to operate in the field for years.
+
+The key mindset is:
+
+```text
+functional verification prevents and removes systematic design bugs
+functional safety verification detects or controls random hardware failures
+```
+
+---
+
+## 4. The Fault-to-Failure Chain
+
+The words **fault**, **error**, **failure**, and **failure mode** should not be mixed.
 
 A practical chip-level interpretation is:
 
 | Term | Meaning |
 |---|---|
 | Fault | A defect or injected disturbance at hardware level |
-| Error | An incorrect internal value or state caused by the fault |
+| Error | An incorrect internal state or value caused by the fault |
 | Failure | A visible violation of intended behavior |
-| Failure Mode | A category describing how the function fails |
+| Failure Mode | A named category describing how the function fails |
 
-Example:
+Example 1:
 
 ```text
 Fault:
@@ -139,17 +168,17 @@ Error:
   The FSM enters an unintended internal state.
 
 Failure:
-  A safety-critical output is asserted incorrectly or not asserted when required.
+  A safety-critical output is asserted incorrectly.
 
 Failure Mode:
-  illegal_state_transition or wrong_control_decision.
+  wrong_control_decision or illegal_state_transition.
 ```
 
-Another example:
+Example 2:
 
 ```text
 Fault:
-  A data bus register has a stuck-at-0 fault.
+  A bus data register has a stuck-at-0 fault.
 
 Error:
   A transferred data word becomes corrupted.
@@ -161,8 +190,6 @@ Failure Mode:
   corrupted_data_transfer.
 ```
 
-This chain can be visualized as:
-
 ```mermaid
 flowchart LR
     A[Hardware Fault] --> B[Internal Error]
@@ -171,341 +198,151 @@ flowchart LR
     D --> E[Safety Goal Impact]
 ```
 
-A safety mechanism is inserted somewhere along this chain:
+**Figure 2. A hardware fault becomes safety-relevant only if it propagates into a meaningful error, failure, and failure mode.**
+
+A safety mechanism is inserted into this chain.
 
 ```mermaid
 flowchart LR
     A[Hardware Fault] --> B[Internal Error]
     B --> C{Safety Mechanism}
-    C -- Detected / Corrected / Controlled --> D[Safe Response]
+    C -- Detected / Corrected / Masked --> D[Safe Response]
     C -- Not Detected --> E[Potential Safety Goal Violation]
 ```
 
-A fault campaign tests whether this safety mechanism really works under a defined operating context.
+**Figure 3. A safety mechanism is useful only when it breaks or controls the fault-to-failure chain.**
+
+This is why fault injection is important. It validates whether the safety mechanism actually breaks the chain under a real or representative operating context.
 
 ---
 
-## 4. Why FIT and Diagnostic Coverage Must Be Considered Together
+## 5. FIT: How Likely Is Random Hardware Failure?
 
-Two metrics appear repeatedly in automotive chip safety analysis:
+FIT means **Failure In Time**.
 
-```text
-FIT
-DC
-```
-
-FIT means Failure In Time. It is a failure rate measure. A common interpretation is:
+A common interpretation is:
 
 ```text
 1 FIT = 1 failure per 1,000,000,000 hours
 ```
 
-In chip safety analysis, FIT is used to estimate how susceptible silicon, package, memory, logic, or other hardware elements are to random hardware faults.
-
-Diagnostic Coverage, or DC, measures the fraction of relevant faults that can be detected or controlled by safety mechanisms.
-
-A design with a high FIT but also high diagnostic coverage may be acceptable depending on safety goals and residual risk. A design with low FIT but almost no diagnostic coverage may still be problematic if a small number of faults directly violate a safety goal.
-
-The relationship is:
+In a chip safety workflow, FIT is used to estimate susceptibility to random hardware faults. It can be broken down by:
 
 ```text
-risk contribution
-≈ fault rate × effect on safety goal × lack of detection
+silicon logic
+flip-flops
+memory bits
+analog or mixed-signal blocks
+package contribution
+permanent faults
+transient faults
+module-level contribution
+endpoint-level contribution
 ```
 
-This is why safety verification cannot only count faults. It must connect:
+The first useful value is the **Base FIT Rate**, or BFR.
+
+BFR is calculated before additional safety mechanisms are considered. It provides the baseline:
 
 ```text
-fault likelihood
-fault propagation
-safety mechanism coverage
-residual effect
+How much random hardware failure exposure exists before protection is considered?
 ```
 
-A simplified model:
-
-```text
-residual_fault_contribution = original_fault_contribution × (1 - diagnostic_coverage)
-```
-
-This is not a replacement for a full standard-compliant metric calculation, but it is a useful engineering mental model.
-
----
-
-## 5. Safety Analysis vs Fault Injection
-
-A closed-loop safety workflow usually contains two complementary parts:
-
-```text
-safety analysis
-fault injection validation
-```
-
-They answer different questions.
-
-### 5.1 Safety Analysis
-
-Safety analysis estimates and organizes risk.
-
-It asks:
-
-```text
-What is the base FIT rate?
-Which endpoints contribute most?
-Which safety mechanisms are assumed?
-What diagnostic coverage is claimed?
-Which faults should be injected?
-What residual metric remains?
-```
-
-This stage uses:
-
-```text
-design files
-technology assumptions
-mission profile
-FIT inputs
-transistor or memory-bit counts
-structural analysis
-safety mechanism definition
-endpoint-to-safety-mechanism mapping
-FMEDA hierarchy
-```
-
-### 5.2 Fault Injection Validation
-
-Fault injection validates behavior under faults.
-
-It asks:
-
-```text
-If a fault is injected under a given operating context, what happens?
-Does the machine state deviate from the golden context?
-Does an alarm fire?
-Is the fault safe?
-Is the fault unsafe?
-Is the result unresolved?
-```
-
-This stage uses:
-
-```text
-design files
-fault list
-alarm list
-observe points
-VCD or simulation activity
-safety context
-fault campaign configuration
-classification rules
-```
-
-The relationship is:
+A simplified FIT reasoning flow is:
 
 ```mermaid
 flowchart TD
-    A[Safety Analysis] --> B[Generate / Prioritize Fault List]
-    B --> C[Fault Injection Campaign]
-    C --> D[Fault Outcome Classification]
-    D --> E[Measured Diagnostic Coverage]
-    E --> F[Final Metric Update]
-    F --> A
+    A[Design Statistics<br/>Gates / FFs / Memories] --> B[FIT Input Model]
+    C[Technology Assumptions] --> B
+    D[Mission Profile] --> B
+    E[Temperature / Package Assumptions] --> B
+    B --> F[Base FIT Calculation]
+    F --> G[Permanent FIT]
+    F --> H[Transient FIT]
+    G --> I[Base FIT Report]
+    H --> I
 ```
 
-A key principle:
+**Figure 4. BFR calculation converts design statistics and reliability assumptions into a baseline random hardware failure estimate.**
 
-> Safety analysis gives estimated evidence. Fault injection gives measured evidence under simulation context.
-
-Both are needed.
-
----
-
-## 6. The Closed-Loop Model
-
-The closed-loop model used in this repository has seven layers.
-
-```mermaid
-flowchart TD
-    L1[Layer 1: Design and Verification Context]
-    L2[Layer 2: Reliability and FIT Model]
-    L3[Layer 3: Structural Safety Model]
-    L4[Layer 4: Safety Mechanism Model]
-    L5[Layer 5: Fault Campaign Model]
-    L6[Layer 6: Result Classification Model]
-    L7[Layer 7: Metric and Report Model]
-
-    L1 --> L2
-    L2 --> L3
-    L3 --> L4
-    L4 --> L5
-    L5 --> L6
-    L6 --> L7
-```
-
-Each layer exists for a reason.
-
-| Layer | Core Question | Typical Data |
-|---|---|---|
-| Design and verification context | What design is being analyzed and under what stimulus? | RTL/netlist, filelist, clocks, VCD |
-| Reliability and FIT model | How likely are random hardware faults? | FIT inputs, mission profile, technology data |
-| Structural safety model | Where can faults propagate? | startpoints, endpoints, cones |
-| Safety mechanism model | What detects, corrects, or controls faults? | SM library, DC definitions, EP-to-SM map |
-| Fault campaign model | Which faults are injected and when? | fault list, alarm list, observe points, VCD context |
-| Result classification model | What happened after injection? | detected, safe, unsafe, unresolved |
-| Metric and report model | What is the evidence? | DC, residual FIT, FMEDA rows, reports |
-
-This model is deliberately tool-independent. It can be implemented with commercial tools, open-source prototypes, or internal scripts.
-
----
-
-## 7. Layer 1: Design and Verification Context
-
-Functional safety verification begins with context.
-
-A fault is not meaningful in isolation. The same fault may be irrelevant in one operating mode and dangerous in another.
-
-Consider a register bit flip:
-
-```text
-During reset:
-  The fault may be overwritten and have no effect.
-
-During idle mode:
-  The fault may not propagate.
-
-During safety-critical operation:
-  The fault may corrupt an output or prevent an alarm.
-```
-
-This is why fault injection needs simulation context.
-
-The minimum design context includes:
-
-```text
-RTL or gate-level netlist
-top module name
-clock definition
-reset behavior
-testbench or stimulus
-waveform activity
-fault injection scope
-alarm signal definitions
-observe point definitions
-```
-
-In the demo, this is represented as:
-
-```text
-inputs/
-  rtl/
-  filelist.f
-  clkdef.clk
-  sim.vcd
-  fault.list
-  alarm.list
-  observe_points.list
-```
-
-The tool architecture begins with an input checker:
-
-```text
-safeic-inputcheck
-```
-
-Its role is simple:
-
-```text
-verify that the safety workflow has enough context to run
-```
-
-It should check:
-
-```text
-Does the filelist exist?
-Does the top module exist?
-Are clocks defined?
-Does the VCD contain expected signals?
-Are fault nodes syntactically valid?
-Are alarm signals present?
-Are observe points present?
-Are configuration files consistent?
-```
-
-This step is boring but essential. Many safety verification failures are not caused by sophisticated algorithmic issues; they are caused by inconsistent input packages.
-
----
-
-## 8. Layer 2: Reliability and FIT Model
-
-Before selecting or validating safety mechanisms, we need to estimate how much random hardware failure risk exists.
-
-This is the role of FIT analysis.
-
-A practical FIT model usually needs:
-
-```text
-design type
-technology assumptions
-transistor count or gate count
-memory bit count
-package assumptions
-mission profile
-temperature profile
-operating ratio
-failure rate model
-```
-
-The output of this layer is not just a single number. A useful analysis should produce a breakdown:
-
-```text
-logic FIT
-flip-flop FIT
-memory FIT
-package FIT
-permanent FIT
-transient FIT
-per-module FIT
-per-endpoint contribution
-```
-
-The demo component is:
+For the demo, the generic component is:
 
 ```text
 safeic-bfr
 ```
 
-The name BFR means Base FIT Rate.
-
-The base FIT rate is calculated before additional safety mechanisms are considered. It establishes the baseline:
+Its output can be:
 
 ```text
-How unsafe is the unprotected or initially protected design?
+base_fit_report.csv
+base_fit_summary.md
 ```
 
-A simplified flow:
+A minimal output may look like:
 
-```mermaid
-flowchart TD
-    A[Design Statistics] --> B[FIT Input Model]
-    C[Mission Profile] --> B
-    D[Technology Assumptions] --> B
-    E[Memory Definition] --> B
-    B --> F[Base FIT Calculation]
-    F --> G[base_fit_report.csv]
-    F --> H[base_fit_summary.md]
+```csv
+block,type,permanent_fit,transient_fit,total_fit
+toy_counter,logic,0.02,0.01,0.03
+toy_counter,ff,0.05,0.08,0.13
+toy_counter,package,0.01,0.00,0.01
 ```
 
-The key engineering principle is:
-
-> BFR is not the final answer. It is the baseline against which safety mechanisms are judged.
+The exact numbers in the demo are simplified assumptions. The important concept is that safety analysis starts with a quantified baseline.
 
 ---
 
-## 9. Layer 3: Structural Safety Model
+## 6. Diagnostic Coverage: How Much Is Detected or Controlled?
 
-A chip is not just a bag of gates. Faults propagate through structure.
+Diagnostic Coverage, or DC, measures the effectiveness of safety mechanisms.
 
-For safety analysis, three structural concepts are useful:
+A simplified engineering view is:
+
+```text
+DC = detected_or_controlled_relevant_faults / total_relevant_faults
+```
+
+But this simple expression hides important details.
+
+Diagnostic coverage depends on:
+
+```text
+where the safety mechanism is inserted
+what fault type is considered
+which endpoint is protected
+whether the cone or path is covered
+whether the alarm path is modeled
+whether the operating scenario activates the fault effect
+whether the fault campaign validates the claim
+```
+
+A useful simplified residual-risk model is:
+
+```text
+residual_contribution = original_contribution × (1 - diagnostic_coverage)
+```
+
+This does not replace full standard-compliant metric calculation, but it helps explain why FIT and DC must be considered together.
+
+```mermaid
+flowchart LR
+    A[Original FIT Contribution] --> B{Safety Mechanism}
+    B --> C[Detected / Controlled Contribution]
+    B --> D[Residual Contribution]
+    C --> E[Diagnostic Coverage Credit]
+    D --> F[Residual Risk / Metric Update]
+```
+
+**Figure 5. Diagnostic coverage separates detected or controlled contribution from residual contribution.**
+
+A design with high FIT and high DC may be acceptable depending on system-level allocation. A design with low FIT but almost no DC may still be problematic if its faults directly violate a safety goal.
+
+---
+
+## 7. Structural Safety Model: Startpoint, Endpoint, and Cone
+
+A chip is not a flat list of faults. Faults propagate through structure.
+
+Three structural concepts are useful:
 
 ```text
 Startpoint
@@ -513,36 +350,37 @@ Endpoint
 Cone
 ```
 
-A startpoint is where a fault may originate or begin to propagate.
+A **startpoint** is where a fault may originate or begin propagating.
 
-An endpoint is where a propagated error is observed or becomes safety-relevant.
+An **endpoint** is where a propagated error is observed or becomes safety-relevant.
 
-A cone is the logic region connecting startpoints to endpoints.
-
-Conceptually:
+A **cone** is the logic region connecting startpoints to endpoints.
 
 ```mermaid
 flowchart LR
-    SP1[Startpoint A] --> C[Fan-in Cone]
+    SP1[Startpoint A] --> C[Logic Cone]
     SP2[Startpoint B] --> C
     SP3[Startpoint C] --> C
     C --> EP[Endpoint]
 ```
 
+**Figure 6. SP/EP/Cone modeling turns a netlist or RTL design into a safety-relevant propagation graph.**
+
 Why does this matter?
 
-Because a safety mechanism may cover different parts of this structure:
+Because different safety mechanisms cover different scopes:
 
-| Safety Mechanism Type | What It Usually Covers |
+| Safety Mechanism | Typical Coverage Scope |
 |---|---|
 | Endpoint parity | Endpoint state |
+| Endpoint ECC | Endpoint or memory-like state |
 | Cone duplication | Logic cone and endpoint |
-| End-to-end CRC | Path between source and destination |
-| Protocol checker | Behavior over time |
+| End-to-end CRC | Transaction path |
+| Protocol checker | Temporal behavior |
 | Memory ECC | Stored memory contents |
 | Alarm monitor | Diagnostic reporting path |
 
-If we do not know the structure, we cannot reason about coverage.
+A local endpoint parity mechanism does not necessarily cover the entire upstream cone. A CRC on a bus path does not necessarily cover an unrelated control FSM. Lockstep may detect many CPU internal mismatches, but it still depends on comparator, alarm, reset, and response paths.
 
 The demo component is:
 
@@ -550,7 +388,7 @@ The demo component is:
 safeic-structure
 ```
 
-It extracts a simplified graph:
+It generates:
 
 ```text
 structure_graph.json
@@ -559,7 +397,7 @@ ep.csv
 cone.csv
 ```
 
-A minimal data model:
+A simplified structure object:
 
 ```json
 {
@@ -567,8 +405,8 @@ A minimal data model:
     {
       "name": "top.u_ctrl.state_reg[2]",
       "type": "fsm_state",
-      "fanout": 18,
-      "fanin_cone_size": 143
+      "fanin_cone_size": 143,
+      "fanout": 18
     }
   ],
   "startpoints": [
@@ -589,15 +427,75 @@ A minimal data model:
 }
 ```
 
-The value of this model is not only reporting. It becomes the foundation for safety mechanism selection, DC estimation, and fault list generation.
+The structural model is the bridge between raw RTL/netlist and safety reasoning.
 
 ---
 
-## 10. Layer 4: Safety Mechanism Model
+## 8. Failure Mode: The Semantic Layer Above Structure
 
-A safety mechanism is a technical measure used to detect, correct, mask, or control faults.
+Structure tells us where a fault can propagate. It does not tell us what the propagated error means.
 
-Typical examples include:
+For example:
+
+```text
+top.timer.count_reg[7:0]
+top.safety_ctrl.safe_mode_en
+```
+
+Both may be endpoints. But their failure meanings are different.
+
+A timer count corruption may map to:
+
+```text
+wrong_timeout_decision
+```
+
+A corrupted safe mode enable may map to:
+
+```text
+loss_of_safe_state_control
+```
+
+A failure mode library adds semantic meaning:
+
+```mermaid
+flowchart TD
+    A[Endpoint] --> B[Part / Sub-part]
+    B --> C[Failure Mode]
+    C --> D[Safety Mechanism Candidate]
+    C --> E[FMEDA Row]
+    C --> F[Fault Campaign Grouping]
+```
+
+**Figure 7. Failure modes connect hardware structure to safety intent and FMEDA reporting.**
+
+A simplified failure mode entry:
+
+```yaml
+id: FM_DATA_CORRUPTION
+name: data_corruption
+category: data_integrity
+description: A data value becomes corrupted before being used or transferred.
+applicable_to:
+  - datapath
+  - bus
+  - register_group
+recommended_mechanisms:
+  - endpoint_parity
+  - end_to_end_crc
+  - duplication
+review_status: draft
+```
+
+The first demo keeps this simple, but the closed-loop model already reserves a place for failure semantics.
+
+---
+
+## 9. Safety Mechanism Model
+
+A safety mechanism is a technical measure that detects, corrects, masks, or controls a fault effect.
+
+Examples:
 
 ```text
 parity
@@ -614,212 +512,215 @@ protocol checker
 alert monitor
 ```
 
-A safety mechanism must be modeled with at least three properties:
+A safety mechanism should be modeled by at least:
 
 ```text
-what it protects
-what it detects
-how much coverage is claimed
+coverage scope
+applicable endpoint type
+failure modes addressed
+expected detection or correction behavior
+alarm or response signal
+assumed coverage
+validation status
 ```
 
-A generic safety mechanism library may look like:
+A simple safety mechanism library:
 
 ```yaml
 mechanisms:
   endpoint_parity:
+    type: endpoint
+    suitable_for:
+      - scalar_ff
+      - register_group
     coverage_scope:
       ep: 0.90
-      sp: 0.00
       cone: 0.00
-    suitable_for:
-      - register_group
-      - scalar_ff
+      path: 0.00
     detects:
       - single_bit_error
     corrects: false
 
   memory_ecc:
-    coverage_scope:
-      ep: 0.99
-      sp: 0.00
-      cone: 0.00
+    type: memory
     suitable_for:
       - memory
       - register_file
+    coverage_scope:
+      ep: 0.99
+      memory: 0.99
     detects:
       - single_bit_error
       - some_multi_bit_error
     corrects: true
 
-  cone_duplication:
-    coverage_scope:
-      ep: 0.90
-      sp: 0.00
-      cone: 0.90
+  end_to_end_crc:
+    type: path
     suitable_for:
-      - high_contribution_logic
-      - control_path
+      - bus
+      - datapath
+      - interface
+    coverage_scope:
+      path: 0.95
     detects:
-      - logic_corruption
-      - endpoint_error
+      - data_corruption
+      - transaction_corruption
     corrects: false
 ```
 
-The important methodological point is:
+The key principle is:
 
-> Diagnostic coverage is not a property of a mechanism name alone. It is a property of a mechanism applied to a specific structure under a specific assumption.
+> Diagnostic coverage is not a property of a mechanism name alone. It is a property of a mechanism applied to a specific structure under explicit assumptions.
 
-For example:
-
-```text
-parity on a local register
-```
-
-does not cover the entire upstream combinational cone.
-
-```text
-end-to-end CRC on a bus transaction
-```
-
-does not necessarily protect an unrelated local FSM transition.
-
-```text
-lockstep on a CPU core
-```
-
-may detect many internal mismatches, but it still requires valid comparator, alarm, reset, and system response paths.
-
-The demo components involved are:
+For the demo, the related components are:
 
 ```text
 safeic-dc
 safeic-smselect
 ```
 
-The first computes diagnostic coverage from a given map. The second helps recommend candidate safety mechanisms based on structural contribution and failure semantics.
+`safeic-dc` computes coverage based on mapping.
+
+`safeic-smselect` can recommend candidate safety mechanisms based on endpoint type, contribution, failure mode, and target policy.
 
 ---
 
-## 11. Layer 5: Fault Campaign Model
+## 10. Fault List: The Bridge Between Analysis and Validation
 
-A fault campaign is the validation stage where faults are injected and classified.
+A fault list converts safety analysis into validation work.
 
-A practical fault campaign requires at least:
-
-```text
-design files
-simulation activity
-fault list
-alarm list
-observe points
-clock definition
-injection instance
-fault campaign options
-```
-
-The essential flow is:
-
-```mermaid
-flowchart TD
-    A[Golden Simulation / VCD] --> B[Safety Context]
-    C[Fault List] --> D[Fault Injection Engine]
-    B --> D
-    E[Alarm List] --> D
-    F[Observe Points] --> D
-    D --> G[Faulted Results]
-    G --> H[Fault Classification]
-```
-
-The demo components are:
+It answers:
 
 ```text
-safeic-vcdctx
-safeic-faultgen
-safeic-campaign
+Which nodes should be disturbed?
+What type of fault should be injected?
+What fault mode is used?
+Which time window or condition is relevant?
 ```
 
-### 11.1 Fault List
-
-A fault list defines what to inject:
-
-```text
-node
-fault type
-fault mode
-injection condition
-optional time window
-```
-
-Example:
+Examples:
 
 ```text
 top.u_ctrl.state_reg[2] stuck_at_0
 top.u_ctrl.state_reg[2] stuck_at_1
 top.u_ram.mem[15][3] transient_flip
 top.u_bus.wdata_reg[7] transient_flip
+top.u_alarm.path_en stuck_at_0
 ```
 
-### 11.2 Alarm List
-
-An alarm list defines what counts as detection:
+A fault list can be generated from:
 
 ```text
-top.u_safety.alarm_fsm
-top.u_bus.bus_integrity_error
-top.u_mem.ecc_error
-top.u_core.major_alert
+endpoint contribution
+startpoint usage
+cone analysis
+failure mode mapping
+safety mechanism scope
+manual safety-critical node selection
 ```
 
-An alarm is not merely a waveform signal. It is a safety interpretation:
+The generic demo component is:
 
 ```text
-the safety mechanism observed an error and reported it
+safeic-faultgen
 ```
 
-### 11.3 Observe Points
-
-Observe points are used to determine whether the fault propagated to relevant machine state or outputs.
-
-Examples:
+A good fault list is not simply “all possible nodes.” It should be traceable:
 
 ```text
-top.u_ctrl.safe_state
-top.u_bus.rdata
-top.u_timer.timeout
-top.u_core.alert_major
+fault node
+→ endpoint or startpoint
+→ part/sub-part
+→ failure mode
+→ safety mechanism
+→ expected alarm or observe point
 ```
 
-Observe points help distinguish:
-
-```text
-fault did not matter
-fault changed internal behavior
-fault escaped to safety-relevant output
-```
-
-### 11.4 VCD Safety Context
-
-A VCD is not only a waveform file. In this workflow, it is a safety context.
-
-It tells the fault campaign:
-
-```text
-which state elements were active
-when signals toggled
-what the golden values were
-what time window matters
-what operating mode was exercised
-```
-
-A fault injected outside meaningful context may not validate the safety mechanism.
+This traceability is what allows the results to be useful for FMEDA and report generation.
 
 ---
 
-## 12. Layer 6: Fault Result Classification
+## 11. VCD Safety Context
 
-After fault injection, results must be classified.
+A VCD file is often treated as a waveform file. In a fault campaign, it is more than that.
 
-A simple and useful classification is:
+It is a **safety context**.
+
+It provides:
+
+```text
+golden signal values
+active time windows
+state element activity
+clock and reset behavior
+operating scenario
+reference behavior for comparison
+```
+
+The same fault may produce different outcomes under different contexts.
+
+Example:
+
+```text
+Fault on memory bit:
+  If the memory location is never read, no effect is observed.
+  If the memory is read but protected by ECC, an alarm may fire.
+  If the memory is read and no protection exists, unsafe data may propagate.
+```
+
+Example:
+
+```text
+Fault on bus data bit:
+  If no transaction occurs, the fault may be irrelevant.
+  If a transaction occurs and CRC is checked, it may be detected.
+  If the receiver consumes corrupted data without checking, it may be unsafe.
+```
+
+The generic component is:
+
+```text
+safeic-vcdctx
+```
+
+It extracts:
+
+```text
+vcd_context.json
+signal_activity.csv
+state_window.json
+```
+
+A simplified safety context:
+
+```json
+{
+  "clock": "clk",
+  "reset_release_time": 20,
+  "active_windows": [
+    {
+      "start": 30,
+      "end": 120,
+      "mode": "counter_enabled"
+    }
+  ],
+  "observed_signals": [
+    "toy_counter.count",
+    "toy_counter.count_parity",
+    "toy_counter.alarm"
+  ]
+}
+```
+
+Fault injection without meaningful context can produce misleading evidence.
+
+---
+
+## 12. Fault Campaign and Outcome Classification
+
+A fault campaign injects faults and classifies outcomes.
+
+A useful first classification is:
 
 ```text
 detected
@@ -828,109 +729,119 @@ unsafe
 unresolved
 ```
 
+```mermaid
+flowchart TD
+    A[Fault Injected] --> B{Golden State Changed?}
+    B -- No --> C[Safe]
+    B -- Yes --> D{Alarm Triggered?}
+    D -- Yes --> E[Detected]
+    D -- No --> F{Enough Evidence?}
+    F -- Yes --> G[Unsafe]
+    F -- No --> H[Unresolved]
+```
+
+**Figure 8. A fault outcome is classified by comparing golden behavior, alarm behavior, and evidence completeness.**
+
 ### 12.1 Detected
 
-A fault is detected when the machine state differs from the golden reference and the fault propagates to an alarm or diagnostic indication.
+A fault is detected when:
 
 ```text
-fault injected
-→ state deviates
-→ alarm fires
-→ diagnostic coverage credit
+the machine state or relevant observation differs from golden behavior
+and
+a defined alarm or diagnostic signal is triggered
 ```
+
+Detected faults usually provide diagnostic coverage credit.
 
 ### 12.2 Safe
 
-A fault is safe when it does not create a safety-relevant deviation.
+A fault is safe when it does not cause a safety-relevant deviation.
 
 Examples:
 
 ```text
 the fault is overwritten
-the fault does not propagate
-the fault affects unused logic
-the fault is masked by logic behavior
-the endpoint remains equal to golden context
+the fault is not activated
+the fault is logically masked
+the affected signal is unused in this context
+the observed state remains equivalent to golden behavior
 ```
-
-Safe faults matter because not every injected fault is dangerous.
 
 ### 12.3 Unsafe
 
-A fault is unsafe when it produces a relevant deviation but no safety mechanism detects it.
+A fault is unsafe when:
 
 ```text
-fault injected
-→ state/output deviates
-→ no alarm
-→ potential residual risk
+the fault causes a relevant deviation
+and
+no safety mechanism detects or controls it
 ```
 
-Unsafe faults drive design improvement.
+Unsafe results are design improvement targets.
 
 ### 12.4 Unresolved
 
-A fault is unresolved when the tool cannot determine a meaningful classification.
+A fault is unresolved when classification cannot be completed.
 
-Possible causes:
+Common reasons:
 
 ```text
 missing VCD signal
+missing observe point
 black-box boundary
+incomplete alarm list
 unknown X propagation
-incomplete mapping
-insufficient observe point
-missing alarm definition
-unsupported construct
 insufficient simulation duration
+unsupported construct
+missing RTL-to-gate name mapping
 ```
 
-Unresolved faults are not automatically unsafe, but they are not evidence of safety either.
-
-The demo component is:
-
-```text
-safeic-classify
-```
-
-A useful report should summarize:
-
-```csv
-fault_id,node,fault_type,outcome,alarm,observe_point,reason
-F001,top.u_ctrl.state_reg[2],stuck_at_0,detected,top.u_safety.alarm_fsm,top.u_ctrl.safe_state,alarm_triggered
-F002,top.u_timer.count_reg[3],stuck_at_1,safe,,top.u_timer.timeout,no_golden_deviation
-F003,top.u_bus.wdata_reg[7],stuck_at_0,unsafe,,top.u_bus.rdata,deviation_without_alarm
-F004,top.u_ram.mem[4][1],transient_flip,unresolved,,top.u_mem.rdata,missing_vcd_signal
-```
+Unresolved is not automatically unsafe, but it is not safety evidence. It is an engineering work item.
 
 ---
 
-## 13. Layer 7: Metric and Report Model
+## 13. Alarm List and Observe Points
 
-The final layer converts raw fault results into engineering evidence.
+A fault campaign needs to know how detection and propagation are observed.
 
-A safety report should not only say:
-
-```text
-10000 faults simulated
-9000 detected
-500 safe
-300 unsafe
-200 unresolved
-```
-
-It should also answer:
+An **alarm list** defines diagnostic outputs:
 
 ```text
-Which failure modes are affected?
-Which safety mechanisms performed well?
-Which endpoints dominate residual risk?
-Which modules need design change?
-Which faults are unresolved due to missing data?
-Which results should be back-annotated to FMEDA?
+toy_counter.alarm
+top.u_mem.ecc_error
+top.u_bus.integrity_error
+top.u_core.major_alert
 ```
 
-A good report connects:
+An **observe point list** defines relevant states and outputs:
+
+```text
+toy_counter.count
+toy_counter.count_parity
+toy_counter.alarm
+top.u_bus.rdata
+top.u_ctrl.safe_state
+```
+
+The distinction matters:
+
+| Concept | Meaning |
+|---|---|
+| Alarm | A safety mechanism reports a fault or diagnostic event |
+| Observe point | A signal used to determine whether the fault changed relevant behavior |
+| Golden context | Reference behavior from non-fault simulation |
+| Faulted context | Behavior after injection |
+
+A detected fault usually needs alarm evidence. A safe or unsafe classification often needs observe-point evidence.
+
+---
+
+## 14. Metric Update and Reporting
+
+Raw fault campaign results are not enough.
+
+A report should connect outcomes to safety metrics:
 
 ```text
 fault outcome
@@ -941,16 +852,23 @@ fault outcome
 + residual FIT
 ```
 
-The demo component is:
+A useful report answers:
 
 ```text
-safeic-report
+Which faults were detected?
+Which faults were safe?
+Which faults were unsafe?
+Which faults were unresolved?
+Which endpoints dominate residual risk?
+Which safety mechanisms need improvement?
+Which failure modes are weakly covered?
+Which input data is missing?
 ```
 
-A useful report structure:
+A minimal report structure:
 
 ```text
-1. Design and run summary
+1. Project summary
 2. Input package summary
 3. Base FIT summary
 4. Structural model summary
@@ -959,63 +877,33 @@ A useful report structure:
 7. Fault outcome distribution
 8. Unsafe fault analysis
 9. Unresolved fault analysis
-10. Metric update summary
-11. Recommendations
+10. Metric summary
+11. Engineering recommendations
 ```
 
-This is why the first demo focuses on a closed loop, not a single command.
+The generic component is:
+
+```text
+safeic-report
+```
+
+This is the final step that turns tool outputs into reviewable engineering evidence.
 
 ---
 
-## 14. The Tool Architecture Used in D01
+## 15. Data-Centric Tool Architecture
 
-The first demo uses generic tool names. These are not intended to represent a mature commercial implementation. They are small engineering components used to make the workflow explainable.
+A safety workflow becomes fragile if all information is hidden inside scripts.
 
-```mermaid
-flowchart TD
-    A[safeic-init] --> B[safeic-inputcheck]
-    B --> C[safeic-bfr]
-    C --> D[safeic-structure]
-    D --> E[safeic-dc]
-    E --> F[safeic-faultgen]
-    F --> G[safeic-vcdctx]
-    G --> H[safeic-campaign]
-    H --> I[safeic-classify]
-    I --> J[safeic-report]
-```
-
-Each component has a narrow responsibility:
-
-| Component | Purpose |
-|---|---|
-| `safeic-init` | Create project skeleton and manifest |
-| `safeic-inputcheck` | Validate design, VCD, fault, alarm, and configuration inputs |
-| `safeic-bfr` | Estimate base FIT before safety mechanism impact |
-| `safeic-structure` | Extract startpoints, endpoints, and cones |
-| `safeic-dc` | Estimate diagnostic coverage from safety mechanism mapping |
-| `safeic-faultgen` | Generate a small prioritized fault list |
-| `safeic-vcdctx` | Extract golden safety context from VCD |
-| `safeic-campaign` | Execute or emulate fault campaign steps |
-| `safeic-classify` | Classify results as detected/safe/unsafe/unresolved |
-| `safeic-report` | Generate engineering report |
-
-The point is not the number of tools. The point is that each artifact in the safety workflow has a clear owner and a clear transformation.
-
----
-
-## 15. Data-Centric Architecture
-
-A functional safety workflow becomes fragile if everything is hidden inside scripts.
-
-A better architecture is data-centric.
+A better architecture is data-centric:
 
 ```mermaid
 flowchart TD
-    A[Project Manifest] --> DB[(SafeIC Project Database)]
+    A[Project Manifest] --> DB[(SafeIC Project Data Store)]
     B[Design Files] --> DB
     C[FIT Inputs] --> DB
     D[Structure Graph] --> DB
-    E[SM Library] --> DB
+    E[Safety Mechanism Library] --> DB
     F[Failure Mode Library] --> DB
     G[Fault List] --> DB
     H[VCD Context] --> DB
@@ -1023,7 +911,9 @@ flowchart TD
     J[Reports] --> DB
 ```
 
-For the first demo, the database can be a simple directory plus JSON/CSV files:
+**Figure 9. A data-centric architecture makes safety evidence inspectable, versioned, and reusable.**
+
+For D01, the data store can simply be a directory structure:
 
 ```text
 D01_safeic_closed_loop/
@@ -1034,7 +924,7 @@ D01_safeic_closed_loop/
   reports/
 ```
 
-Later, this can be represented in SQLite:
+A future implementation may use SQLite or another lightweight database:
 
 ```text
 project
@@ -1057,13 +947,51 @@ The methodology is:
 
 > Every step should produce an artifact that can be inspected, diffed, versioned, and reused.
 
-This is especially important for safety work, because safety evidence must be reviewable.
+This matters because safety evidence must be reviewable.
 
 ---
 
-## 16. Methodology: Evidence Before Automation
+## 16. Generic Tool Architecture Used by D01
 
-A tempting mistake is to automate too early.
+D01 uses generic tool names to illustrate a modular workflow.
+
+```mermaid
+flowchart TD
+    A[safeic-init] --> B[safeic-inputcheck]
+    B --> C[safeic-bfr]
+    C --> D[safeic-structure]
+    D --> E[safeic-dc]
+    E --> F[safeic-faultgen]
+    F --> G[safeic-vcdctx]
+    G --> H[safeic-campaign]
+    H --> I[safeic-classify]
+    I --> J[safeic-report]
+```
+
+**Figure 10. The D01 demo is organized as a sequence of small, reviewable transformations.**
+
+Each component has a narrow responsibility:
+
+| Component | Responsibility |
+|---|---|
+| `safeic-init` | Create the project skeleton and manifest |
+| `safeic-inputcheck` | Validate design, VCD, fault, alarm, and configuration inputs |
+| `safeic-bfr` | Estimate base FIT before safety mechanism impact |
+| `safeic-structure` | Extract startpoints, endpoints, and cones |
+| `safeic-dc` | Estimate diagnostic coverage from safety mechanism mapping |
+| `safeic-faultgen` | Generate a small prioritized fault list |
+| `safeic-vcdctx` | Extract golden safety context from VCD |
+| `safeic-campaign` | Execute or emulate fault campaign steps |
+| `safeic-classify` | Classify results as detected, safe, unsafe, or unresolved |
+| `safeic-report` | Generate the engineering report |
+
+This architecture is intentionally simple. Its value is clarity.
+
+---
+
+## 17. Evidence Before Automation
+
+A common mistake is to automate too early.
 
 For functional safety practice, the first goal should not be:
 
@@ -1079,14 +1007,14 @@ a transparent chain of evidence
 
 Automation is useful only after the evidence model is clear.
 
-The recommended methodology is:
+A practical methodology:
 
 ```text
 1. Define the safety question.
 2. Define the design context.
-3. Define the reliability assumptions.
+3. Define reliability assumptions.
 4. Extract the structural model.
-5. Define safety mechanisms.
+5. Define failure modes and safety mechanisms.
 6. Generate fault candidates.
 7. Run fault injection under meaningful context.
 8. Classify results.
@@ -1094,7 +1022,7 @@ The recommended methodology is:
 10. Review unsafe and unresolved cases.
 ```
 
-Each step should answer:
+For each step, ask:
 
 ```text
 What was the input?
@@ -1106,33 +1034,33 @@ What can be repeated?
 
 ---
 
-## 17. Methodology: Estimated Coverage vs Measured Coverage
+## 18. Estimated Coverage vs Measured Coverage
 
 Safety analysis often starts with estimated coverage.
 
-For example:
+Example assumptions:
 
 ```text
-endpoint parity is assumed to provide 90% endpoint coverage
-memory ECC is assumed to provide 99% memory coverage
-a protocol checker is assumed to detect illegal transitions
+endpoint parity covers 90% of endpoint single-bit errors
+memory ECC covers 99% of relevant memory bit faults
+a protocol checker detects illegal state transitions
+a bus CRC detects most transaction corruptions
 ```
 
-These estimates are useful for early architecture exploration.
+These assumptions are useful for architecture exploration.
 
 But estimated coverage is not the same as measured coverage.
 
-Measured coverage comes from validation:
+Measured coverage comes from fault injection:
 
 ```text
 inject faults
 run under context
-check alarm and observe points
+check alarms
+compare observe points
 classify outcomes
 back-annotate results
 ```
-
-The relationship is:
 
 ```mermaid
 flowchart LR
@@ -1143,31 +1071,31 @@ flowchart LR
     E --> F[Metric Update]
 ```
 
-A disciplined workflow keeps these two concepts separate:
+**Figure 11. Estimated coverage guides design exploration; measured coverage comes from fault campaign results.**
+
+A disciplined workflow keeps these concepts separate:
 
 | Coverage Type | Meaning |
 |---|---|
-| Estimated DC | Claimed or assumed coverage based on safety mechanism model |
-| Calculated DC | Computed from structural mapping and assumptions |
-| Measured DC | Derived from fault injection campaign outcomes |
+| Estimated DC | Claimed or assumed coverage from safety mechanism model |
+| Calculated DC | Computed from structure and mapping assumptions |
+| Measured DC | Derived from fault campaign outcomes |
 
-The first demo introduces this distinction even though the implementation is intentionally small.
+D01 introduces this distinction in a minimal way.
 
 ---
 
-## 18. Methodology: Fault Campaign Is Context-Dependent
+## 19. Context-Dependent Nature of Fault Campaigns
 
-A fault campaign is only as good as its context.
+A fault campaign is only as strong as its context.
 
-A fault injected into a design without meaningful stimulus may produce misleading results.
-
-Example:
+Examples:
 
 ```text
 A bus parity checker appears useless if the bus never transfers data.
+A memory ECC alarm never fires if the corrupted memory location is never read.
 A timer fault appears safe if timeout behavior is never exercised.
-A memory ECC alarm never fires if the memory location is never read.
-A CPU lockstep mismatch cannot be observed if alert outputs are not monitored.
+A lockstep mismatch cannot be observed if alert outputs are not monitored.
 ```
 
 Therefore, fault injection must be tied to:
@@ -1179,70 +1107,65 @@ time window
 safety function
 alarm list
 observe points
-FTTI or detection window
+detection window
 ```
 
-This is why the VCD context is central.
+This is why VCD context is central.
 
-A practical safety context contains:
+A practical VCD safety context includes:
 
 ```text
 clock activity
 reset release
+active windows
 state element activity
 golden values
-safety-critical time windows
-alarm signal values
+alarm values
 observe point values
 ```
 
-The first demo keeps this small, but the concept scales to realistic IP and SoC verification.
+D01 keeps this small, but the concept scales to realistic IP and SoC verification.
 
 ---
 
-## 19. Methodology: Unresolved Faults Are Engineering Work Items
+## 20. Unresolved Faults Are Engineering Work Items
 
-Unresolved faults are often more valuable than they look.
+Unresolved faults are not a nuisance. They often reveal missing evidence.
 
-They indicate that the current evidence chain is incomplete.
-
-Common unresolved causes:
+Typical unresolved reasons:
 
 ```text
-missing waveform data
-missing mapping between RTL and gate-level names
-missing black-box model
+missing waveform signal
+missing observe point
+black-box boundary
 incomplete alarm list
-insufficient observe points
 X propagation
 simulation not long enough
 unsupported language construct
-fault reaches unmodeled boundary
+name mapping mismatch
 ```
 
-A good report should not hide unresolved faults. It should classify them by reason and suggest next action.
-
-Example:
+A useful report should classify unresolved faults by reason:
 
 | Unresolved Reason | Engineering Action |
 |---|---|
 | missing VCD signal | Add signal to waveform dump |
-| no observe point | Add relevant observe point |
-| black-box boundary | Add model or black-box assumption |
-| insufficient stimulus | Extend test or add scenario |
+| missing observe point | Add relevant observe point |
+| black-box boundary | Add model or assumption |
+| insufficient stimulus | Extend test scenario |
 | missing alarm mapping | Update alarm list |
 | RTL/gate name mismatch | Add mapping file |
-| X propagation | Improve reset or X handling strategy |
+| X propagation | Improve reset or X-handling strategy |
 
-This turns fault campaign results into a debug workflow.
+This turns a fault campaign into an iterative engineering workflow.
 
 ---
 
-## 20. Demo D01: What We Build
+## 21. Demo D01: What We Build
 
-The first demo is a small closed-loop prototype.
+D01 builds a small closed-loop prototype around a toy design.
 
-It uses a toy design, such as:
+The design can be:
 
 ```text
 toy_counter
@@ -1250,16 +1173,19 @@ toy_alu
 toy_timer
 ```
 
-The demo should be small enough to understand by inspection, but rich enough to show:
+The first implementation can use `toy_counter` because it is easy to inspect.
+
+It should contain:
 
 ```text
 a safety-relevant state
-a safety mechanism
+a simple safety mechanism
 an alarm output
 a golden simulation
 a fault list
 fault outcomes
 a metric summary
+an engineering report
 ```
 
 Suggested directory:
@@ -1291,8 +1217,10 @@ D01_safeic_closed_loop/
     vcd_context.json
 
   outputs/
+    input_check.rpt
     base_fit_report.csv
     dc_report.csv
+    fault_campaign_raw.csv
     fault_result.csv
     metric_summary.csv
     closed_loop_summary.md
@@ -1303,7 +1231,7 @@ D01_safeic_closed_loop/
 
 ---
 
-## 21. Demo D01: Expected Flow
+## 22. Demo D01 Flow
 
 ```mermaid
 flowchart TD
@@ -1321,14 +1249,11 @@ flowchart TD
     K --> L[Generate Report]
 ```
 
-A simplified run script:
+**Figure 12. D01 demo flow: from project setup to fault classification and report generation.**
+
+A simplified shell flow:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-init --project D01_safeic_closed_loop
-
 safeic-inputcheck \
   --manifest manifest.yaml \
   --output outputs/input_check.rpt
@@ -1371,7 +1296,7 @@ safeic-report \
   --output reports/d01_safeic_closed_loop_report.html
 ```
 
-A csh wrapper can be provided for environments that still use csh-style scripts:
+A csh wrapper can also be provided for older EDA-style script environments:
 
 ```csh
 #!/bin/csh -f
@@ -1391,9 +1316,9 @@ safeic-report --base-fit outputs/base_fit_report.csv --dc outputs/dc_report.csv 
 
 ---
 
-## 22. Example Toy Safety Mechanism
+## 23. Example Toy Safety Mechanism
 
-Assume a counter has a parity bit and an alarm:
+A minimal counter with parity:
 
 ```verilog
 module toy_counter (
@@ -1425,19 +1350,19 @@ endmodule
 
 This is not a complete industrial safety mechanism. It is a teaching example.
 
-It lets us demonstrate:
+It allows us to demonstrate:
 
 ```text
 fault on count bit
 fault on parity bit
 fault on alarm path
-detected fault
-safe fault
-unsafe fault
-unresolved fault
+detected outcome
+safe outcome
+unsafe outcome
+unresolved outcome
 ```
 
-Possible fault list:
+Example fault list:
 
 ```text
 toy_counter.count[0] stuck_at_0
@@ -1462,38 +1387,9 @@ toy_counter.alarm
 
 ---
 
-## 23. What the First Demo Should Prove
+## 24. Expected D01 Outputs
 
-The first demo should prove that we understand the workflow, not that the toy design is certifiable.
-
-A successful D01 demo should show:
-
-```text
-1. The project input package is complete.
-2. A base FIT report can be generated.
-3. A structural model can identify endpoints.
-4. A safety mechanism can be mapped to an endpoint.
-5. A diagnostic coverage estimate can be generated.
-6. A fault list can be injected or emulated.
-7. A VCD context can provide golden behavior.
-8. Fault outcomes can be classified.
-9. Metrics can be summarized.
-10. A report can explain the result.
-```
-
-Expected output:
-
-```text
-outputs/
-  input_check.rpt
-  base_fit_report.csv
-  dc_report.csv
-  fault_result.csv
-  metric_summary.csv
-
-reports/
-  d01_safeic_closed_loop_report.html
-```
+A successful run should produce reviewable artifacts.
 
 Example `fault_result.csv`:
 
@@ -1518,58 +1414,19 @@ measured_detection_ratio,0.25
 measured_safe_ratio,0.25
 ```
 
-The numbers are intentionally simple. The important point is the evidence chain.
-
----
-
-## 24. How to Think About Tool Architecture
-
-A functional safety workflow should be designed around artifacts.
-
-A poor architecture is:
+The numbers are intentionally simple. The important point is the evidence chain:
 
 ```text
-script A calls script B calls script C
+input package
+→ base FIT
+→ structure
+→ safety mechanism map
+→ fault list
+→ VCD context
+→ fault outcome
+→ metric summary
+→ report
 ```
-
-with no stable data model.
-
-A better architecture is:
-
-```text
-each step consumes explicit artifacts
-each step generates explicit artifacts
-each artifact can be reviewed independently
-```
-
-This allows:
-
-```text
-debugging
-version control
-repeatability
-audit-style review
-tool comparison
-incremental improvement
-```
-
-For D01, a useful artifact chain is:
-
-```text
-manifest.yaml
-→ input_check.rpt
-→ design_stats.json
-→ base_fit_report.csv
-→ structure_graph.json
-→ dc_report.csv
-→ vcd_context.json
-→ fault_campaign_raw.csv
-→ fault_result.csv
-→ metric_summary.csv
-→ report.html
-```
-
-This chain is the backbone of the practice series.
 
 ---
 
@@ -1587,8 +1444,9 @@ Which faults were detected?
 Which faults were safe?
 Which faults were unsafe?
 Which faults were unresolved?
-What data is missing for unresolved faults?
-What metric changed after fault campaign?
+Why are some faults unresolved?
+What metric changed after classification?
+What evidence is ready for review?
 ```
 
 If a demo cannot answer these questions, it is not yet a safety demo. It is only a simulation demo.
@@ -1605,9 +1463,9 @@ The safety goal comes from system-level risk analysis. The fault list is a way t
 
 ### 26.2 Treating an Alarm as Automatic Safety
 
-An alarm firing is not always sufficient. The system must detect it in time and respond appropriately.
+An alarm firing is not always sufficient.
 
-For chip-level practice, we can start by checking whether an alarm fires. But a complete safety argument also needs:
+A complete safety argument also needs:
 
 ```text
 alarm propagation
@@ -1617,9 +1475,11 @@ safe-state transition
 software or system response
 ```
 
+D01 starts with alarm firing because it is the smallest useful observable.
+
 ### 26.3 Treating All Undetected Faults as Equally Dangerous
 
-Some undetected faults are safe because they do not affect the safety goal. Some are unsafe because they cause a relevant deviation. Some are unresolved because the evidence is incomplete.
+Some undetected faults are safe because they do not affect relevant behavior. Some are unsafe because they cause a deviation without alarm. Some are unresolved because the evidence is incomplete.
 
 Classification matters.
 
@@ -1627,11 +1487,13 @@ Classification matters.
 
 A fault campaign without meaningful context may overestimate or underestimate safety.
 
-The context should represent a relevant operating scenario.
+Context should represent a relevant operating scenario.
 
 ### 26.5 Mixing Estimated and Measured Diagnostic Coverage
 
-Estimated diagnostic coverage is a design assumption. Measured diagnostic coverage is validation evidence.
+Estimated diagnostic coverage is an architectural assumption.
+
+Measured diagnostic coverage is validation evidence.
 
 They should be compared, not confused.
 
@@ -1646,13 +1508,14 @@ It connects:
 ```text
 FIT estimation
 structural safety analysis
+failure mode modeling
 safety mechanism modeling
 fault list generation
-simulation context
+simulation context extraction
 fault injection
 result classification
 metric update
-FMEDA/reporting
+engineering reporting
 ```
 
 The first demo:
@@ -1661,16 +1524,15 @@ The first demo:
 D01_safeic_closed_loop
 ```
 
-builds a minimal version of that loop.
+makes this loop visible.
 
-The core lesson is:
+The central lesson is:
 
-> A safety workflow is not defined by one tool command. It is defined by the traceable transformation from design assumptions to measured safety evidence.
+> A functional safety workflow is not defined by a single command. It is defined by a traceable transformation from design assumptions to measured safety evidence.
 
-The demo uses generic components:
+D01 uses generic components:
 
 ```text
-safeic-init
 safeic-inputcheck
 safeic-bfr
 safeic-structure
@@ -1682,7 +1544,7 @@ safeic-classify
 safeic-report
 ```
 
-Together, they show the full conceptual path:
+Together, they show the complete conceptual path:
 
 ```text
 Design context
@@ -1691,10 +1553,10 @@ Design context
 → safety mechanism model
 → fault campaign
 → outcome classification
-→ metric/report evidence
+→ metric and report evidence
 ```
 
-This is the foundation for building practical, explainable, and reviewable automotive Safe-IC analysis and fault injection demos.
+This is the foundation for practical, explainable, and reviewable automotive Safe-IC analysis and fault injection demos.
 
 ---
 
