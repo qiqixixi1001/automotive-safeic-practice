@@ -1,1199 +1,1314 @@
-# [Automotive Safe-IC Practice 04] IEC 62380 and SN 29500: Engineering FIT Models for Automotive Chip Safety Analysis
+# [Automotive Safe-IC Practice 04] IEC 62380 and SN 29500: How FIT Models Become Engineering Inputs
 
-**Author:** Darren H. Chen  
-**Direction:** Automotive chip functional safety analysis and fault injection practice  
-**Demo:** `D04_fit_standard_models`  
-**Tags:** `Automotive Chip`, `Functional Safety`, `SafeIC`, `FIT Model`, `IEC 62380`, `SN 29500`, `Mission Profile`, `Reliability Modeling`
+**Author**: Darren H. Chen  
+**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
+**Demo**: D04_fit_standard_models  
+**Tags**: Automotive Chip, Functional Safety, FIT, IEC 62380, SN 29500, Mission Profile, Reliability Prediction, Base FIT Rate, FMEDA, Safety Metrics
 
 ---
 
-## Demo scope
+## 1. Why This Article Matters
 
-`D04_fit_standard_models` focuses on one core problem:
+In the previous article, we introduced the Base FIT Rate, or BFR.
+
+BFR answers:
 
 ```text
-How do we turn reliability standards and project assumptions into a reproducible FIT model engine?
+How much random hardware failure exposure exists before protection is considered?
 ```
 
-The corresponding generic tool module is:
+However, a new question immediately appears:
+
+> Where does the FIT number come from?
+
+A useful BFR workflow cannot simply invent numbers. It needs a reliability model. In automotive electronics, public discussions often reference reliability prediction methods such as:
+
+```text
+IEC 62380
+SN 29500
+```
+
+In a real project, the exact model, coefficients, component categories, operating assumptions, mission profile, and supplier-provided reliability data must be reviewed by reliability and functional safety experts.
+
+The fourth demo in this repository is:
+
+```text
+D04_fit_standard_models
+```
+
+The generic tool introduced in this article is:
 
 ```text
 safeic-fitmodel
 ```
 
-This demo does not attempt to implement every detail of a certification-grade reliability model in the first step.
-
-Instead, it builds an engineering framework that is:
+The goal of `safeic-fitmodel` is not to reproduce any copyrighted standard in full. The goal is to build a clean engineering abstraction for FIT model inputs, so that BFR calculation becomes:
 
 ```text
-configurable
-traceable
-replaceable
-comparable
+explicit
 reviewable
+versioned
+traceable
+comparable
 ```
-
-The goal is to make FIT modeling a structured tool function rather than a hidden formula embedded in a script.
-
-A practical FIT model engine should accept design-derived statistics and user-supplied reliability assumptions, then produce not only a total FIT number but also a detailed explanation of how the number was produced.
 
 The central idea is:
 
-```text
-reliability input data
-+ design statistics
-+ model selection
-+ permanent / transient FIT calculation
-+ verbose reporting
-= explainable FIT model engine
-```
+> A FIT standard model should not be hidden inside a spreadsheet or script. It should be transformed into explicit engineering inputs that can be reviewed, versioned, and connected to design statistics and FMEDA.
 
 ---
 
-## 1. Why FIT modeling needs engineering discipline
+## 2. FIT Model vs FIT Calculation
 
-In functional safety analysis, FIT is often treated as a metric.
+A **FIT model** defines how failure rate should be estimated.
 
-But in real chip projects, FIT is more than a number.
+A **FIT calculation** applies that model to a specific design under specific assumptions.
 
-It is the result of a chain of assumptions:
-
-```text
-technology family
-+ design object type
-+ transistor count or memory bit count
-+ temperature condition
-+ mission profile
-+ manufacturing year
-+ package assumption
-+ permanent failure model
-+ transient failure model
-+ safety-related scope
-```
-
-If these assumptions are scattered across scripts, spreadsheets, emails, or hard-coded constants, the result becomes difficult to audit.
-
-A total FIT value may appear precise, but the engineering argument behind it is weak.
-
-For example:
-
-```text
-Total FIT = 0.128
-```
-
-This number alone does not tell us:
-
-```text
-Which model was used?
-Which technology data was used?
-Was memory included?
-Were transient faults included?
-Was the mission profile passenger compartment or engine compartment?
-Was the design counted at RTL, netlist, or architecture level?
-Which block contributed most?
-```
-
-For automotive chip safety work, that is not enough.
-
-A useful FIT model must be explainable.
-
-It should make every important assumption visible.
-
----
-
-## 2. FIT model is not the same as FIT report
-
-A FIT report is an output.
-
-A FIT model is the computation system that produces the output.
-
-This distinction matters.
-
-```text
-FIT model
-  = input assumptions
-  + reliability equations
-  + design statistics
-  + classification rules
-  + aggregation rules
-
-FIT report
-  = result generated by the model
-```
-
-A weak implementation may only generate a report.
-
-A stronger implementation preserves the full reasoning path:
-
-```text
-input files
-→ normalized configuration
-→ resolved model
-→ intermediate variables
-→ component-level FIT
-→ block-level FIT
-→ total FIT
-→ verbose report
-```
-
-This is the engineering direction of `D04_fit_standard_models`.
-
----
-
-## 3. Where D04 sits in the Safe-IC practice flow
-
-The previous article, `D03_base_fit_rate`, introduced Base FIT Rate as the initial exposure estimate before safety mechanism credit is applied.
-
-D04 goes one layer deeper.
-
-It asks:
-
-```text
-What model produced that Base FIT Rate?
-```
-
-The flow relationship is:
+They are not the same.
 
 ```mermaid
 flowchart LR
-    A[D02 Input Package] --> B[D03 Base FIT Rate]
-    B --> C[D04 FIT Standard Models]
-    C --> D[D05 Architecture / RTL / Netlist Flow]
-    C --> E[D07 Endpoint FIT Contribution]
-    C --> F[D08 Diagnostic Coverage Engine]
+    A[FIT Model] --> B[Model Parameters]
+    C[Design Statistics] --> D[FIT Calculation]
+    B --> D
+    E[Mission Profile] --> D
+    F[Package / Technology Assumptions] --> D
+    D --> G[Base FIT Result]
 ```
 
-`D03` defines why BFR matters.
+**Figure 1. A FIT model provides the rules and parameters; a FIT calculation applies them to a specific design context.**
 
-`D04` defines how the FIT model should be engineered.
+A FIT model may require:
 
-`D05` then discusses how the same model should be used across architectural, RTL, and netlist stages.
+```text
+component category
+technology type
+reference failure rate
+temperature profile
+operating ratio
+voltage or stress factor
+package assumptions
+environment assumptions
+mission profile
+```
 
----
+A FIT calculation requires:
 
-## 4. IEC 62380 and SN 29500 as engineering strategies
+```text
+which model is selected
+which component categories exist in the design
+how design statistics map to model categories
+which mission profile is used
+which assumptions are defaulted or user-provided
+```
 
-In this demo, IEC 62380 and SN 29500 are treated as two different reliability modeling strategies.
-
-The purpose is not to reproduce the full standard text.
-
-The purpose is to understand how a tool architecture should support different reliability models.
-
-| Aspect | IEC 62380-oriented modeling | SN 29500-oriented modeling |
-|---|---|---|
-| Main engineering view | Mission profile, temperature, technology, package, operating conditions | Reference-condition failure rate converted to operating-condition failure rate |
-| Input style | More project-environment driven | More reference-condition driven |
-| Typical concern | Mission phase, temperature factor, package influence, technology assumptions | Voltage / temperature / drift conversion factors depending on component type |
-| Implementation challenge | Many project-specific parameters must be organized | Model equations must be cleanly mapped by device class |
-| Demo implementation | `simplified_iec62380` | `simplified_sn29500` |
-
-The first version of this demo uses simplified models.
-
-That is intentional.
-
-The most important first step is not formula completeness.
-
-The most important first step is model architecture.
-
-A good architecture allows a simplified model to be replaced later by a more accurate one without changing the entire flow.
+This separation is important because the same design can produce different BFR values under different model assumptions.
 
 ---
 
-## 5. The four-layer input model
+## 3. Why FIT Models Are Needed in Functional Safety
 
-A practical FIT engine should avoid mixing all input assumptions into one script.
+Functional safety metrics need failure-rate information.
 
-`safeic-fitmodel` uses four conceptual input layers.
+For a simplified FMEDA row:
+
+```text
+part
+sub-part
+failure mode
+base failure rate
+safety mechanism
+diagnostic coverage
+residual failure rate
+```
+
+The base failure rate comes from a reliability prediction process.
+
+Without a defined FIT model, the failure-rate column becomes arbitrary.
 
 ```mermaid
 flowchart TD
-    A[Design Statistics] --> E[FIT Model Engine]
-    B[Technology Data] --> E
-    C[Mission Profile] --> E
-    D[Model Configuration] --> E
-    E --> F[Permanent FIT]
-    E --> G[Transient FIT]
-    F --> H[FIT Breakdown]
-    G --> H
-    H --> I[Verbose Report]
+    A[Design Element] --> B[Model Category]
+    B --> C[Reference Failure Rate]
+    C --> D[Mission / Stress Adjustment]
+    D --> E[Base FIT Contribution]
+    E --> F[FMEDA Failure Rate Column]
 ```
 
-The four layers are:
+**Figure 2. FIT model abstraction connects design elements to FMEDA failure-rate inputs.**
+
+A safety flow must therefore record:
 
 ```text
-1. design statistics
-2. technology data
-3. mission profile
-4. model configuration
+which model was used
+which model version was used
+which input categories were mapped
+which mission profile was applied
+which assumptions were reviewed
+which values were defaulted
 ```
 
-Each layer has a different responsibility.
+If those details are not explicit, the BFR number is difficult to review.
 
 ---
 
-## 6. Layer 1: design statistics
+## 4. IEC 62380 and SN 29500 as Engineering References
 
-Design statistics describe what exists in the design.
+In automotive electronics, reliability prediction often references model families such as:
 
-They should not contain FIT equations.
+```text
+IEC 62380
+SN 29500
+```
 
-They should not contain mission assumptions.
+For this practice repository, we should treat them as engineering references, not as copied formulas.
 
-They should only describe design size and design object categories.
+The demo should capture the workflow shape:
+
+```text
+model selection
+component categorization
+reference rate selection
+mission profile input
+temperature or operating condition adjustment
+failure rate aggregation
+reporting
+```
+
+The actual coefficients and detailed equations should come from authorized standards, supplier data, or reviewed internal reliability data in real projects.
+
+This article therefore focuses on the abstraction:
+
+```text
+How do we represent a FIT model cleanly?
+How do we map design statistics to model categories?
+How do we expose assumptions?
+How do we compare model results?
+How do we generate reviewable artifacts?
+```
+
+---
+
+## 5. The Model Abstraction Layer
+
+The key design choice is to create a model abstraction layer.
+
+Instead of hardcoding a formula into a script, we represent the selected model in structured files.
+
+```mermaid
+flowchart TD
+    A[Model Library] --> B[safeic-fitmodel]
+    C[Design Statistics] --> B
+    D[Mission Profile] --> B
+    E[Mapping Rules] --> B
+    B --> F[Normalized FIT Inputs]
+    F --> G[safeic-bfr]
+```
+
+**Figure 3. `safeic-fitmodel` normalizes model-specific assumptions into a BFR-ready input package.**
+
+This layer allows the workflow to support:
+
+```text
+simplified demo model
+IEC-like model abstraction
+SN-like model abstraction
+supplier-provided FIT override
+black-box IP FIT input
+what-if comparison
+```
+
+The output of `safeic-fitmodel` should not be an opaque number. It should be a normalized input package that `safeic-bfr` can consume.
+
+---
+
+## 6. Why Not Put Everything into `safeic-bfr`?
+
+It is tempting to put all model logic directly into the BFR calculator.
+
+That would make the first version faster to implement, but it creates long-term problems.
+
+A better separation is:
+
+```text
+safeic-fitmodel:
+  normalize model assumptions and category mapping
+
+safeic-bfr:
+  calculate base FIT from normalized inputs and design statistics
+```
+
+This separation gives several benefits:
+
+| Separation | Benefit |
+|---|---|
+| Model normalization separated from calculation | Easier to review assumptions |
+| Multiple models supported | Easier comparison |
+| Supplier FIT override supported | Better black-box handling |
+| BFR engine stays simple | Easier testing |
+| Reports become clearer | Easier audit and debugging |
+
+The engineering principle is:
+
+> Keep reliability model interpretation separate from base FIT arithmetic.
+
+---
+
+## 7. Input Domain of `safeic-fitmodel`
+
+The demo tool consumes five categories of input:
+
+```text
+model library
+design statistics
+mapping rules
+mission profile
+override data
+```
+
+```mermaid
+flowchart LR
+    A[fit_model_library.yaml] --> T[safeic-fitmodel]
+    B[design_stats.yaml] --> T
+    C[category_mapping.yaml] --> T
+    D[mission_profile.yaml] --> T
+    E[fit_overrides.csv] --> T
+
+    T --> F[normalized_fit_inputs.yaml]
+    T --> G[fit_model_report.md]
+    T --> H[fit_model_compare.csv]
+    T --> I[assumption_trace.csv]
+```
+
+**Figure 4. D04 input and output artifacts for FIT model normalization.**
+
+Suggested input directory:
+
+```text
+D04_fit_standard_models/
+  inputs/
+    fit_model_library.yaml
+    design_stats.yaml
+    category_mapping.yaml
+    mission_profile.yaml
+    fit_overrides.csv
+```
+
+Suggested output directory:
+
+```text
+D04_fit_standard_models/
+  outputs/
+    normalized_fit_inputs.yaml
+    fit_model_report.md
+    fit_model_compare.csv
+    assumption_trace.csv
+```
+
+---
+
+## 8. Model Library
+
+A model library describes available model profiles.
+
+For the demo, the library can include:
+
+```text
+simplified_demo
+iec62380_like_demo
+sn29500_like_demo
+supplier_override
+```
+
+Important: the demo names `iec62380_like_demo` and `sn29500_like_demo` represent simplified educational abstractions. They should not claim to implement full official standards.
 
 Example:
 
-```json
-{
-  "top": "toy_soc",
-  "stage": "rtl",
-  "objects": {
-    "stdcell_gate_count": 1200,
-    "sequential_count": 96,
-    "memory_bits": 2048,
-    "blackbox_count": 1,
-    "analog_block_count": 0
-  }
-}
+```yaml
+models:
+  simplified_demo:
+    description: Simplified educational model for toy designs.
+    type: demo
+    supports:
+      - logic
+      - flip_flop
+      - memory_bit
+      - package
+
+  iec62380_like_demo:
+    description: Educational abstraction inspired by IEC-style reliability prediction workflows.
+    type: standard_abstraction
+    supports:
+      - integrated_circuit
+      - package
+      - memory
+      - discrete_component
+    requires:
+      - mission_profile
+      - temperature_profile
+      - operating_ratio
+
+  sn29500_like_demo:
+    description: Educational abstraction inspired by SN-style reference-rate workflows.
+    type: standard_abstraction
+    supports:
+      - integrated_circuit
+      - semiconductor
+      - passive_component
+      - connector
+    requires:
+      - reference_condition
+      - conversion_factor
+      - operating_condition
+
+  supplier_override:
+    description: Direct supplier-provided FIT data.
+    type: override
+    supports:
+      - black_box_ip
+      - analog_block
+      - memory_macro
 ```
 
-This file answers:
+The model library should answer:
 
 ```text
-What is being analyzed?
-How large is it?
-Which object types exist?
+Which models exist?
+What design categories do they support?
+What assumptions are required?
+What outputs can they produce?
+Which model is allowed for which block type?
 ```
-
-It does not answer:
-
-```text
-How reliable is it?
-Which mission profile applies?
-Which safety mechanism covers it?
-```
-
-Keeping this boundary clean is important.
-
-Later, `D05_arch_rtl_netlist_flow` can generate different `design_stats.json` files from architecture, RTL, or netlist stages while reusing the same FIT model engine.
 
 ---
 
-## 7. Layer 2: technology data
+## 9. Category Mapping
 
-Technology data describes reliability parameters associated with object types.
+Design statistics rarely match reliability model categories directly.
 
-A simplified configuration may look like this:
+For example, the design may say:
+
+```text
+logic_gate
+flip_flop
+ram_bit
+black_box
+```
+
+But the reliability model may require:
+
+```text
+integrated_circuit_logic
+sequential_element
+memory_array
+supplier_ip
+package
+```
+
+The category mapping file bridges this gap.
+
+Example:
 
 ```yaml
-technology:
-  default_process: MOS.ASIC.STDCELL
+category_mapping:
+  logic_gate:
+    model_category: integrated_circuit_logic
+    count_field: logic_gates
+    default_model: simplified_demo
 
-lambda:
-  MOS.ASIC.STDCELL:
-    permanent_per_gate: 1.0e-6
-    transient_per_gate: 1.0e-6
+  flip_flop:
+    model_category: sequential_element
+    count_field: flip_flops
+    default_model: simplified_demo
 
-  MOS.STD.SRAM:
-    permanent_per_bit: 1.7e-7
-    transient_per_bit: 1.0e-6
+  ram_bit:
+    model_category: memory_array
+    count_field: ram_bits
+    default_model: simplified_demo
 
-  MOS.STD.ROM:
-    permanent_per_bit: 1.7e-7
-    transient_per_bit: 1.0e-6
+  black_box:
+    model_category: supplier_ip
+    count_field: black_boxes
+    default_model: supplier_override
 ```
 
-In a more advanced implementation, this layer may include:
+This mapping is important because a mismatch here can completely change the FIT result.
+
+The input checker should report:
 
 ```text
-lambda1
-lambda2
-technology type
-library type
-cell class
-memory type
-process mapping
-soft error rate override
+unmapped design type
+unsupported model category
+missing count field
+missing supplier override for black-box category
 ```
-
-The important engineering rule is:
-
-```text
-Technology data should be data, not code.
-```
-
-If technology assumptions are embedded in source code, later comparison becomes painful.
-
-If they are externalized into configuration files, the same tool can run different technology assumptions and produce comparable reports.
 
 ---
 
-## 8. Layer 3: mission profile
+## 10. Mission Profile
 
-Mission profile describes how the chip is used.
+The mission profile describes the product operating context.
 
-A simplified file may look like this:
+A simplified mission profile:
 
 ```yaml
 mission_profile:
-  name: passenger_compartment
-  temperature_ja: 65
-  active_ratio: 0.80
-  dormant_ratio: 0.20
-  lifetime_hours: 120000
+  name: demo_automotive_profile
+  description: Simplified automotive-like profile for educational use.
+
+  operating_ratio: 0.65
+  dormant_ratio: 0.35
+
+  temperature_profile:
+    - temp_c: 40
+      ratio: 0.50
+    - temp_c: 85
+      ratio: 0.40
+    - temp_c: 125
+      ratio: 0.10
+
+  environment:
+    location: passenger_compartment_demo
+    vibration: low
+    humidity: normal
 ```
 
-Different automotive use cases may have different assumptions:
+A mission profile should be explicit even in a toy demo.
 
-```text
-passenger compartment
-engine compartment
-body control
-motor control
-ADAS controller
-battery management
-```
+Why?
 
-Even when the RTL is identical, the FIT result can change if the mission profile changes.
-
-That is why mission profile must not be hidden.
-
-The report should always state the mission profile used in the calculation.
-
----
-
-## 9. Layer 4: model configuration
-
-Model configuration selects which FIT model strategy to run.
-
-Example for a simplified IEC-oriented run:
-
-```yaml
-fit_model:
-  standard: simplified_iec62380
-  include_permanent: true
-  include_transient: true
-  include_package: false
-  verbose: true
-```
-
-Example for a simplified SN-oriented run:
-
-```yaml
-fit_model:
-  standard: simplified_sn29500
-  include_permanent: true
-  include_transient: true
-  verbose: true
-```
-
-This layer answers:
-
-```text
-Which model should be used?
-Which failure categories should be included?
-Should detailed computation traces be emitted?
-```
-
-The model configuration should be explicit because safety analysis results are not meaningful without knowing which model generated them.
-
----
-
-## 10. Permanent FIT and transient FIT should be separated
-
-A practical Safe-IC flow should distinguish permanent and transient FIT.
-
-Permanent failures are associated with lasting hardware defects or degradation effects.
-
-Transient failures are associated with temporary events such as soft errors.
-
-The two should not be mixed too early.
+Because FIT values are not purely structural. They depend on operating assumptions.
 
 ```mermaid
 flowchart TD
-    A[Design Object] --> B[Permanent FIT Path]
-    A --> C[Transient FIT Path]
-    B --> D[Permanent Failure Exposure]
-    C --> E[Transient Failure Exposure]
-    D --> F[Total FIT Breakdown]
-    E --> F
+    A[Design Statistics] --> D[FIT Result]
+    B[Model Category] --> D
+    C[Mission Profile] --> D
 ```
 
-The report should show at least:
+**Figure 5. FIT depends on design statistics, model category, and mission profile.**
 
-```text
-permanent FIT
-transient FIT
-total FIT
-```
-
-A better report should also show:
-
-```text
-permanent FIT by object type
-transient FIT by object type
-permanent FIT by block
-transient FIT by block
-```
-
-This separation becomes important later when diagnostic coverage is computed separately for permanent and transient faults.
+If the mission profile is hidden, the FIT result is not reviewable.
 
 ---
 
-## 11. A simplified IEC-oriented model
+## 11. Reference Rates and Conversion Factors
 
-For the first demo, `simplified_iec62380` can be implemented as a structured approximation.
+A reliability model often contains reference failure rates and conversion factors.
 
-A conceptual model may be:
+A simplified abstraction:
 
 ```text
-permanent_fit(object)
-= object_count
-× base_lambda(object_type)
-× technology_factor
+reference_failure_rate
+× operating_condition_factor
 × temperature_factor
-× mission_factor
+× mission_profile_factor
+= adjusted_failure_rate
 ```
 
-Transient FIT may be computed separately:
-
-```text
-transient_fit(object)
-= object_count
-× transient_lambda(object_type)
-× activity_or_exposure_factor
-```
-
-This is not a full standard implementation.
-
-It is an engineering placeholder with the correct interface shape.
-
-The benefit is that every input factor is visible.
-
-For example:
-
-```text
-stdcell_gate_count = 1200
-base_lambda = 1.0e-6
-temperature_factor = 1.2
-mission_factor = 0.8
-permanent_fit = 0.001152
-```
-
-The key is not the exact numeric value in the first version.
-
-The key is that the computation path is inspectable.
-
----
-
-## 12. A simplified SN-oriented model
-
-For the simplified SN-oriented model, the conceptual view is different.
-
-The computation starts from a reference failure rate and converts it into an operating-condition failure rate.
-
-A conceptual model may be:
-
-```text
-operating_fit
-= reference_fit
-× voltage_factor
-× temperature_factor
-× drift_factor
-```
-
-Not all object types need all factors.
-
-For example:
-
-```text
-digital CMOS object: reference_fit × temperature_factor
-analog object: reference_fit × voltage_factor × temperature_factor × drift_factor
-```
-
-A simplified configuration may look like this:
+For demo purposes, we can express this as:
 
 ```yaml
-sn29500_factors:
-  MOS.ASIC.STDCELL:
-    reference_fit_per_gate: 0.9e-6
-    temperature_factor: 1.1
+reference_rates:
+  integrated_circuit_logic:
+    reference_fit_per_unit: 2.0e-4
+    unit: gate
+  sequential_element:
+    reference_fit_per_unit: 3.0e-3
+    unit: flip_flop
+  memory_array:
+    reference_fit_per_unit: 1.0e-6
+    unit: bit
 
-  ANALOG.LINEAR:
-    reference_fit_per_block: 0.02
-    voltage_factor: 1.05
-    temperature_factor: 1.2
-    drift_factor: 1.1
+conversion_factors:
+  default_temperature_factor: 1.0
+  default_operating_factor: 1.0
+  default_mission_factor: 1.0
 ```
 
-Again, the first goal is not full coverage of all component classes.
+A more advanced demo can allow:
 
-The first goal is a replaceable model interface.
-
----
-
-## 13. Tool architecture of `safeic-fitmodel`
-
-`safeic-fitmodel` should be designed as a small but well-structured tool module.
-
-A suggested architecture is:
-
-```mermaid
-flowchart TD
-    A[CLI Parser] --> B[Input Loader]
-    B --> C[Schema Validator]
-    C --> D[Model Resolver]
-    D --> E1[IEC62380 Simplified Backend]
-    D --> E2[SN29500 Simplified Backend]
-    E1 --> F[FIT Breakdown Builder]
-    E2 --> F
-    F --> G[Result Normalizer]
-    G --> H1[fit_model_result.json]
-    G --> H2[fit_model_detail.csv]
-    G --> H3[verbose_fit.md]
-    G --> H4[fit_model_compare.csv]
+```yaml
+conversion_factors:
+  temperature:
+    "40": 0.7
+    "85": 1.0
+    "125": 2.5
+  operating:
+    operating: 1.0
+    dormant: 0.2
 ```
 
-The internal components are:
+Then the mission-weighted factor can be computed.
 
-| Component | Responsibility |
-|---|---|
-| CLI Parser | Receives input paths and selected model |
-| Input Loader | Loads JSON/YAML/CSV inputs |
-| Schema Validator | Checks required fields and units |
-| Model Resolver | Selects the correct model backend |
-| Model Backend | Computes permanent and transient FIT |
-| Breakdown Builder | Groups results by object type and block |
-| Result Normalizer | Produces stable machine-readable outputs |
-| Verbose Reporter | Produces human-readable explanation |
-
-The model backend should not write files directly.
-
-It should return structured data.
-
-File generation should happen in a reporting layer.
-
-This makes the computation easier to test.
-
----
-
-## 14. Suggested command-line interface
-
-A practical demo command may look like this:
-
-```bash
-safeic-fitmodel \
-  --design-stats inputs/design_stats.json \
-  --technology inputs/technology.yaml \
-  --mission-profile inputs/mission_profile.yaml \
-  --model-config inputs/model_config_iec.yaml \
-  --output-dir outputs/iec62380
-```
-
-For SN-style comparison:
-
-```bash
-safeic-fitmodel \
-  --design-stats inputs/design_stats.json \
-  --technology inputs/technology.yaml \
-  --mission-profile inputs/mission_profile.yaml \
-  --model-config inputs/model_config_sn.yaml \
-  --output-dir outputs/sn29500
-```
-
-The tool should support a comparison mode:
-
-```bash
-safeic-fitmodel compare \
-  --result-a outputs/iec62380/fit_model_result.json \
-  --result-b outputs/sn29500/fit_model_result.json \
-  --output outputs/fit_model_compare.csv
-```
-
-This makes the demo useful not only as a calculator, but also as an engineering comparison framework.
-
----
-
-## 15. Output file design
-
-`D04_fit_standard_models` should generate at least four outputs.
+For D04, the goal is not formula accuracy. The goal is to make the idea visible:
 
 ```text
-outputs/
-  fit_model_result.json
-  fit_model_detail.csv
-  verbose_fit.md
-  fit_model_compare.csv
+reference condition
+actual condition
+conversion factor
+adjusted rate
 ```
 
-### 15.1 `fit_model_result.json`
+---
 
-A machine-readable summary:
+## 12. Normalized FIT Input
 
-```json
-{
-  "top": "toy_soc",
-  "stage": "rtl",
-  "model": "simplified_iec62380",
-  "mission_profile": "passenger_compartment",
-  "permanent_fit": 0.0012,
-  "transient_fit": 0.0980,
-  "total_fit": 0.0992
-}
+The main output of `safeic-fitmodel` is:
+
+```text
+normalized_fit_inputs.yaml
 ```
 
-### 15.2 `fit_model_detail.csv`
+This file should be simple enough for `safeic-bfr` to consume.
 
-A detailed table:
+Example:
+
+```yaml
+normalized_fit_inputs:
+  model_profile: sn29500_like_demo
+  mission_profile: demo_automotive_profile
+  generated_by: safeic-fitmodel
+  schema_version: 0.1
+
+  rates:
+    permanent:
+      logic_gate_fit: 2.0e-4
+      flip_flop_fit: 3.0e-3
+      ram_bit_fit: 1.0e-6
+      package_fit: 1.0e-2
+
+    transient:
+      logic_gate_fit: 1.0e-6
+      flip_flop_fit: 1.0e-3
+      ram_bit_fit: 1.0e-6
+
+  assumptions:
+    temperature_factor: 1.0
+    mission_factor: 1.0
+    package_model: demo_package
+    blackbox_policy: require_override
+```
+
+This normalized format is deliberately model-independent.
+
+It allows `safeic-bfr` to stay stable even if the model library evolves.
+
+---
+
+## 13. Assumption Traceability
+
+Every normalized value should be traceable.
+
+A useful output is:
+
+```text
+assumption_trace.csv
+```
+
+Example:
 
 ```csv
-object_type,count,lambda_type,base_lambda,factor,fit
-stdcell_gate,1200,permanent,1.0e-6,1.0,0.0012
-flipflop,96,transient,1.0e-3,1.0,0.0960
-sram_bit,2048,transient,1.0e-6,1.0,0.002048
+field,value,source,model,comment
+rates.permanent.logic_gate_fit,2.0e-4,fit_model_library.yaml,simplified_demo,demo educational value
+rates.permanent.flip_flop_fit,3.0e-3,fit_model_library.yaml,simplified_demo,demo educational value
+mission_profile.name,demo_automotive_profile,mission_profile.yaml,all,user supplied
+assumptions.temperature_factor,1.0,default,simplified_demo,no temperature scaling in stage 1
+assumptions.blackbox_policy,require_override,category_mapping.yaml,all,black boxes require explicit FIT
 ```
 
-### 15.3 `verbose_fit.md`
+Why is this important?
 
-A human-readable explanation:
+Because a safety result must answer:
 
 ```text
-FIT Model: simplified_iec62380
-Top: toy_soc
-Stage: rtl
-Mission Profile: passenger_compartment
-TemperatureJA: 65
-
-Breakdown:
-- STD cell permanent FIT: 0.0012
-- FF transient FIT: 0.0960
-- SRAM transient FIT: 0.002048
-- Total permanent FIT: 0.0012
-- Total transient FIT: 0.098048
+Where did this number come from?
+Was it defaulted?
+Was it user-supplied?
+Was it derived?
+Was it overridden?
+Was it reviewed?
 ```
-
-### 15.4 `fit_model_compare.csv`
-
-A comparison output:
-
-```csv
-model,total_permanent_fit,total_transient_fit,total_fit
-simplified_iec62380,0.0012,0.0980,0.0992
-simplified_sn29500,0.0010,0.0950,0.0960
-```
-
----
-
-## 16. Why verbose reporting is mandatory
-
-A FIT model engine should never behave like a black box.
-
-For engineering use, the total number is less useful than the explanation behind it.
-
-A verbose report should answer:
-
-```text
-Which input files were used?
-Which model was selected?
-Which design stage was analyzed?
-Which technology entries were resolved?
-Which mission profile was applied?
-Which object type dominated permanent FIT?
-Which object type dominated transient FIT?
-Which assumptions were defaulted?
-```
-
-This is especially important when results are compared across:
-
-```text
-different design stages
-different mission profiles
-different technology assumptions
-different tool versions
-different commercial tool flows
-```
-
-The first rule of engineering FIT analysis is:
-
-```text
-If the result cannot be explained, it cannot be trusted.
-```
-
----
-
-## 17. Input validation is part of the FIT model
-
-A FIT model engine should not silently accept incomplete assumptions.
-
-For example, the tool should detect:
-
-```text
-missing mission profile
-unknown process name
-missing lambda entry
-negative object count
-unsupported model name
-unit mismatch
-missing transient assumption
-```
-
-A good validation report may look like this:
-
-```text
-[PASS] design_stats.json exists
-[PASS] model_config.yaml exists
-[PASS] mission_profile.temperature_ja found
-[PASS] process MOS.ASIC.STDCELL found in technology.yaml
-[WARN] package model disabled
-[WARN] analog_block_count is 0
-[PASS] transient FIT enabled
-```
-
-This connects D04 back to D02.
-
-`D02_input_package` checks whether the input package is complete.
-
-`D04_fit_standard_models` checks whether the FIT model assumptions are internally usable.
-
----
-
-## 18. Model independence from design parsing
-
-A common mistake is to mix design parsing with FIT modeling.
-
-For example:
-
-```text
-parse RTL
-count registers
-assign lambda
-compute FIT
-write report
-```
-
-all inside one script.
-
-This is fragile.
-
-A better architecture is:
-
-```text
-safeic-designstats
-  produces design_stats.json
-
-safeic-fitmodel
-  consumes design_stats.json
-  produces FIT reports
-```
-
-Even if `safeic-designstats` is not yet fully implemented, `safeic-fitmodel` can still be tested with manually prepared design statistics.
-
-This gives us a useful development strategy:
-
-```text
-1. manually create design_stats.json
-2. implement FIT model engine
-3. validate output format
-4. later connect to automatic RTL/netlist statistics
-```
-
-This avoids blocking FIT model development on parser completeness.
-
----
-
-## 19. FIT model and diagnostic coverage must stay separate
-
-FIT modeling answers:
-
-```text
-How much raw random hardware failure exposure exists?
-```
-
-Diagnostic coverage answers:
-
-```text
-How much of that exposure is detected or controlled by safety mechanisms?
-```
-
-They should be separate modules.
 
 ```mermaid
 flowchart LR
-    A[Design Statistics] --> B[FIT Model Engine]
-    B --> C[Raw Failure Exposure]
-    D[Safety Mechanism Map] --> E[Diagnostic Coverage Engine]
-    C --> E
-    E --> F[Residual Failure Exposure]
+    A[Normalized FIT Value] --> B[Source File]
+    A --> C[Model Profile]
+    A --> D[Default / User / Derived]
+    A --> E[Review Comment]
 ```
 
-If FIT and DC are mixed too early, the tool becomes hard to debug.
+**Figure 6. Each normalized FIT value should have traceability to source, model, and assumption status.**
 
-When a metric changes, the engineer cannot easily determine whether the cause was:
-
-```text
-changed lambda data
-changed mission profile
-changed object statistics
-changed safety mechanism coverage
-changed fault campaign result
-```
-
-A clean flow keeps these concerns separate:
-
-```text
-D04 = FIT model
-D08 = diagnostic coverage
-D20 = fault result classification
-D21 = final report
-```
+This is one of the most important differences between a safety engineering flow and an ad-hoc spreadsheet.
 
 ---
 
-## 20. Permanent, transient, and object-type breakdown
+## 14. Comparing Model Profiles
 
-A useful FIT report should be structured by both failure category and object type.
+D04 should support model comparison.
 
-Example breakdown:
-
-| Object type | Permanent FIT | Transient FIT | Total FIT |
-|---|---:|---:|---:|
-| STD cell combinational | 0.0012 | 0.0012 | 0.0024 |
-| Flip-flop / latch | 0.0004 | 0.0960 | 0.0964 |
-| SRAM bit | 0.0003 | 0.0020 | 0.0023 |
-| Blackbox | 0.0000 | 0.0000 | 0.0000 |
-
-This kind of breakdown is much more useful than a single total number because it helps answer:
+For the same design statistics and mission profile, we may run:
 
 ```text
-Should I focus on memory protection?
-Should I focus on sequential logic?
-Is transient exposure dominating?
-Is the top contributor related to design structure or model assumptions?
+simplified_demo
+iec62380_like_demo
+sn29500_like_demo
+supplier_override
 ```
 
-This also prepares the data for `D07_ep_contribution`.
+The output:
+
+```text
+fit_model_compare.csv
+```
+
+Example:
+
+```csv
+model,total_fit,logic_fit,ff_fit,memory_fit,package_fit,blackbox_fit,notes
+simplified_demo,0.09812,0.02412,0.06400,0.00000,0.01000,0.00000,baseline demo
+iec62380_like_demo,0.11240,0.03000,0.07000,0.00000,0.01240,0.00000,educational abstraction
+sn29500_like_demo,0.08790,0.02000,0.05790,0.00000,0.01000,0.00000,educational abstraction
+```
+
+The comparison should not be presented as which standard is “better.” Different models may have different assumptions, categories, and intended use.
+
+The useful question is:
+
+```text
+How sensitive is our BFR result to reliability model assumptions?
+```
+
+```mermaid
+flowchart TD
+    A[Same Design Stats] --> B[Model A]
+    A --> C[Model B]
+    A --> D[Model C]
+    B --> E[Result A]
+    C --> F[Result B]
+    D --> G[Result C]
+    E --> H[Model Sensitivity Review]
+    F --> H
+    G --> H
+```
+
+**Figure 7. Model comparison helps review sensitivity to reliability assumptions.**
 
 ---
 
-## 21. How this demo supports later commercial-flow comparison
+## 15. Supplier FIT Override
 
-A benchmark comparison cannot start from screenshots.
+Not all design blocks can be analyzed from internal structure.
 
-It needs normalized inputs and normalized outputs.
-
-`D04_fit_standard_models` provides one important benchmark foundation:
+Examples:
 
 ```text
-same design statistics
-same mission profile
-same technology assumptions
-multiple model outputs
-normalized comparison table
+third-party IP
+analog block
+memory macro
+hard macro
+PHY
+PLL
+sensor interface
+black-box safety island
 ```
 
-Later, when comparing against a commercial functional safety flow, we can ask:
+For these blocks, FIT values may come from supplier documentation, safety manual, or reviewed assumptions.
 
-```text
-Did both flows use the same mission profile?
-Did both flows include transient FIT?
-Did both flows use the same memory bit assumptions?
-Did both flows calculate at RTL or netlist level?
-Did both flows output permanent and transient separately?
+D04 should support an override file:
+
+```csv
+instance,block_type,fit_permanent,fit_transient,source,review_status,comment
+top.u_pll,analog_block,0.12,0.00,supplier_doc,draft,placeholder until official data
+top.u_sram,memory_macro,0.05,0.20,supplier_doc,reviewed,macro-level FIT
+top.u_crypto,black_box_ip,0.08,0.03,internal_assumption,draft,needs supplier confirmation
 ```
 
-Without this normalization, tool comparison becomes subjective.
+Override policy should be explicit:
 
-With this normalization, tool comparison becomes engineering work.
+```yaml
+blackbox_policy:
+  require_override: true
+  allow_zero_fit_without_review: false
+  require_review_status: true
+```
+
+A safe workflow should never silently ignore black boxes.
+
+If a block is not analyzable and no override exists, the tool should produce an error or at least a strong warning.
 
 ---
 
-## 22. Demo directory structure
+## 16. Package FIT and Non-Logic Contributions
 
-The suggested directory is:
+A chip-level BFR may include contributions beyond RTL logic.
+
+Examples:
+
+```text
+package contribution
+electrical connection contribution
+I/O contribution
+analog block contribution
+hard macro contribution
+memory macro contribution
+```
+
+In early RTL demos, it is easy to focus only on logic and flip-flops.
+
+That is acceptable for a toy flow, but the input schema should still allow non-logic contributions.
+
+Example:
+
+```yaml
+non_logic_contributions:
+  package:
+    enabled: true
+    fit_per_device: 0.01
+    source: demo_assumption
+
+  io_ring:
+    enabled: false
+    reason: not modeled in D04
+
+  analog_blocks:
+    enabled: true
+    source: fit_overrides.csv
+```
+
+The report should clearly state:
+
+```text
+included
+excluded
+not modeled
+requires override
+```
+
+This avoids accidental under-reporting.
+
+---
+
+## 17. Output Report Structure
+
+The human-readable report should include:
+
+```text
+1. Selected model profile
+2. Design statistics summary
+3. Category mapping summary
+4. Mission profile summary
+5. Reference rates and conversion assumptions
+6. Override summary
+7. Normalized FIT input summary
+8. Model comparison table
+9. Warnings and review items
+```
+
+Example section:
+
+```md
+## Selected Model
+
+Model profile: sn29500_like_demo  
+Purpose: Educational abstraction for reference-rate-style FIT normalization.
+
+## Mission Profile
+
+Name: demo_automotive_profile  
+Operating ratio: 0.65  
+Dormant ratio: 0.35
+
+## Warnings
+
+- Black-box count is zero.
+- Temperature scaling is disabled in this stage.
+- This model profile is an educational abstraction and not a full standard implementation.
+```
+
+The report should make it impossible to confuse a demo abstraction with an official standard implementation.
+
+---
+
+## 18. D04 Directory Structure
+
+Suggested directory:
 
 ```text
 D04_fit_standard_models/
   README.md
-  run_demo.csh
   run_demo.sh
+  run_demo.csh
+  manifest.yaml
+
   inputs/
-    design_stats.json
-    technology.yaml
+    fit_model_library.yaml
+    design_stats.yaml
+    category_mapping.yaml
     mission_profile.yaml
-    model_config_iec.yaml
-    model_config_sn.yaml
-  scripts/
-    safeic_fitmodel.py
+    fit_overrides.csv
+
   outputs/
-    iec62380/
-      fit_model_result.json
-      fit_model_detail.csv
-      verbose_fit.md
-    sn29500/
-      fit_model_result.json
-      fit_model_detail.csv
-      verbose_fit.md
+    normalized_fit_inputs.yaml
+    fit_model_report.md
     fit_model_compare.csv
-  expected/
-    expected_compare.csv
+    assumption_trace.csv
+
+  schemas/
+    fit_model_library_schema.yaml
+    category_mapping_schema.yaml
+    mission_profile_schema.yaml
+    fit_overrides_schema.yaml
 ```
 
-For compatibility with older EDA scripting environments, `run_demo.csh` can be the primary demonstration script.
+This structure keeps model definition, design statistics, mapping, mission profile, and overrides separate.
 
-Example:
+That separation matters because each of these files is reviewed by different stakeholders.
+
+---
+
+## 19. D04 Manifest
+
+Example `manifest.yaml`:
+
+```yaml
+project:
+  name: automotive_safeic_practice
+  demo: D04_fit_standard_models
+  top_module: toy_counter
+
+fit_model:
+  selected_model: sn29500_like_demo
+  model_library: inputs/fit_model_library.yaml
+  category_mapping: inputs/category_mapping.yaml
+  mission_profile: inputs/mission_profile.yaml
+  design_stats: inputs/design_stats.yaml
+  overrides: inputs/fit_overrides.csv
+
+comparison:
+  enabled: true
+  models:
+    - simplified_demo
+    - iec62380_like_demo
+    - sn29500_like_demo
+
+outputs:
+  normalized_fit_inputs: outputs/normalized_fit_inputs.yaml
+  model_report: outputs/fit_model_report.md
+  model_compare: outputs/fit_model_compare.csv
+  assumption_trace: outputs/assumption_trace.csv
+```
+
+The manifest should make the selected model explicit.
+
+Do not hide the model selection in a command-line option that disappears from the report.
+
+---
+
+## 20. D04 Execution Flow
+
+```mermaid
+flowchart TD
+    A[Load Manifest] --> B[Load Model Library]
+    B --> C[Load Design Statistics]
+    C --> D[Load Category Mapping]
+    D --> E[Load Mission Profile]
+    E --> F[Load Overrides]
+    F --> G[Validate Model Requirements]
+    G --> H[Normalize FIT Inputs]
+    H --> I[Generate Assumption Trace]
+    H --> J[Run Model Comparison]
+    I --> K[Generate Report]
+    J --> K
+```
+
+**Figure 8. D04 execution flow: normalize model assumptions before BFR calculation.**
+
+Example bash script:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+safeic-fitmodel \
+  --manifest manifest.yaml \
+  --output-dir outputs
+```
+
+Example csh script:
 
 ```csh
 #!/bin/csh -f
 
 set DEMO = D04_fit_standard_models
-set OUT  = outputs
+echo "Running $DEMO"
 
-mkdir -p $OUT/iec62380
-mkdir -p $OUT/sn29500
+safeic-fitmodel \
+  --manifest manifest.yaml \
+  --output-dir outputs
+```
 
-python3 scripts/safeic_fitmodel.py \
-  --design-stats inputs/design_stats.json \
-  --technology inputs/technology.yaml \
-  --mission-profile inputs/mission_profile.yaml \
-  --model-config inputs/model_config_iec.yaml \
-  --output-dir $OUT/iec62380
+Expected outputs:
 
-python3 scripts/safeic_fitmodel.py \
-  --design-stats inputs/design_stats.json \
-  --technology inputs/technology.yaml \
-  --mission-profile inputs/mission_profile.yaml \
-  --model-config inputs/model_config_sn.yaml \
-  --output-dir $OUT/sn29500
-
-python3 scripts/safeic_fitmodel.py compare \
-  --result-a $OUT/iec62380/fit_model_result.json \
-  --result-b $OUT/sn29500/fit_model_result.json \
-  --output $OUT/fit_model_compare.csv
+```text
+outputs/normalized_fit_inputs.yaml
+outputs/fit_model_report.md
+outputs/fit_model_compare.csv
+outputs/assumption_trace.csv
 ```
 
 ---
 
-## 23. Suggested implementation skeleton
+## 21. Validation Rules
 
-A clean Python skeleton may look like this:
+`safeic-fitmodel` should validate both file-level and engineering-level consistency.
+
+### 21.1 File and Schema Checks
+
+```text
+model library exists
+selected model exists
+design stats exist
+category mapping exists
+mission profile exists
+override file exists if required
+YAML files parse successfully
+CSV override has required columns
+```
+
+### 21.2 Model Requirement Checks
+
+```text
+selected model supports all mapped categories
+required mission profile fields exist
+temperature profile exists if model requires it
+operating ratio exists if model requires it
+reference rates exist for all required categories
+conversion factors exist or are explicitly disabled
+```
+
+### 21.3 Cross-Reference Checks
+
+```text
+design type in design_stats has mapping
+mapping refers to known model category
+model category has reference rate
+black-box category has override
+override instance exists or is explicitly external
+review status is present for supplier overrides
+```
+
+### 21.4 Assumption Safety Checks
+
+```text
+zero FIT values require explicit justification
+black-box FIT cannot be silently zero
+package FIT cannot be silently omitted
+demo model must be labeled as demo
+standard-like abstraction must not claim official completeness
+```
+
+Example report messages:
+
+```text
+[PASS] selected model sn29500_like_demo exists
+[PASS] design type logic_gate mapped to integrated_circuit_logic
+[WARN] temperature scaling disabled for selected model profile
+[WARN] model is educational abstraction, not official standard implementation
+[ERROR] black_box count > 0 but fit_overrides.csv has no matching entry
+```
+
+---
+
+## 22. Engineering Methodology
+
+D04 introduces an important methodology:
+
+```text
+Separate model selection from BFR calculation.
+Separate design statistics from reliability assumptions.
+Separate standard-like model abstraction from supplier overrides.
+Separate normalized machine inputs from human-readable reports.
+```
+
+This allows a workflow to be:
+
+```text
+reviewable
+auditable
+debuggable
+model-comparable
+portable
+extensible
+```
+
+A practical review checklist:
+
+```text
+Which model profile was selected?
+Is it a demo abstraction or reviewed project model?
+Which mission profile was used?
+Which design categories were mapped?
+Which reference rates were applied?
+Which conversion factors were applied?
+Which values were overridden?
+Which assumptions are still draft?
+Which black boxes require supplier confirmation?
+Can the normalized FIT inputs feed BFR calculation?
+```
+
+The goal is not to make FIT modeling look simple. The goal is to make assumptions explicit.
+
+---
+
+## 23. Common Mistakes
+
+### 23.1 Treating Standard Names as Magic Words
+
+Writing:
+
+```text
+model = IEC62380
+```
+
+or
+
+```text
+model = SN29500
+```
+
+is not enough.
+
+A model name must be accompanied by:
+
+```text
+model version
+component category mapping
+mission profile
+reference conditions
+conversion assumptions
+data source
+review status
+```
+
+### 23.2 Hardcoding FIT Coefficients in Scripts
+
+Hardcoded constants are difficult to review.
+
+Bad:
 
 ```python
-from dataclasses import dataclass
-from typing import Dict, Any
-
-
-@dataclass
-class FitResult:
-    model: str
-    permanent_fit: float
-    transient_fit: float
-    total_fit: float
-    breakdown: list[dict]
-
-
-class FitModelBackend:
-    def compute(self, design_stats: Dict[str, Any], tech: Dict[str, Any], mission: Dict[str, Any]) -> FitResult:
-        raise NotImplementedError
-
-
-class SimplifiedIEC62380Backend(FitModelBackend):
-    def compute(self, design_stats, tech, mission):
-        # Resolve object counts, lambda values, and mission factors.
-        # Return a normalized FitResult.
-        pass
-
-
-class SimplifiedSN29500Backend(FitModelBackend):
-    def compute(self, design_stats, tech, mission):
-        # Resolve reference FIT and operating-condition factors.
-        # Return a normalized FitResult.
-        pass
-
-
-def resolve_backend(model_name: str) -> FitModelBackend:
-    if model_name == "simplified_iec62380":
-        return SimplifiedIEC62380Backend()
-    if model_name == "simplified_sn29500":
-        return SimplifiedSN29500Backend()
-    raise ValueError(f"Unsupported FIT model: {model_name}")
+ff_fit = ff_count * 0.003
 ```
 
-The important design principle is:
+Better:
+
+```yaml
+flip_flop_fit: 3.0e-3
+source: fit_model_library.yaml
+review_status: draft
+```
+
+The calculation should be separated from the data.
+
+### 23.3 Ignoring Model Sensitivity
+
+If two reasonable model profiles produce significantly different BFR values, this should be reviewed.
+
+The goal is not to hide the difference. The goal is to understand it.
+
+### 23.4 Ignoring Supplier FIT Data
+
+Hard macros and black boxes may dominate safety analysis.
+
+If supplier data is unavailable, the gap should be documented as a review item, not silently replaced with zero.
+
+### 23.5 Confusing Demo Abstraction with Official Standard Implementation
+
+This repository should clearly distinguish:
 
 ```text
-model backend computes
-report layer writes files
-CLI layer connects inputs and outputs
+educational abstraction
+project-specific reviewed model
+official standard implementation
+supplier-provided data
 ```
 
-This makes the tool easier to test and easier to replace.
+The D04 demo uses educational abstractions only.
 
 ---
 
-## 24. Testing strategy
+## 24. How D04 Connects to the Closed Loop
 
-The FIT model engine should be tested with small deterministic cases.
+D04 feeds D03 and later safety stages.
 
-Example test case:
-
-```json
-{
-  "stdcell_gate_count": 1000,
-  "sequential_count": 100,
-  "memory_bits": 1000
-}
+```mermaid
+flowchart LR
+    A[D04 FIT Model Normalization] --> B[D03 BFR Calculation]
+    B --> C[Endpoint Contribution]
+    B --> D[Diagnostic Coverage]
+    B --> E[FMEDA]
+    B --> F[Fault List Prioritization]
 ```
 
-With fixed lambda and factors, expected results should be easy to calculate manually.
+**Figure 9. D04 normalizes model assumptions so D03 and later stages can use reviewed FIT inputs.**
 
-Test cases should include:
+D04 answers:
 
 ```text
-empty design statistics
-stdcell-only design
-memory-only design
-mixed stdcell + memory design
-transient disabled
-permanent disabled
-unknown process name
-unknown model name
+Which FIT model profile are we using?
+How are design categories mapped to model categories?
+Which mission profile is applied?
+Which supplier overrides are used?
+Which assumptions are defaulted or reviewed?
 ```
 
-The goal is not just numerical correctness.
+D03 then answers:
 
-The goal is predictable behavior under incomplete or invalid inputs.
+```text
+What is the resulting Base FIT Rate?
+```
+
+The two demos should remain separate.
 
 ---
 
-## 25. What D04 should not do yet
+## 25. Recommended Implementation Stages
 
-`D04_fit_standard_models` should not try to solve everything.
+D04 can be implemented in stages.
 
-It should not yet focus on:
+### Stage 1: Demo Model Normalization
 
-```text
-full standard compliance
-advanced package modeling
-cell-level foundry-accurate reliability data
-complete analog modeling
-full RTL parser implementation
-fault campaign result ingestion
-final PMHF calculation
-```
-
-Those can be added later.
-
-The first version should focus on:
+Support only:
 
 ```text
-clear input model
-clear model resolver
-separate permanent/transient paths
-repeatable output format
-verbose report
-model comparison
+simplified_demo
+basic category mapping
+basic mission profile
+no real temperature scaling
 ```
 
-This keeps the demo achievable and useful.
+### Stage 2: Standard-Like Profiles
+
+Add educational abstraction profiles:
+
+```text
+iec62380_like_demo
+sn29500_like_demo
+```
+
+These should still be labeled clearly as demo abstractions.
+
+### Stage 3: Override Handling
+
+Add:
+
+```text
+fit_overrides.csv
+black-box policy
+review status
+supplier source tracking
+```
+
+### Stage 4: Model Comparison
+
+Add:
+
+```text
+fit_model_compare.csv
+model sensitivity report
+```
+
+### Stage 5: Integration with BFR
+
+Generate:
+
+```text
+normalized_fit_inputs.yaml
+```
+
+and feed it into:
+
+```text
+safeic-bfr
+```
+
+This staged approach makes the demo implementable without overclaiming.
 
 ---
 
-## 26. Methodology: interface first, precision later
+## 26. Summary
 
-In engineering tool development, a common mistake is to start with maximum formula detail before the data flow is stable.
+BFR needs reliable input assumptions.
 
-That often leads to:
+Reliability prediction models such as IEC 62380 and SN 29500 are often used as references in automotive electronics, but an engineering flow must not hide model assumptions inside scripts or spreadsheets.
 
-```text
-complex code
-unclear inputs
-hard-coded assumptions
-no reproducible demo
-slow iteration
-```
-
-A better method is:
+The D04 demo:
 
 ```text
-1. define model inputs
-2. define normalized outputs
-3. implement simplified models
-4. generate verbose reports
-5. validate with toy examples
-6. replace simplified backends with more accurate models later
+D04_fit_standard_models
 ```
 
-This approach allows early delivery while preserving a path to higher accuracy.
+introduces a generic tool:
 
-The first version should be simple enough to explain.
+```text
+safeic-fitmodel
+```
 
-If the simplified version cannot be explained, the full version will not be trustworthy either.
+Its purpose is to normalize FIT model assumptions into reviewable artifacts:
+
+```text
+normalized_fit_inputs.yaml
+fit_model_report.md
+fit_model_compare.csv
+assumption_trace.csv
+```
+
+The central lesson is:
+
+> A FIT model is not just a formula. It is a set of categorized assumptions, mission profiles, reference conditions, conversion choices, supplier overrides, and review decisions.
+
+Once those assumptions are explicit, BFR calculation becomes traceable and reusable.
 
 ---
 
-## 27. Key engineering takeaways
+## 27. D04 Demo Checklist
 
-The core idea of this article is:
-
-```text
-A FIT model is an engineering system, not just an equation.
-```
-
-A practical automotive Safe-IC FIT model should provide:
+For `D04_fit_standard_models`, the expected deliverables are:
 
 ```text
-explicit design statistics
-explicit technology assumptions
-explicit mission profile
-explicit model selection
-separate permanent and transient FIT
-object-type breakdown
-verbose calculation trace
-stable machine-readable outputs
-comparison between model strategies
+[ ] README.md
+[ ] run_demo.sh
+[ ] run_demo.csh
+[ ] manifest.yaml
+
+[ ] inputs/fit_model_library.yaml
+[ ] inputs/design_stats.yaml
+[ ] inputs/category_mapping.yaml
+[ ] inputs/mission_profile.yaml
+[ ] inputs/fit_overrides.csv
+
+[ ] outputs/normalized_fit_inputs.yaml
+[ ] outputs/fit_model_report.md
+[ ] outputs/fit_model_compare.csv
+[ ] outputs/assumption_trace.csv
+
+[ ] schemas/fit_model_library_schema.yaml
+[ ] schemas/category_mapping_schema.yaml
+[ ] schemas/mission_profile_schema.yaml
+[ ] schemas/fit_overrides_schema.yaml
 ```
 
-`D04_fit_standard_models` turns reliability modeling into a reproducible demo.
-
-It gives later articles a stable foundation:
+A successful D04 run should answer:
 
 ```text
-D05 uses this model across architecture / RTL / netlist stages.
-D07 uses its output to rank endpoint contribution.
-D08 combines raw exposure with diagnostic coverage.
-D24 uses normalized outputs for benchmark-style comparison.
+Which model profile was selected?
+Is the model a demo abstraction or reviewed project model?
+How are design statistics mapped to reliability categories?
+Which mission profile is used?
+Which values are defaulted, derived, or overridden?
+Are black boxes handled explicitly?
+Are package and non-logic contributions included or intentionally excluded?
+Can the normalized output feed BFR calculation?
 ```
-
----
-
-## 28. Demo deliverables
-
-The expected deliverables of `D04_fit_standard_models` are:
-
-```text
-inputs/design_stats.json
-inputs/technology.yaml
-inputs/mission_profile.yaml
-inputs/model_config_iec.yaml
-inputs/model_config_sn.yaml
-outputs/iec62380/fit_model_result.json
-outputs/iec62380/fit_model_detail.csv
-outputs/iec62380/verbose_fit.md
-outputs/sn29500/fit_model_result.json
-outputs/sn29500/fit_model_detail.csv
-outputs/sn29500/verbose_fit.md
-outputs/fit_model_compare.csv
-```
-
-The expected learning outcome is:
-
-```text
-FIT modeling becomes useful only when the assumptions, model path, and contribution breakdown are visible.
-```
-
-A safety analysis flow should not ask engineers to trust a single number.
-
-It should help them understand where the number came from.
-
-That is the engineering purpose of `D04_fit_standard_models`.
-
