@@ -1,1087 +1,1380 @@
-# [Automotive Safe-IC Practice 03] Starting from Base FIT Rate: Why Safety Analysis Begins with BFR
+# [Automotive Safe-IC Practice 03] Why Safety Analysis Starts with Base FIT Rate
 
-**Author:** Darren H. Chen  
-**Direction:** Automotive chip functional safety analysis and fault injection practice  
-**Demo:** `D03_base_fit_rate`  
-**Tags:** `Automotive Chip`, `Functional Safety`, `SafeIC`, `Base FIT Rate`, `BFR`, `FIT/DC`, `ISO 26262`, `IEC 62380`, `SN 29500`
+**Author**: Darren H. Chen  
+**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
+**Demo**: D03_base_fit_rate  
+**Tags**: Automotive Chip, Functional Safety, ISO 26262, FIT, BFR, Base FIT Rate, Random Hardware Fault, IEC 62380, SN 29500, Mission Profile, FMEDA
 
 ---
 
-## Demo scope
+## 1. Why This Article Matters
 
-`D03_base_fit_rate` implements the first metric-oriented step in the automotive Safe-IC practice flow.
+Before we talk about diagnostic coverage, safety mechanisms, fault campaigns, alarm lists, or fault injection results, we must answer a more basic question:
 
-The corresponding generic tool module is:
+> How much random hardware failure exposure does the chip have before protection is considered?
+
+This question is answered by the **Base FIT Rate**, usually abbreviated as **BFR**.
+
+The third demo in this repository is:
+
+```text
+D03_base_fit_rate
+```
+
+The generic tool introduced in this article is:
 
 ```text
 safeic-bfr
 ```
 
-Its purpose is not to validate a safety mechanism and not to run a fault campaign.
+The purpose of `safeic-bfr` is not to prove that a design is safe. Its purpose is to build the initial quantified baseline for later safety analysis.
 
-Its purpose is more fundamental:
+The key idea is:
 
-```text
-Estimate the base random hardware failure rate of a design before diagnostic coverage credit is applied.
-```
+> BFR is the starting point of chip-level functional safety analysis because it defines the unprotected or baseline random hardware failure exposure that safety mechanisms must reduce, detect, correct, mask, or control.
 
-In this demo, Base FIT Rate is treated as the baseline metric that answers one simple question:
-
-```text
-If this design existed without safety mechanism coverage,
-how much random hardware failure exposure would it have?
-```
-
-This baseline is important because later safety analysis steps only make sense when we can compare them against something.
-
-```text
-Base FIT Rate
-→ safety mechanism planning
-→ diagnostic coverage estimation
-→ fault campaign evidence
-→ final metric validation
-```
-
-Without BFR, a safety flow may still generate many reports, but it loses the ability to explain how much improvement was achieved by adding protection.
+Without BFR, diagnostic coverage has no real weight. A 90% coverage claim is much more meaningful when we know what amount of FIT it covers.
 
 ---
 
-## 1. Why Base FIT Rate comes before fault injection
+## 2. FIT: A Failure Rate, Not a Simulation Result
 
-Fault injection is often the most visible part of a functional safety verification flow.
+FIT means **Failure In Time**.
 
-It feels concrete:
-
-```text
-inject a stuck-at fault
-observe an alarm
-classify the result
-produce a fault report
-```
-
-However, fault injection should not be the first conceptual step.
-
-Before injecting faults, the safety engineer should understand the design's random hardware failure exposure.
-
-This is what BFR provides.
-
-A simplified view is:
+A common engineering definition is:
 
 ```text
-BFR is about exposure.
-Fault campaign is about detection evidence.
-Diagnostic coverage is about how much exposure is controlled.
+1 FIT = 1 failure per 1,000,000,000 hours
+      = 1 × 10^-9 failures / hour
 ```
 
-The three questions are different:
-
-| Question | Metric / activity |
-|---|---|
-| How much random hardware failure exposure does the design have? | Base FIT Rate |
-| Which parts of the design contribute most to that exposure? | FIT contribution analysis |
-| Which failures are detected by safety mechanisms? | Diagnostic coverage and fault campaign |
-
-If we skip BFR and jump directly into fault injection, we may know that some faults are detected, but we may not know whether they are the important faults.
-
-This leads to a common mistake:
-
-```text
-large number of injected faults
-+ impressive detected fault count
-+ no baseline failure-rate weighting
-= weak safety argument
-```
-
-A useful safety argument should not only count faults.
-
-It should also explain the safety relevance of the design regions where those faults occur.
-
----
-
-## 2. What FIT means at chip level
-
-FIT means Failure In Time.
-
-In reliability engineering, one FIT is commonly understood as:
-
-```text
-1 FIT = 1 failure per 1,000,000,000 device-hours
-```
-
-At chip level, FIT is used to express how likely a hardware element is to experience a random hardware failure under an assumed technology, package, environment, and mission profile.
-
-For an automotive chip, a FIT value is not calculated from RTL syntax alone.
-
-It depends on several domains:
-
-```text
-design structure
-+ design size
-+ technology assumptions
-+ reliability model
-+ temperature profile
-+ mission profile
-+ package assumptions
-+ permanent/transient failure assumptions
-```
-
-That is why BFR is not simply a parser result.
-
-It is a structured reliability computation based on both design-derived data and user-supplied assumptions.
-
----
-
-## 3. The role of BFR in the full Safe-IC flow
-
-In a practical automotive chip development cycle, safety metrics are evaluated multiple times.
-
-The initial BFR is calculated early, before safety mechanisms are fully designed or validated.
-
-Later, the design is re-analyzed after safety mechanisms are added.
-
-Finally, implementation-level analysis and fault campaign evidence are used to validate the safety case.
-
-```mermaid
-flowchart TD
-    A[Initial Design or Architecture] --> B[Base FIT Rate]
-    B --> C[Safety Mechanism Planning]
-    C --> D[RTL or Netlist with Safety Mechanisms]
-    D --> E[Diagnostic Coverage Estimation]
-    E --> F[Fault List Generation]
-    F --> G[Fault Campaign]
-    G --> H[Final Metric Validation]
-```
-
-The baseline function of BFR can be summarized as:
-
-```text
-BFR does not prove the design is safe.
-BFR defines the amount of failure exposure that later safety mechanisms must address.
-```
-
-This is why the third demo in this series focuses on BFR before introducing SP/EP/Cone extraction, DC calculation, and fault campaign execution in later demos.
-
----
-
-## 4. BFR is a baseline, not a final safety metric
-
-A common misconception is to treat FIT as a single final number.
-
-In practice, BFR is only the starting point.
+FIT is not a simulation waveform result. It is a reliability estimate.
 
 It answers:
 
 ```text
-What is the design's raw failure-rate exposure?
+How frequently can random hardware faults be expected under defined assumptions?
 ```
 
-It does not answer:
+For chip-level functional safety, FIT can be associated with:
 
 ```text
-Which failures violate a safety goal?
-Which failures are detected?
-Which failures are safe?
-Which failures remain residual?
-Which failures are latent?
+logic gates
+flip-flops
+latches
+memory bits
+analog or mixed-signal blocks
+interfaces
+package contribution
+permanent fault sources
+transient fault sources
 ```
 
-Those questions belong to later stages.
+A simplified view:
 
-A useful distinction is:
+```mermaid
+flowchart TD
+    A[Chip Design] --> B[Design Elements]
+    B --> C[Logic Gates]
+    B --> D[State Elements]
+    B --> E[Memories]
+    B --> F[Package / Interface]
+    C --> G[FIT Contribution]
+    D --> G
+    E --> G
+    F --> G
+    G --> H[Base FIT Rate]
+```
 
-| Metric / evidence | Main meaning |
-|---|---|
-| BFR | Raw baseline failure-rate exposure before coverage credit |
-| DC | How much of the relevant failure exposure is detected or controlled |
-| SPFM | Robustness against single point and residual faults |
-| LFM | Robustness against latent multi-point faults |
-| PMHF | Residual risk contribution for random hardware failure |
-| Fault campaign result | Simulation-based evidence for detection or non-detection |
+**Figure 1. FIT is an estimated random hardware failure contribution from design elements and reliability assumptions.**
 
-In this demo, we do not try to calculate all final ISO-style safety metrics.
+FIT is not enough by itself. It must later be combined with:
 
-Instead, we build a clean BFR foundation that later demos can extend.
+```text
+failure mode
+fault propagation
+diagnostic coverage
+safety mechanism behavior
+fault injection evidence
+FMEDA metric roll-up
+```
+
+But the first quantitative anchor is BFR.
 
 ---
 
-## 5. Permanent and transient failure exposure
+## 3. What Is Base FIT Rate?
 
-A BFR model usually distinguishes between at least two major classes of random hardware faults:
+Base FIT Rate means the failure rate baseline before additional safety mitigation is applied.
+
+In an idealized safety workflow:
+
+```text
+BFR = estimated random hardware failure exposure before safety mechanism credit
+```
+
+It is called “base” because it establishes the reference point.
+
+Later, after safety mechanisms are defined and validated, the workflow estimates or measures how much of this exposure is:
+
+```text
+detected
+corrected
+masked
+controlled
+safe
+unsafe
+residual
+```
+
+Conceptually:
+
+```mermaid
+flowchart LR
+    A[Base FIT Rate] --> B{Safety Mechanisms}
+    B --> C[Detected / Controlled FIT]
+    B --> D[Safe or Masked FIT]
+    B --> E[Residual FIT]
+    E --> F[Metric Review / FMEDA]
+```
+
+**Figure 2. BFR is split by safety mechanisms into detected, safe, controlled, and residual contribution.**
+
+A safety mechanism cannot be evaluated in isolation. It must be evaluated against the baseline exposure it is expected to reduce.
+
+---
+
+## 4. Why BFR Comes Before Diagnostic Coverage
+
+Diagnostic Coverage, or DC, is often discussed as a percentage:
+
+```text
+90% DC
+95% DC
+99% DC
+```
+
+But a percentage alone is not enough.
+
+For example:
+
+```text
+Case A:
+  90% DC applied to 1 FIT
+  residual contribution ≈ 0.1 FIT
+
+Case B:
+  90% DC applied to 100 FIT
+  residual contribution ≈ 10 FIT
+```
+
+The same DC percentage has very different safety meaning.
+
+This is why BFR must come first.
+
+A simplified residual model is:
+
+```text
+residual_fit = base_fit × (1 - diagnostic_coverage)
+```
+
+This simplified model does not replace full standard-compliant metric computation, but it captures the core engineering intuition.
+
+```mermaid
+flowchart TD
+    A[Base FIT] --> B[Apply Diagnostic Coverage]
+    B --> C[Covered FIT]
+    B --> D[Residual FIT]
+    D --> E[Safety Metric Impact]
+```
+
+**Figure 3. Diagnostic coverage only becomes meaningful when applied to a quantified FIT baseline.**
+
+Therefore, the order matters:
+
+```text
+first quantify the baseline exposure
+then estimate or validate the coverage
+then compute residual contribution
+then review the metric result
+```
+
+---
+
+## 5. Permanent vs Transient FIT
+
+A practical BFR model should distinguish at least two broad types of random hardware faults:
 
 ```text
 permanent faults
 transient faults
 ```
 
-### 5.1 Permanent failure exposure
+### 5.1 Permanent Faults
 
-Permanent failure exposure represents hardware failures that remain after they occur.
+Permanent faults persist after they occur.
 
-Examples include:
+Examples:
 
 ```text
 stuck-at behavior
-open or short behavior
-permanent transistor-level defect
-permanent memory cell failure
-permanent package or interconnect-related failure
+aging-induced degradation
+electrical overstress damage
+permanent memory cell damage
+permanent interface failure
 ```
 
-A simplified permanent FIT model may use:
+Permanent FIT usually relates to long-term reliability of silicon, package, process, stress, and operating environment.
+
+### 5.2 Transient Faults
+
+Transient faults occur temporarily.
+
+Examples:
 
 ```text
-technology lambda values
-+ number of transistors or memory bits
-+ temperature or mission profile factors
-+ package-related contribution
+single-event upset
+soft error
+temporary memory bit flip
+temporary flip-flop state corruption
+temporary combinational logic disturbance
 ```
 
-### 5.2 Transient failure exposure
+Transient FIT is important because a transient event may corrupt state even if no permanent damage exists.
 
-Transient failure exposure represents temporary disturbances.
-
-Examples include:
-
-```text
-single event upset
-temporary bit flip
-temporary logic value corruption
-temporary register value change
-```
-
-A simplified transient FIT model may use:
-
-```text
-transient failure rate per gate
-transient failure rate per flip-flop or latch
-transient failure rate per memory bit
-```
-
-The distinction matters because safety mechanisms may cover permanent and transient failures differently.
-
-A parity checker may be very useful for some transient data corruptions.
-
-A lockstep or duplicated execution path may cover a larger logic region.
-
-A watchdog may detect some control-flow failures but not all data corruption cases.
-
-Therefore, BFR should preserve the separation between permanent and transient exposure instead of collapsing everything into one opaque number too early.
-
----
-
-## 6. Design abstraction levels and BFR accuracy
-
-A BFR calculation can be performed at different design stages.
-
-```text
-Architecture
-RTL
-Gate-level netlist
-```
-
-Each stage has a different purpose.
-
-| Stage | What is available | BFR purpose | Limitation |
-|---|---|---|---|
-| Architecture | block counts, rough transistor estimates, memory size | early planning | low structural accuracy |
-| RTL | synthesizable design hierarchy and registers | early safety exploration | final gates may differ |
-| Gate-level netlist | implementation-level cells and mapped structure | final metric refinement | requires synthesis and mapping discipline |
-
-The methodology used in `D03_base_fit_rate` is intentionally stage-aware.
-
-The demo does not assume that every project already has a final netlist.
-
-Instead, it allows BFR to be estimated from a normalized `design_stats.json` file, which can be produced from different sources.
-
-```text
-architecture count file
-or RTL-derived estimate
-or netlist-derived count
-→ design_stats.json
-→ safeic-bfr
-→ base_fit_report.csv
-```
-
-This keeps the BFR engine independent of a specific design parser.
-
----
-
-## 7. Design statistics as the bridge between design and reliability model
-
-The BFR tool should not read arbitrary RTL and immediately produce a magic number.
-
-A better architecture is to separate design statistics from reliability computation.
+A simplified model:
 
 ```mermaid
-flowchart LR
-    A[Architecture / RTL / Netlist] --> B[Design Statistics Extraction]
-    B --> C[design_stats.json]
-    D[FIT Inputs] --> E[Reliability Model]
-    C --> F[Base FIT Engine]
+flowchart TD
+    A[Random Hardware Faults] --> B[Permanent FIT]
+    A --> C[Transient FIT]
+    B --> D[Stuck-at / Aging / Damage]
+    C --> E[Bit Flip / Soft Error / Temporary Disturbance]
+    D --> F[Base FIT Report]
     E --> F
-    F --> G[base_fit_report.csv]
-    F --> H[base_fit_summary.md]
 ```
 
-The file `design_stats.json` is the interface between design analysis and BFR computation.
+**Figure 4. A useful BFR report separates permanent and transient failure contributions.**
+
+The safety mechanisms may also differ:
+
+| Fault Type | Common Protection Examples |
+|---|---|
+| Permanent logic fault | Duplication, lockstep, built-in self-test, monitor |
+| Transient flip-flop fault | Parity, duplication, temporal redundancy |
+| Memory bit upset | ECC, parity, memory scrubbing |
+| Interface data corruption | CRC, bus integrity check |
+| Control state corruption | Protocol check, safe-state encoding, lockstep |
+
+This is why BFR should not be a single opaque number. It should be decomposed.
+
+---
+
+## 6. Design Statistics: What Must Be Counted?
+
+A BFR engine needs design statistics.
+
+For a simplified demo, the statistics may include:
+
+```text
+number of logic gates
+number of flip-flops
+number of latches
+number of memory bits
+number of black-box instances
+number of interface cells
+```
+
+For a more realistic flow, the statistics may come from:
+
+```text
+RTL elaboration
+internal synthesis
+gate-level netlist
+library mapping
+memory definition files
+LVS or SPICE-level information
+technology mapping files
+```
+
+The generic tool in D03 is:
+
+```text
+safeic-bfr
+```
+
+A minimal input file can look like:
+
+```yaml
+design_statistics:
+  top: toy_counter
+  abstraction: rtl
+  logic_gates: 120
+  flip_flops: 16
+  latches: 0
+  memory_bits: 0
+  black_boxes: 0
+```
+
+For an RTL-level demo, these numbers may be estimated or derived from a lightweight synthesis step. For a gate-level flow, they should be derived from mapped netlist and library information.
+
+```mermaid
+flowchart TD
+    A[RTL / Netlist] --> B[Design Statistics Extractor]
+    B --> C[Logic Gate Count]
+    B --> D[State Element Count]
+    B --> E[Memory Bit Count]
+    B --> F[Black-box Count]
+    C --> G[BFR Engine]
+    D --> G
+    E --> G
+    F --> G
+```
+
+**Figure 5. BFR calculation begins by turning the design into countable reliability-relevant elements.**
+
+The key principle is:
+
+> BFR quality depends heavily on the quality of the design statistics.
+
+---
+
+## 7. Reliability Assumptions: What Must Be Assumed?
+
+Design statistics are not enough.
+
+A BFR engine also needs reliability assumptions.
+
+Typical assumptions include:
+
+```text
+FIT model or standard
+mission profile
+temperature profile
+operating ratio
+technology class
+package model
+logic transient rate
+flip-flop transient rate
+memory bit transient rate
+process assumptions
+design type classification
+```
+
+A simplified D03 input can be:
+
+```yaml
+fit_model:
+  name: demo_fit_model
+  type: simplified
+
+mission_profile:
+  name: demo_automotive_profile
+  operating_ratio: 0.65
+  dormant_ratio: 0.35
+  temperature_points:
+    - temp_c: 40
+      ratio: 0.50
+    - temp_c: 85
+      ratio: 0.40
+    - temp_c: 125
+      ratio: 0.10
+
+transient_rates:
+  logic_gate_fit: 1.0e-6
+  flip_flop_fit: 1.0e-3
+  memory_bit_fit: 1.0e-6
+
+permanent_rates:
+  logic_base_fit: 2.0e-4
+  flip_flop_base_fit: 3.0e-3
+  package_fit: 0.01
+```
+
+In a real project, these assumptions must be reviewed by reliability and safety engineers. For a demo, they are simplified so that the flow is understandable.
+
+The input checker should always record them explicitly.
+
+---
+
+## 8. Mission Profile: Why Operating Context Changes FIT
+
+A mission profile describes how the product is used over time.
+
+It may include:
+
+```text
+temperature distribution
+operating time
+non-operating time
+thermal cycles
+environmental stress
+application mode
+vehicle location assumptions
+```
+
+Two chips with the same gate count can have different FIT if they operate under different temperature and mission profiles.
 
 Example:
 
-```json
-{
-  "design": "toy_counter_top",
-  "stage": "rtl_estimate",
-  "lib_types": [
-    {
-      "name": "STD_CELL",
-      "gate_count": 120,
-      "ff_count": 16,
-      "estimated_transistors": 760
-    },
-    {
-      "name": "SRAM",
-      "memory_bits": 0
-    }
-  ]
-}
+```text
+Passenger compartment:
+  moderate temperature distribution
+
+Engine compartment:
+  higher temperature and stronger thermal stress
+
+Always-on safety monitor:
+  high operating ratio
+
+Dormant backup unit:
+  high dormant ratio
 ```
 
-This file makes the BFR computation auditable.
+Conceptually:
 
-If the FIT result changes, we can ask:
+```mermaid
+flowchart LR
+    A[Same Design Statistics] --> B[Mission Profile A]
+    A --> C[Mission Profile B]
+    B --> D[Lower or Different FIT]
+    C --> E[Higher or Different FIT]
+```
+
+**Figure 6. The same design can produce different FIT results under different mission profiles.**
+
+This is why `safeic-bfr` should never hide the mission profile.
+
+The output report should always include:
 
 ```text
-Did the design statistics change?
-Did the reliability assumptions change?
-Did the model implementation change?
+which mission profile was used
+which temperature points were used
+which operating ratios were used
+which assumptions were defaulted
+which assumptions were user-supplied
 ```
-
-Without this interface, debugging FIT differences becomes difficult.
 
 ---
 
-## 8. FIT input assumptions
+## 9. Design Type Classification
 
-The second major input to BFR is the reliability assumption package.
+Not all elements should be treated the same.
 
-Example `fit_inputs.yaml`:
+A BFR model may classify design elements as:
+
+```text
+standard-cell logic
+flip-flop
+latch
+RAM
+ROM
+non-volatile memory
+analog block
+interface block
+black-box IP
+package-related contribution
+```
+
+Why does this matter?
+
+Because different design types can have different reliability models and different failure-rate assumptions.
+
+Example:
+
+| Design Type | Possible BFR Input |
+|---|---|
+| Standard-cell logic | gate count, transistor count, logic transient rate |
+| Flip-flop / latch | state element count, transient state upset rate |
+| RAM | bit count, memory transient rate, memory macro model |
+| ROM | bit count, memory type model |
+| Analog block | custom FIT assumption or supplier-provided value |
+| Black-box IP | user-supplied FIT or supplier safety data |
+| Package | package model and stress assumptions |
+
+For D03, we can keep the model simple:
 
 ```yaml
-fit_standard: simplified_iec62380
-mission_profile: passenger_compartment
-temperature_ja: 65
-manufacturing_year: 2026
-default_process: MOS.ASIC.STDCELL
-
-lambda:
-  std_cell_per_transistor_perm: 3.0e-6
-  sram_per_bit_perm: 1.7e-7
-  logicgate_transient: 1.0e-6
-  ff_transient: 1.0e-3
-  memory_bit_transient: 1.0e-6
-
-package:
-  enabled: false
-  package_fit: 0.0
+design_types:
+  logic:
+    count: 120
+    permanent_fit_per_unit: 2.0e-4
+    transient_fit_per_unit: 1.0e-6
+  flip_flop:
+    count: 16
+    permanent_fit_per_unit: 3.0e-3
+    transient_fit_per_unit: 1.0e-3
+  memory_bit:
+    count: 0
+    permanent_fit_per_unit: 0.0
+    transient_fit_per_unit: 1.0e-6
 ```
 
-This file records the assumptions behind the result.
-
-The key methodology is:
-
-```text
-A BFR number without its FIT input assumptions is not reusable evidence.
-```
-
-In a real project, the input values may come from technology files, library data, mission profiles, package data, and company-approved reliability assumptions.
-
-In this demo, we use simplified values to show the data path and methodology rather than to claim production-grade metric accuracy.
+The result should be traceable by design type.
 
 ---
 
-## 9. Reliability model abstraction
+## 10. Bottom-Up FIT Computation
 
-The BFR engine should support multiple model profiles.
+A practical BFR flow is usually bottom-up.
 
-For this practice series, the initial profiles are simplified:
+It computes local contributions and then rolls them up.
 
-```text
-simplified_iec62380
-simplified_sn29500
-custom_linear
+```mermaid
+flowchart TD
+    A[Element-Level Contributions] --> B[Instance-Level FIT]
+    B --> C[Module-Level FIT]
+    C --> D[Part / Sub-part FIT]
+    D --> E[Chip-Level BFR]
 ```
 
-The reason is architectural:
+**Figure 7. BFR should be computed bottom-up so that local contribution can be traced to chip-level FIT.**
+
+A simplified equation:
 
 ```text
-The flow should not hard-code one reliability model into the tool core.
+BFR_total = Σ FIT(element_i) + FIT(package) + FIT(black_box_j)
 ```
 
-Instead, the tool should separate:
+For design types:
 
 ```text
-input parsing
-model selection
-model parameter loading
-design statistics mapping
-report generation
+FIT_logic      = logic_gate_count × logic_fit_per_gate
+FIT_ff         = flip_flop_count × ff_fit_per_element
+FIT_memory     = memory_bit_count × memory_fit_per_bit
+FIT_package    = package_fit
+FIT_black_box  = user_supplied_black_box_fit
+
+BFR_total      = FIT_logic + FIT_ff + FIT_memory + FIT_package + FIT_black_box
 ```
 
-A generic model interface can look like this:
+A demo calculation:
 
 ```text
-model_inputs = design_stats + fit_inputs
-model_outputs = permanent_fit + transient_fit + breakdown
+logic_gate_count = 120
+logic_fit_per_gate = 2.0e-4
+FIT_logic = 0.024
+
+flip_flop_count = 16
+ff_fit_per_element = 3.0e-3
+FIT_ff = 0.048
+
+package_fit = 0.010
+
+BFR_total = 0.024 + 0.048 + 0.010 = 0.082 FIT
 ```
 
-The internal BFR engine does not need to know whether the model is derived from IEC-style assumptions, SN-style assumptions, or a company-specific conservative approximation.
-
-It only needs a stable model contract.
+The exact numbers are demo assumptions. The important point is traceability.
 
 ---
 
-## 10. Simplified BFR computation model used in the demo
+## 11. BFR Output Should Not Be One Number
 
-`D03_base_fit_rate` uses a deliberately simple calculation model.
-
-For demonstration purposes:
+A weak BFR report says:
 
 ```text
-permanent FIT ≈ Σ(size_i × permanent_lambda_i × environment_factor_i)
-transient FIT ≈ Σ(count_i × transient_lambda_i)
-total BFR ≈ permanent FIT + transient FIT + package FIT
+Base FIT = 0.082
 ```
 
-The point is not to replace an industry-grade reliability model.
-
-The point is to make the data flow explicit.
+A useful BFR report says:
 
 ```text
-size_i
-→ represents transistor count, memory bit count, or estimated object count
+Base FIT = 0.082
 
-lambda_i
-→ represents failure-rate assumption for that object type
+Breakdown:
+  logic      = 0.024
+  flip-flop  = 0.048
+  memory     = 0.000
+  package    = 0.010
 
-environment_factor_i
-→ represents temperature, mission profile, manufacturing year, or model-specific adjustment
+Permanent / transient:
+  permanent  = 0.066
+  transient  = 0.016
+
+Top contributors:
+  toy_counter.ff = 0.048
+  toy_counter.logic = 0.024
+  package = 0.010
 ```
 
-For example:
+The BFR report should expose:
 
 ```text
-STD_CELL permanent contribution
-= estimated_transistors × std_cell_per_transistor_perm × environment_factor
-
-SRAM permanent contribution
-= memory_bits × sram_per_bit_perm × environment_factor
-
-FF transient contribution
-= ff_count × ff_transient
+total FIT
+permanent FIT
+transient FIT
+design-type breakdown
+module-level breakdown
+part/sub-part breakdown
+assumption summary
+default values used
+warnings
 ```
-
-The demo keeps each contribution visible in the output report.
-
-A black-box single number is avoided.
-
----
-
-## 11. Why bottom-up contribution matters
-
-A useful BFR result should not only show total FIT.
-
-It should also show where the FIT comes from.
-
-Consider two designs with the same total BFR:
-
-```text
-Design A: most FIT comes from one memory block
-Design B: most FIT comes from distributed control logic
-```
-
-The same total FIT may lead to very different safety mechanism strategies.
-
-For Design A, ECC or memory parity may be the first protection candidate.
-
-For Design B, control-flow monitoring, lockstep, duplicated compare, or endpoint-level checkers may be more relevant.
-
-Therefore, BFR should produce a contribution breakdown.
 
 Example `base_fit_report.csv`:
 
 ```csv
-design,stage,lib_type,item,permanent_fit,transient_fit,total_fit,percentage
- toy_counter_top,rtl_estimate,STD_CELL,logic_gates,0.00036,0.00012,0.00048,36.92
- toy_counter_top,rtl_estimate,STD_CELL,flip_flops,0.00008,0.00016,0.00024,18.46
- toy_counter_top,rtl_estimate,PACKAGE,package,0.00058,0.00000,0.00058,44.62
+scope,type,count,permanent_fit,transient_fit,total_fit
+toy_counter,logic,120,0.024,0.00012,0.02412
+toy_counter,flip_flop,16,0.048,0.016,0.064
+package,package,1,0.010,0.000,0.010
+TOTAL,all,,0.082,0.01612,0.09812
 ```
 
-This turns BFR from a scalar metric into an engineering decision aid.
+Example `base_fit_summary.md`:
+
+```md
+# Base FIT Summary
+
+Total BFR: 0.09812 FIT
+
+Main contributors:
+1. Flip-flops: 0.064 FIT
+2. Logic: 0.02412 FIT
+3. Package: 0.010 FIT
+
+Assumptions:
+- Simplified demo model
+- Mission profile: demo_automotive_profile
+- No memory bits
+- No black-box FIT override
+```
 
 ---
 
-## 12. BFR and safety mechanism planning
+## 12. BFR and Endpoint Contribution
 
-BFR should influence safety mechanism planning.
+BFR is not only a chip-level number. It should later support endpoint contribution analysis.
 
-The relationship is:
+Endpoint contribution asks:
 
 ```text
-high contribution region
-→ candidate for safety mechanism protection
-→ estimated diagnostic coverage
-→ residual risk reduction
+Which endpoints contribute most to the safety-relevant failure exposure?
 ```
 
-A simple planning flow is:
+This requires mapping FIT contribution through structure.
+
+Conceptually:
 
 ```mermaid
-flowchart TD
-    A[Base FIT Report] --> B[Contribution Ranking]
-    B --> C[Identify High-Exposure Blocks]
-    C --> D[Select Candidate Safety Mechanisms]
-    D --> E[Estimate Diagnostic Coverage]
-    E --> F[Generate Safety Exploration Report]
+flowchart LR
+    A[Element FIT] --> B[Startpoint]
+    B --> C[Cone]
+    C --> D[Endpoint]
+    D --> E[Endpoint FIT Contribution]
 ```
 
-Examples:
+**Figure 8. BFR becomes more useful when contributions can be propagated toward endpoints.**
 
-| High contribution source | Possible safety mechanism direction |
-|---|---|
-| SRAM or register file | ECC, parity, memory BIST, scrubbing |
-| datapath logic cone | duplication and compare, reasonableness check |
-| control FSM | state encoding check, watchdog, control-flow monitor |
-| bus interface | protocol checker, timeout monitor, parity on payload |
-| sensor input path | range check, plausibility check, redundant input comparison |
+For D03, we do not need a full endpoint contribution engine yet. But the BFR output should be structured so that later steps can use it.
 
-The key is that safety mechanisms should be selected based on exposure and functional criticality, not only based on design habit.
+For example:
+
+```csv
+instance,type,count,total_fit
+toy_counter.count_reg[0],flip_flop,1,0.004
+toy_counter.count_reg[1],flip_flop,1,0.004
+toy_counter.count_reg[2],flip_flop,1,0.004
+toy_counter.count_logic,logic,120,0.02412
+```
+
+This instance-level output can later feed:
+
+```text
+safeic-structure
+safeic-epcont
+safeic-dc
+safeic-faultgen
+```
+
+The methodology is:
+
+> Do not generate only final numbers. Generate reusable intermediate safety data.
 
 ---
 
-## 13. Tool architecture of `safeic-bfr`
+## 13. BFR and Safety Mechanism Selection
 
-The `safeic-bfr` module is a metric computation tool.
+BFR influences safety mechanism selection.
 
-It consumes normalized inputs and produces auditable reports.
+A high FIT contribution area may justify stronger protection:
+
+```text
+ECC
+duplication
+lockstep
+end-to-end CRC
+protocol checker
+monitoring
+```
+
+A low FIT contribution area may only need lightweight detection or no additional protection, depending on the safety goal.
+
+The selection is not based only on FIT, but FIT is a key factor.
 
 ```mermaid
 flowchart TD
-    A[manifest.yaml] --> B[Manifest Loader]
-    B --> C[Input Resolver]
-    C --> D[Load design_stats.json]
-    C --> E[Load fit_inputs.yaml]
-    E --> F[Model Selector]
-    D --> G[Contribution Builder]
-    F --> G
-    G --> H[Permanent FIT Calculator]
-    G --> I[Transient FIT Calculator]
-    H --> J[Total BFR Aggregator]
-    I --> J
-    J --> K[CSV Report Writer]
-    J --> L[Markdown Summary Writer]
-    J --> M[JSON Result Writer]
+    A[BFR Breakdown] --> B[Contribution Ranking]
+    B --> C[Endpoint / Module Priority]
+    C --> D[Safety Mechanism Candidates]
+    D --> E[Estimated DC]
+    E --> F[Residual FIT Estimate]
 ```
 
-The tool should have a small number of responsibilities:
+**Figure 9. BFR helps prioritize where stronger safety mechanisms may be needed.**
 
-| Component | Responsibility |
-|---|---|
-| Manifest loader | Find normalized input paths |
-| FIT input loader | Parse reliability assumptions |
-| Design stats loader | Parse design size and object counts |
-| Model selector | Choose simplified IEC-style, SN-style, or custom model |
-| Contribution builder | Map design objects to model categories |
-| Permanent FIT calculator | Compute permanent contribution breakdown |
-| Transient FIT calculator | Compute transient contribution breakdown |
-| Aggregator | Compute total BFR and percentages |
-| Report writer | Generate CSV, JSON, and Markdown outputs |
+Example:
 
-The tool should not perform fault injection.
+```text
+If memory bits dominate transient FIT:
+  consider ECC, parity, scrubbing, memory test
 
-It should not compute final diagnostic coverage.
+If CPU control state dominates contribution:
+  consider lockstep, parity, protocol check, safe-state encoding
 
-It should not silently modify the input assumptions.
+If bus datapath dominates contribution:
+  consider CRC, parity, end-to-end protection
+
+If package or black-box dominates:
+  consider supplier data, assumptions, external safety concept
+```
+
+BFR does not choose the safety mechanism by itself. It prioritizes the problem.
 
 ---
 
-## 14. Recommended demo directory structure
+## 14. BFR and FMEDA
 
-`D03_base_fit_rate` uses the following structure:
+FMEDA needs failure-rate information.
+
+A simplified FMEDA row contains:
+
+```text
+part
+sub-part
+failure mode
+failure rate
+safety mechanism
+diagnostic coverage
+residual contribution
+```
+
+Without BFR, the failure-rate column is unsupported.
+
+Example:
+
+```csv
+part,subpart,failure_mode,base_fit,safety_mechanism,dc,residual_fit
+Counter,toy_counter,FM_DATA_CORRUPTION,0.09812,endpoint_parity,0.90,0.009812
+```
+
+This simple row is not a complete industrial FMEDA, but it shows the relationship:
+
+```text
+BFR provides the failure-rate baseline
+SM map provides the protection model
+DC estimates or validates coverage
+residual FIT supports metric review
+```
+
+```mermaid
+flowchart LR
+    A[BFR] --> B[FMEDA Failure Rate Column]
+    C[Failure Mode Library] --> D[FMEDA Row]
+    E[Safety Mechanism Map] --> D
+    B --> D
+    D --> F[Residual FIT / Metric Review]
+```
+
+**Figure 10. BFR is one of the quantitative foundations of FMEDA.**
+
+This is why D03 should generate outputs that later FMEDA demos can reuse.
+
+---
+
+## 15. The `safeic-bfr` Tool Architecture
+
+The demo tool `safeic-bfr` is a small BFR calculation and reporting engine.
+
+```mermaid
+flowchart TD
+    A[manifest.yaml] --> B[safeic-bfr]
+    C[design_stats.yaml] --> B
+    D[fit_inputs.yaml] --> B
+    E[mission_profile.yaml] --> B
+    F[optional_blackbox_fit.csv] --> B
+
+    B --> G[base_fit_report.csv]
+    B --> H[base_fit_summary.md]
+    B --> I[base_fit_breakdown.json]
+    B --> J[bfr_assumption_report.md]
+```
+
+**Figure 11. `safeic-bfr` converts design statistics and FIT assumptions into reusable BFR artifacts.**
+
+Suggested internal modules:
+
+```text
+safeic_bfr/
+  cli.py
+  manifest.py
+  load_inputs.py
+  validate_fit_inputs.py
+  design_stats.py
+  fit_model.py
+  mission_profile.py
+  calculator.py
+  report.py
+```
+
+Responsibilities:
+
+| Module | Responsibility |
+|---|---|
+| `manifest.py` | Load paths and project metadata |
+| `validate_fit_inputs.py` | Check units, missing values, negative values, unsupported model |
+| `design_stats.py` | Load or derive count data |
+| `fit_model.py` | Apply simplified reliability model |
+| `mission_profile.py` | Normalize mission profile assumptions |
+| `calculator.py` | Compute permanent, transient, and total FIT |
+| `report.py` | Generate CSV, JSON, and Markdown reports |
+
+The first implementation can be deliberately simple. The priority is traceable calculation, not model sophistication.
+
+---
+
+## 16. D03 Input Files
+
+D03 uses a minimal input package.
 
 ```text
 D03_base_fit_rate/
   README.md
-  run_demo.csh
   run_demo.sh
+  run_demo.csh
   manifest.yaml
+
   inputs/
-    design_stats.json
+    design_stats.yaml
     fit_inputs.yaml
-    lambda.csv
-    mission_profile.csv
+    mission_profile.yaml
+    optional_blackbox_fit.csv
+
   outputs/
     base_fit_report.csv
-    base_fit_result.json
     base_fit_summary.md
-    contribution_rank.csv
-  expected/
-    golden_base_fit_report.csv
+    base_fit_breakdown.json
+    bfr_assumption_report.md
 ```
-
-This demo intentionally starts from `design_stats.json` rather than raw RTL.
-
-Raw RTL extraction belongs to later structural demos.
-
-The focus here is:
-
-```text
-Given design statistics and reliability assumptions,
-can we compute and explain a baseline FIT number?
-```
-
----
-
-## 15. Example manifest
 
 Example `manifest.yaml`:
 
 ```yaml
-project: automotive_safeic_practice_d03
-demo: D03_base_fit_rate
+project:
+  name: automotive_safeic_practice
+  demo: D03_base_fit_rate
+  top_module: toy_counter
 
-session:
-  name: base_fit_baseline
-  database: outputs/safeic.sqlite
-
-design:
-  top: toy_counter_top
-  stage: rtl_estimate
-  design_stats: inputs/design_stats.json
-
-safety:
+inputs:
+  design_stats: inputs/design_stats.yaml
   fit_inputs: inputs/fit_inputs.yaml
+  mission_profile: inputs/mission_profile.yaml
+  blackbox_fit: inputs/optional_blackbox_fit.csv
 
 outputs:
-  report_dir: outputs
-  base_fit_report: outputs/base_fit_report.csv
-  base_fit_result: outputs/base_fit_result.json
-  base_fit_summary: outputs/base_fit_summary.md
+  report_csv: outputs/base_fit_report.csv
+  summary_md: outputs/base_fit_summary.md
+  breakdown_json: outputs/base_fit_breakdown.json
+  assumptions_md: outputs/bfr_assumption_report.md
 ```
 
-The demo is executed with:
+Example `design_stats.yaml`:
 
-```bash
-safeic-bfr --manifest manifest.yaml
+```yaml
+design:
+  top: toy_counter
+  abstraction: rtl
+  source: demo_manual_count
+
+counts:
+  logic:
+    gates: 120
+  sequential:
+    flip_flops: 16
+    latches: 0
+  memory:
+    ram_bits: 0
+    rom_bits: 0
+  black_boxes:
+    count: 0
 ```
 
-The C shell version can be:
+Example `fit_inputs.yaml`:
 
-```csh
-#!/bin/csh -f
-set DEMO_HOME = `pwd`
-python3 ../../tools/safeic_bfr.py --manifest $DEMO_HOME/manifest.yaml
+```yaml
+fit_model:
+  name: simplified_demo_model
+  version: 0.1
+
+rates:
+  permanent:
+    logic_gate_fit: 2.0e-4
+    flip_flop_fit: 3.0e-3
+    latch_fit: 3.0e-3
+    ram_bit_fit: 1.0e-6
+    rom_bit_fit: 5.0e-7
+    package_fit: 1.0e-2
+
+  transient:
+    logic_gate_fit: 1.0e-6
+    flip_flop_fit: 1.0e-3
+    latch_fit: 1.0e-3
+    ram_bit_fit: 1.0e-6
+    rom_bit_fit: 1.0e-6
 ```
 
-This keeps the demo compatible with older EDA-style shell environments while still allowing a normal shell script version.
+Example `mission_profile.yaml`:
+
+```yaml
+mission_profile:
+  name: demo_automotive_profile
+  description: Simplified profile for educational BFR calculation.
+  operating_ratio: 0.65
+  dormant_ratio: 0.35
+  temperature_points:
+    - temp_c: 40
+      ratio: 0.50
+    - temp_c: 85
+      ratio: 0.40
+    - temp_c: 125
+      ratio: 0.10
+```
+
+For D03, the mission profile can be reported but not deeply modeled. Later model complexity can be added without changing the output philosophy.
 
 ---
 
-## 16. Example input: design statistics
+## 17. D03 Execution Flow
 
-Example `inputs/design_stats.json`:
+```mermaid
+flowchart TD
+    A[Load Manifest] --> B[Load Design Statistics]
+    B --> C[Load FIT Inputs]
+    C --> D[Load Mission Profile]
+    D --> E[Validate Inputs]
+    E --> F[Compute Permanent FIT]
+    E --> G[Compute Transient FIT]
+    F --> H[Compute Total BFR]
+    G --> H
+    H --> I[Generate Reports]
+```
+
+**Figure 12. D03 execution flow: load, validate, calculate, and report.**
+
+Example bash script:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+safeic-bfr \
+  --manifest manifest.yaml \
+  --output-dir outputs
+```
+
+Example csh script:
+
+```csh
+#!/bin/csh -f
+
+set DEMO = D03_base_fit_rate
+echo "Running $DEMO"
+
+safeic-bfr \
+  --manifest manifest.yaml \
+  --output-dir outputs
+```
+
+Expected outputs:
+
+```text
+outputs/base_fit_report.csv
+outputs/base_fit_summary.md
+outputs/base_fit_breakdown.json
+outputs/bfr_assumption_report.md
+```
+
+---
+
+## 18. Example Output
+
+Example `base_fit_report.csv`:
+
+```csv
+scope,type,count,permanent_fit,transient_fit,total_fit
+toy_counter,logic_gate,120,0.024000,0.000120,0.024120
+toy_counter,flip_flop,16,0.048000,0.016000,0.064000
+toy_counter,latch,0,0.000000,0.000000,0.000000
+toy_counter,ram_bit,0,0.000000,0.000000,0.000000
+toy_counter,rom_bit,0,0.000000,0.000000,0.000000
+package,package,1,0.010000,0.000000,0.010000
+TOTAL,all,,0.082000,0.016120,0.098120
+```
+
+Example `base_fit_summary.md`:
+
+```md
+# Base FIT Summary
+
+Project: automotive_safeic_practice
+Demo: D03_base_fit_rate
+Top: toy_counter
+
+Total Base FIT: 0.098120 FIT
+
+Breakdown:
+- Permanent FIT: 0.082000
+- Transient FIT: 0.016120
+- Logic FIT: 0.024120
+- Flip-flop FIT: 0.064000
+- Package FIT: 0.010000
+
+Top Contributor:
+- flip_flop: 65.23% of total BFR
+
+Assumptions:
+- Simplified demo model
+- Mission profile: demo_automotive_profile
+- No memory bits
+- No black-box FIT override
+```
+
+Example `base_fit_breakdown.json`:
 
 ```json
 {
-  "design": "toy_counter_top",
-  "stage": "rtl_estimate",
-  "units": {
-    "fit": "failure_per_1e9_hours"
-  },
-  "objects": [
+  "project": "automotive_safeic_practice",
+  "demo": "D03_base_fit_rate",
+  "top": "toy_counter",
+  "total_fit": 0.09812,
+  "permanent_fit": 0.082,
+  "transient_fit": 0.01612,
+  "contributors": [
     {
-      "name": "counter_datapath",
-      "lib_type": "STD_CELL",
-      "gate_count": 120,
-      "ff_count": 16,
-      "estimated_transistors": 760
+      "type": "logic_gate",
+      "count": 120,
+      "total_fit": 0.02412
     },
     {
-      "name": "checker_logic",
-      "lib_type": "STD_CELL",
-      "gate_count": 48,
-      "ff_count": 4,
-      "estimated_transistors": 280
+      "type": "flip_flop",
+      "count": 16,
+      "total_fit": 0.064
     },
     {
-      "name": "memory_none",
-      "lib_type": "SRAM",
-      "memory_bits": 0
+      "type": "package",
+      "count": 1,
+      "total_fit": 0.01
     }
   ]
 }
 ```
 
-This format intentionally separates design objects by logical role.
-
-Later demos can refine this into endpoint-level and cone-level contributions.
-
-For D03, block-level contribution is enough.
+The report is intentionally transparent. Every number should be explainable.
 
 ---
 
-## 17. Example input: FIT assumptions
+## 19. Input Validation Rules
 
-Example `inputs/fit_inputs.yaml`:
+`safeic-bfr` should be strict about assumptions.
 
-```yaml
-fit_standard: custom_linear
-mission_profile: demo_passenger_compartment
-temperature_ja: 65
-manufacturing_year: 2026
-default_process: MOS.ASIC.STDCELL
+Validation rules:
 
-environment:
-  permanent_factor: 1.0
-  transient_factor: 1.0
-
-lambda:
-  std_cell_per_transistor_perm: 3.0e-6
-  sram_per_bit_perm: 1.7e-7
-  logicgate_transient: 1.0e-6
-  ff_transient: 1.0e-3
-  memory_bit_transient: 1.0e-6
-
-package:
-  enabled: true
-  package_fit: 0.00058
+```text
+design_stats.yaml must exist
+fit_inputs.yaml must exist
+mission_profile.yaml must exist
+all counts must be non-negative integers
+all FIT rates must be non-negative numbers
+operating_ratio + dormant_ratio should be close to 1.0
+temperature point ratios should sum to 1.0 if used
+package FIT must be explicitly provided or explicitly disabled
+black-box FIT must not be silently ignored
+units must be recorded
 ```
 
-The values above are demonstration parameters.
+Example warnings:
 
-A production flow should replace them with project-approved reliability inputs.
+```text
+[WARN] mission_profile.temperature_points ratio sum is 0.98, expected 1.0
+[WARN] package_fit is not provided; using 0.0 only because package_model is disabled
+[WARN] black_boxes.count > 0 but optional_blackbox_fit.csv is missing
+[ERROR] flip_flops count is negative
+[ERROR] transient.flip_flop_fit is missing
+```
 
-The important point is that the values are explicit and version controlled.
+A BFR tool should not silently invent important reliability assumptions.
 
 ---
 
-## 18. Example output: base FIT report
+## 20. Common Mistakes in BFR Modeling
 
-Example `outputs/base_fit_report.csv`:
+### 20.1 Treating BFR as a Final Safety Metric
 
-```csv
-object,lib_type,permanent_fit,transient_fit,package_fit,total_fit,percentage
-counter_datapath,STD_CELL,0.002280,0.016120,0.000000,0.018400,74.80
-checker_logic,STD_CELL,0.000840,0.004048,0.000000,0.004888,19.87
-package,PACKAGE,0.000000,0.000000,0.000580,0.000580,2.36
-memory_none,SRAM,0.000000,0.000000,0.000000,0.000000,0.00
+BFR is a baseline, not the final residual risk.
+
+A design with high BFR may still meet safety goals if safety mechanisms provide strong coverage and validation supports the claim.
+
+A design with low BFR may still be unsafe if a small number of faults directly violate safety goals and remain undetected.
+
+### 20.2 Hiding Assumptions
+
+A BFR report without assumptions is not reviewable.
+
+Always report:
+
+```text
+model used
+mission profile
+design statistics source
+default values
+user-provided values
+excluded blocks
+black-box handling
 ```
 
-Example `outputs/base_fit_summary.md`:
+### 20.3 Mixing Permanent and Transient Faults
 
-```md
-# Base FIT Summary
+Permanent and transient faults may require different safety mechanisms and different validation strategies.
 
-Design: toy_counter_top
-Stage: rtl_estimate
-Model: custom_linear
+They should be reported separately.
 
-## Result
+### 20.4 Ignoring Memory Bits
 
-- Permanent FIT: 0.003120
-- Transient FIT: 0.020168
-- Package FIT: 0.000580
-- Total BFR: 0.023868
+Memory may dominate transient FIT in many designs.
 
-## Top contributor
+Even in a toy demo with zero memory bits, the input schema should explicitly contain memory fields. This prevents the flow from being memory-blind.
 
-counter_datapath contributes 74.80% of total BFR.
+### 20.5 Ignoring Black Boxes
 
-## Engineering interpretation
+Third-party IP, analog blocks, and black boxes may not be analyzable structurally.
 
-The counter datapath should be reviewed first when selecting candidate safety mechanisms.
-```
+They still need FIT assumptions.
 
-The summary file is intentionally written in human language.
+Do not silently drop them.
 
-A safety metric report should support review, not only automation.
+### 20.6 Reporting Only Chip-Level Total
+
+A single total number is not enough.
+
+Useful BFR reporting must show contribution breakdown.
 
 ---
 
-## 19. What the result means
+## 21. Methodology: BFR as a Review Artifact
 
-Suppose the demo reports:
+BFR should be treated as a review artifact, not just a tool output.
 
-```text
-Total BFR = 0.023868 FIT
-```
-
-This does not mean the design is safe.
-
-It means:
+Review questions:
 
 ```text
-Under the demo assumptions,
-the raw baseline failure exposure is estimated as 0.023868 failures per 1e9 device-hours.
+Where did the design statistics come from?
+Which abstraction level was used?
+Which FIT model was selected?
+Which mission profile was used?
+Which assumptions are defaulted?
+Which assumptions are user-supplied?
+Are memory bits included?
+Are package contributions included?
+Are black boxes included?
+Which contributors dominate?
+Can the result feed FMEDA and DC analysis?
 ```
 
-The next question is not simply whether this number is large or small.
-
-The next question is:
+The output should support both machine consumption and human review:
 
 ```text
-Which part of this exposure can violate safety goals,
-and which safety mechanisms can detect or control those failures?
+CSV for tools
+JSON for later flow integration
+Markdown for engineers
+Report warnings for review
 ```
 
-That is why BFR should feed later analysis steps.
-
-```text
-BFR result
-→ contribution ranking
-→ safety mechanism planning
-→ diagnostic coverage estimation
-→ fault campaign evidence
-```
+This is the design principle behind D03.
 
 ---
 
-## 20. BFR and diagnostic coverage are connected but different
+## 22. How D03 Connects to the Closed Loop
 
-BFR is the denominator-side thinking.
+D03 is not an isolated demo.
 
-Diagnostic coverage is the protection-side thinking.
-
-A simplified relationship is:
-
-```text
-residual exposure ≈ base exposure × (1 - diagnostic coverage)
-```
-
-This is not a full safety metric formula, but it captures the intuition.
-
-If a design region has high base exposure but no safety mechanism, it may dominate residual risk.
-
-If a region has high exposure and strong coverage, residual exposure may be much smaller.
-
-If a region has low exposure, adding expensive protection may not be the first priority unless its functional criticality is very high.
-
-This leads to a practical methodology:
-
-```text
-Do not select safety mechanisms only by intuition.
-Use BFR contribution to guide where coverage matters most.
-```
-
----
-
-## 21. BFR and fault campaign are connected but different
-
-A fault campaign injects specific faults and observes behavior.
-
-BFR estimates random hardware failure exposure.
-
-The two should be connected, but they should not be confused.
-
-| Item | BFR | Fault campaign |
-|---|---|---|
-| Main question | How much raw failure exposure exists? | What happens when faults are injected? |
-| Main input | design stats and reliability assumptions | design, VCD context, fault list, alarm list |
-| Main output | FIT breakdown | fault classification report |
-| Typical timing | early and repeated | after usable stimulus and fault list exist |
-| Main use | planning and weighting | validation evidence |
-
-A mature flow should use both.
-
-BFR provides failure-rate weighting.
-
-Fault campaign provides behavior evidence.
-
-Final safety metrics need both structural/reliability reasoning and simulation-based validation.
-
----
-
-## 22. BFR quality checklist
-
-A BFR result is only useful if the following questions can be answered.
-
-```text
-Which design version produced the design statistics?
-Which abstraction stage was used?
-Which reliability model was used?
-Which mission profile was assumed?
-Which temperature assumptions were used?
-Which technology or process categories were mapped?
-Which package contribution was included?
-How much came from permanent exposure?
-How much came from transient exposure?
-Which block contributed most?
-```
-
-The demo report should make these answers visible.
-
-If a BFR report cannot answer them, it is difficult to use as engineering evidence.
-
----
-
-## 23. Common BFR mistakes
-
-### Mistake 1: treating BFR as a final safety result
-
-Bad pattern:
-
-```text
-The BFR number is low, so the design is safe.
-```
-
-Better pattern:
-
-```text
-BFR defines raw exposure. Safety still depends on safety relevance, coverage, and validation evidence.
-```
-
-### Mistake 2: ignoring transient contribution
-
-Bad pattern:
-
-```text
-Only permanent FIT is reported.
-```
-
-Better pattern:
-
-```text
-Permanent and transient contributions are reported separately.
-```
-
-### Mistake 3: hiding model assumptions
-
-Bad pattern:
-
-```text
-FIT result appears in a report, but lambda, temperature, process, and mission profile are unknown.
-```
-
-Better pattern:
-
-```text
-The report links back to fit_inputs.yaml and design_stats.json.
-```
-
-### Mistake 4: no contribution breakdown
-
-Bad pattern:
-
-```text
-Only total FIT is reported.
-```
-
-Better pattern:
-
-```text
-Block-level and later endpoint-level contribution reports guide safety mechanism selection.
-```
-
-### Mistake 5: mixing abstraction stages without labels
-
-Bad pattern:
-
-```text
-Architecture estimate and gate-level result are compared without stage information.
-```
-
-Better pattern:
-
-```text
-Every result records architecture, RTL, or netlist stage explicitly.
-```
-
----
-
-## 24. How D03 supports later demos
-
-`D03_base_fit_rate` produces the baseline metric data that later demos can consume.
+It provides the quantitative baseline for later steps.
 
 ```mermaid
 flowchart LR
-    A[D03 Base FIT Rate] --> B[D06 SP/EP/Cone Extraction]
-    A --> C[D07 Endpoint FIT Contribution]
-    A --> D[D08 Diagnostic Coverage Engine]
-    A --> E[D09 Safety Mechanism Selection]
-    A --> F[D13 DCE Roll-up]
-    A --> G[D24 Benchmark Comparison]
+    A[D03 Base FIT Rate] --> B[Endpoint Contribution]
+    A --> C[Safety Mechanism Selection]
+    A --> D[Diagnostic Coverage Calculation]
+    A --> E[FMEDA Failure Rate Column]
+    A --> F[Residual FIT Review]
 ```
 
-The most important downstream connection is D07.
+**Figure 13. D03 BFR outputs become inputs to contribution analysis, DC, FMEDA, and residual FIT review.**
 
-D03 provides block-level BFR.
-
-D07 refines the idea into endpoint-level contribution.
-
-That transition is important:
+The most important output is not only the number:
 
 ```text
-block-level BFR tells us where to look.
-endpoint-level contribution tells us what to protect.
+0.098120 FIT
+```
+
+The most important output is the structured evidence:
+
+```text
+what contributed to that number
+what assumptions generated that number
+what artifacts can be reused later
 ```
 
 ---
 
-## 25. Demo deliverables
+## 23. Recommended Demo Implementation Strategy
 
-`D03_base_fit_rate` should produce:
+D03 should be implemented in three stages.
 
-```text
-outputs/base_fit_report.csv
-outputs/base_fit_result.json
-outputs/base_fit_summary.md
-outputs/contribution_rank.csv
-```
+### Stage 1: Manual Statistics
 
-The expected clean result is:
+Use hand-written `design_stats.yaml`.
 
-```text
-status: PASS
-model: custom_linear or simplified_iec62380
-permanent_fit: reported
-transient_fit: reported
-total_bfr: reported
-top_contributor: reported
-```
+This keeps the first implementation simple and focused on methodology.
 
-The expected learning outcome is:
+### Stage 2: Generated Statistics
+
+Use a lightweight parser or synthesis tool to generate design statistics.
+
+Possible output:
 
 ```text
-Base FIT Rate is the starting point of Safe-IC metric reasoning.
-It defines raw random hardware failure exposure before safety mechanism coverage is applied.
+design_stats.generated.yaml
 ```
+
+### Stage 3: Instance-Level FIT
+
+Generate instance-level contribution:
+
+```text
+instance_fit.csv
+```
+
+This prepares for endpoint contribution and fault list prioritization.
+
+The staged approach avoids overbuilding too early.
+
+```mermaid
+flowchart TD
+    A[Stage 1 Manual Counts] --> B[Stage 2 Generated Counts]
+    B --> C[Stage 3 Instance-Level FIT]
+    C --> D[Endpoint Contribution Ready]
+```
+
+**Figure 14. D03 should start simple and evolve toward instance-level contribution analysis.**
 
 ---
 
-## 26. Methodology summary
+## 24. Summary
 
-The core methodology of this article is:
+Base FIT Rate is the first quantitative anchor in chip-level functional safety analysis.
 
-```text
-Start with exposure before claiming protection.
-```
-
-A functional safety analysis should not begin by asking only:
+It answers:
 
 ```text
-Can my checker detect injected faults?
+How much random hardware failure exposure exists before protection is considered?
 ```
 
-It should first ask:
+A useful BFR workflow must include:
 
 ```text
-What is the raw failure-rate exposure of the design?
-Which objects dominate that exposure?
-Which assumptions produced that estimate?
+design statistics
+reliability assumptions
+mission profile
+permanent FIT
+transient FIT
+design-type breakdown
+module or instance contribution
+assumption reporting
+reviewable artifacts
 ```
 
-`D03_base_fit_rate` turns those questions into a reproducible demo.
+The D03 demo:
 
-The BFR output is not the end of the safety story.
+```text
+D03_base_fit_rate
+```
 
-It is the baseline that makes the rest of the story measurable.
+introduces a generic tool:
 
+```text
+safeic-bfr
+```
+
+The tool converts:
+
+```text
+design_stats.yaml
+fit_inputs.yaml
+mission_profile.yaml
+```
+
+into:
+
+```text
+base_fit_report.csv
+base_fit_summary.md
+base_fit_breakdown.json
+bfr_assumption_report.md
+```
+
+The central lesson is:
+
+> Diagnostic coverage and safety mechanism effectiveness cannot be interpreted correctly without a quantified FIT baseline.
+
+BFR does not prove safety. It defines the baseline risk that later analysis and fault injection must reduce, validate, and report.
+
+---
+
+## 25. D03 Demo Checklist
+
+For `D03_base_fit_rate`, the expected deliverables are:
+
+```text
+[ ] README.md
+[ ] run_demo.sh
+[ ] run_demo.csh
+[ ] manifest.yaml
+
+[ ] inputs/design_stats.yaml
+[ ] inputs/fit_inputs.yaml
+[ ] inputs/mission_profile.yaml
+[ ] inputs/optional_blackbox_fit.csv
+
+[ ] outputs/base_fit_report.csv
+[ ] outputs/base_fit_summary.md
+[ ] outputs/base_fit_breakdown.json
+[ ] outputs/bfr_assumption_report.md
+
+[ ] schemas/design_stats_schema.yaml
+[ ] schemas/fit_inputs_schema.yaml
+[ ] schemas/mission_profile_schema.yaml
+```
+
+A successful D03 run should answer:
+
+```text
+What is the total Base FIT Rate?
+How much is permanent FIT?
+How much is transient FIT?
+Which design type contributes most?
+Which assumptions were used?
+Which assumptions were defaulted?
+Are memory and package contributions included?
+Are black boxes handled?
+Can the result feed later DC, FMEDA, and fault-list steps?
+```
