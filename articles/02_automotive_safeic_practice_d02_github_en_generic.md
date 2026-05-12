@@ -1,1502 +1,1053 @@
-# [Automotive Safe-IC Practice 02] What Input Package Does a Functional Safety Verification Project Need?
+# [Automotive Safe-IC Practice 02] Base FIT Rate: Establishing the Random Hardware Failure Baseline
 
 **Author**: Darren H. Chen  
 **Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D02_input_package  
-**Tags**: Automotive Chip, Functional Safety, Input Package, FIT, Diagnostic Coverage, FMEDA, Fault List, Alarm List, Observe Point, VCD, Fault Campaign
+**Demo**: D02_base_fit_rate  
+**Tags**: Automotive Chip, Functional Safety, ISO 26262, Random Hardware Failure, FIT, Base FIT Rate, IEC 62380, SN 29500, Diagnostic Coverage, FMEDA, Safety Analysis Flow
 
 ---
 
-## 1. Why the Input Package Matters
+## 1. Problem Context
 
-In functional safety analysis and fault injection, tool execution is only the visible part of the workflow.
+The first article built a reproducible analysis input package.
 
-The real foundation is the input package.
-
-A safety verification run cannot be trusted if the input package is incomplete, inconsistent, or ambiguous.
-
-Before discussing FIT calculation, diagnostic coverage, fault list generation, VCD-based safety context, or fault campaign classification, we must answer a more basic question:
-
-> What information must be available before a chip-level functional safety verification flow can produce meaningful evidence?
-
-The second demo in this repository is:
+D01 focused on:
 
 ```text
-D02_input_package
+RTL
+filelist
+clock definition
+FIT setup
+analysis configuration
+manifest
+preflight check
+expected output index
+optional analysis command
 ```
 
-Its purpose is to define and validate a minimal but extensible input package for automotive chip functional safety analysis and fault injection practice.
-
-This article focuses on the underlying principles:
+That input package answers:
 
 ```text
-design context
-reliability context
-structural context
-safety mechanism context
-fault campaign context
-FMEDA context
-reporting context
+What design is being analyzed?
+Which files are used?
+Which clock model is used?
+Which FIT setup is used?
+Which FIT standard is selected?
+How can the run be reproduced?
 ```
 
-The generic tool introduced in this article is:
+The second demo moves one step forward:
 
 ```text
-safeic-inputcheck
+D02_base_fit_rate
 ```
 
-The goal of `safeic-inputcheck` is not to run the safety analysis itself. Its goal is to verify that the project contains enough consistent information for later safety analysis and fault campaign steps.
+The goal of D02 is to establish the **Base FIT Rate** of the design.
+
+Base FIT Rate is the random hardware failure baseline before diagnostic coverage and safety mechanisms are credited.
+
+In a safety workflow, this is a foundational result.
+
+Before asking:
+
+```text
+How much failure risk can the safety mechanism detect?
+```
+
+we must first ask:
+
+```text
+How much random hardware failure exposure exists before protection?
+```
+
+This article explains the technical meaning of Base FIT Rate, why it is required before diagnostic coverage, how a safety analysis engine consumes the D01 input package, and how the generated reports should be interpreted.
+
+The public article and demo still use neutral names:
+
+```text
+analysis_engine
+common_safety_database
+DCE
+coverage_report
+base_fit_report
+```
+
+The actual tool executable is configured through environment variables and local setup scripts.
 
 ---
 
-## 2. The Core Idea: Safety Evidence Is Only as Good as Its Inputs
+## 2. Why Base FIT Rate Comes Before Diagnostic Coverage
 
-A functional safety workflow transforms inputs into evidence.
-
-```mermaid
-flowchart LR
-    A[Input Package] --> B[Analysis and Validation Flow]
-    B --> C[Safety Evidence]
-    C --> D[Engineering Review]
-```
-
-**Figure 1. A functional safety workflow transforms an input package into reviewable safety evidence.**
-
-If the input package is weak, the evidence is weak.
+It is tempting to start functional safety analysis from diagnostic coverage.
 
 For example:
 
-| Missing Input | Likely Consequence |
-|---|---|
-| Missing clock definition | Fault injection timing cannot be interpreted reliably |
-| Missing alarm list | Detected vs unsafe classification becomes ambiguous |
-| Missing observe points | Safe vs unsafe classification becomes incomplete |
-| Missing VCD signals | Fault propagation may become unresolved |
-| Missing safety mechanism map | DC estimation becomes unsupported |
-| Missing failure mode mapping | FMEDA reporting becomes disconnected from hardware |
-| Missing FIT assumptions | Base failure rate becomes meaningless |
-| Missing filelist or top module | The design cannot be analyzed consistently |
-
-A safety tool can sometimes run with incomplete inputs, but a successful run does not automatically mean the result is meaningful.
-
-The first engineering rule is:
-
-> Validate the input package before trusting any safety metric.
-
----
-
-## 3. What Makes Functional Safety Inputs Different from Normal Verification Inputs?
-
-A normal RTL simulation may require:
-
 ```text
-RTL files
-testbench
-clock/reset handling
-simulation command
-waveform dump
+diagnostic coverage = 90%
 ```
 
-A functional safety workflow requires more.
+But this number is incomplete by itself.
 
-It must connect:
-
-```text
-hardware structure
-random hardware failure model
-safety mechanisms
-fault injection scope
-diagnostic signals
-FMEDA semantics
-metric reporting
-```
-
-A typical safety input package therefore contains:
-
-```text
-design files
-design hierarchy
-clock definitions
-reset assumptions
-simulation activity
-FIT input assumptions
-safety mechanism definitions
-diagnostic coverage definitions
-endpoint-to-safety-mechanism mapping
-fault list
-alarm list
-observe point list
-failure mode library
-part/sub-part model
-database or session metadata
-report configuration
-```
-
-This is why D02 is important. It turns a loose collection of files into a controlled engineering package.
-
----
-
-## 4. Input Package as a Contract
-
-The input package should be treated as a contract between engineers and tools.
-
-```mermaid
-flowchart TD
-    A[Design Engineer] --> P[Input Package]
-    B[Verification Engineer] --> P
-    C[Safety Engineer] --> P
-    D[Tool Flow] --> P
-    P --> E[Repeatable Safety Run]
-    E --> F[Reviewable Evidence]
-```
-
-**Figure 2. The input package is a contract between design, verification, safety, and tool execution.**
-
-Each role contributes different information:
-
-| Role | Typical Contribution |
-|---|---|
-| Design engineer | RTL, hierarchy, implementation assumptions, safety mechanism signals |
-| Verification engineer | Testbench, stimulus, VCD, reset/clock behavior, scenario definition |
-| Safety engineer | Failure modes, safety goals, FMEDA hierarchy, diagnostic assumptions |
-| Tool flow engineer | Filelist, run scripts, data schemas, report configuration |
-| Review owner | Checklist, traceability, versioning, approval status |
-
-A good input package should be:
-
-```text
-complete
-consistent
-versioned
-inspectable
-machine-readable
-human-readable
-portable
-repeatable
-```
-
----
-
-## 5. The Seven Input Domains
-
-For D02, the input package is divided into seven domains.
-
-```mermaid
-flowchart TD
-    A[Functional Safety Input Package]
-    A --> B[Design Context]
-    A --> C[Reliability / FIT Context]
-    A --> D[Structural Safety Context]
-    A --> E[Safety Mechanism Context]
-    A --> F[Fault Campaign Context]
-    A --> G[FMEDA Context]
-    A --> H[Reporting / Session Context]
-```
-
-**Figure 3. A functional safety input package should separate input domains instead of mixing everything into one script.**
-
-The separation is important because each domain answers a different question.
-
-| Domain | Core Question |
-|---|---|
-| Design context | What design is being analyzed? |
-| Reliability / FIT context | What random failure assumptions are used? |
-| Structural safety context | Which nodes, endpoints, cones, and hierarchy matter? |
-| Safety mechanism context | What detects, corrects, masks, or controls faults? |
-| Fault campaign context | Which faults are injected and how are outcomes observed? |
-| FMEDA context | How does hardware evidence map to failure modes and metrics? |
-| Reporting / session context | How is evidence stored, reviewed, and reproduced? |
-
-This article defines each domain and shows how the demo checks them.
-
----
-
-## 6. Domain 1: Design Context
-
-The design context defines what hardware is being analyzed.
-
-Minimum files:
-
-```text
-inputs/rtl/
-inputs/filelist.f
-inputs/top.yaml
-inputs/clkdef.clk
-```
-
-A minimal filelist:
-
-```text
-inputs/rtl/toy_counter.v
-inputs/rtl/toy_counter_tb.v
-```
-
-A minimal top configuration:
-
-```yaml
-design:
-  name: toy_counter_project
-  top_module: toy_counter
-  language:
-    - systemverilog
-  abstraction:
-    - rtl
-```
-
-A minimal clock definition:
-
-```text
-clock clk period=10ns
-reset rst_n active_low
-```
-
-The input checker should verify:
-
-```text
-Does the filelist exist?
-Do all listed RTL files exist?
-Is the top module declared?
-Are clock and reset signals known?
-Is the design abstraction declared?
-Are generated files separated from source files?
-```
-
-A design context is not complete just because RTL files exist. It must also define the entry point and timing assumptions.
-
----
-
-## 7. Why Clock and Reset Matter
-
-Fault injection is time-dependent.
-
-A fault injected before reset release may be overwritten. A fault injected during idle mode may not propagate. A fault injected during active operation may cause a safety-relevant deviation.
-
-Therefore, the input package must define:
-
-```text
-clock signals
-reset signals
-reset polarity
-reset release window
-simulation time unit
-active test window
-fault injection window
-```
-
-A simplified timing model:
-
-```mermaid
-sequenceDiagram
-    participant R as Reset
-    participant C as Clock
-    participant G as Golden Simulation
-    participant F as Fault Injection
-    participant A as Alarm / Observe Points
-
-    R->>G: Reset asserted
-    R->>G: Reset released
-    C->>G: Normal active cycles
-    F->>G: Fault injection window
-    G->>A: Compare golden vs faulted behavior
-```
-
-**Figure 4. Fault injection must be aligned with clock, reset, and active operation windows.**
-
-Example configuration:
-
-```yaml
-timing:
-  timescale: 1ns
-  clock:
-    name: clk
-    period: 10
-    unit: ns
-  reset:
-    name: rst_n
-    active: low
-    release_time: 20
-  active_window:
-    start: 30
-    end: 200
-```
-
-The input checker should warn if fault injection windows overlap reset unless this is intentional.
-
----
-
-## 8. Domain 2: Reliability and FIT Context
-
-Reliability context defines the assumptions used to estimate random hardware failure rate.
-
-Minimum files:
-
-```text
-inputs/fit_inputs.yaml
-inputs/design_stats.yaml
-```
-
-A simplified FIT input file:
-
-```yaml
-fit_model:
-  standard: simplified
-  mission_profile: demo_profile
-  temperature_profile: demo_temperature
-  package_model: demo_package
-
-design_statistics:
-  logic_gates: 120
-  flip_flops: 16
-  memory_bits: 0
-
-transient_fit:
-  logic_gate_fit: 1.0e-6
-  ff_fit: 1.0e-3
-  memory_bit_fit: 1.0e-6
-
-permanent_fit:
-  logic_base_fit: 0.02
-  ff_base_fit: 0.05
-  package_fit: 0.01
-```
-
-For a real industrial flow, FIT inputs may be much richer:
-
-```text
-technology-dependent lambda values
-mission profile
-temperature profile
-package information
-memory definition
-transistor count
-library-to-design-type mapping
-memory-to-design-type mapping
-process assumptions
-```
-
-D02 does not need to implement the complete FIT calculation. It validates that the required information is present and internally consistent.
-
-The input checker should verify:
-
-```text
-Is a FIT model selected?
-Are mission profile assumptions available?
-Are design statistics present?
-Are memory bits defined if memory faults are enabled?
-Are transient and permanent assumptions separated?
-Are units explicit?
-Are values numeric and non-negative?
-```
-
-The key principle is:
-
-> FIT calculation is not a magic number generator. It is a structured transformation from design statistics and reliability assumptions into a failure-rate baseline.
-
----
-
-## 9. Domain 3: Structural Safety Context
-
-Structural safety context describes how faults may propagate through the design.
-
-In early demos, structure can be generated automatically later. But the input package still needs a place for structural artifacts.
-
-Suggested files:
-
-```text
-intermediate/structure_graph.json
-intermediate/sp.csv
-intermediate/ep.csv
-intermediate/cone.csv
-```
-
-For D02, these may not exist yet. The input checker can distinguish between:
-
-```text
-required now
-generated later
-optional
-```
-
-Example manifest:
-
-```yaml
-artifacts:
-  structure_graph:
-    path: intermediate/structure_graph.json
-    role: generated_later
-  endpoints:
-    path: intermediate/ep.csv
-    role: generated_later
-  startpoints:
-    path: intermediate/sp.csv
-    role: generated_later
-```
-
-A structural model contains:
-
-```text
-startpoints
-endpoints
-cones
-hierarchy
-instance names
-signal names
-node types
-fan-in / fan-out information
-```
-
-The structural model is needed for:
-
-```text
-endpoint FIT contribution
-diagnostic coverage calculation
-safety mechanism mapping
-fault list generation
-fault result grouping
-```
-
-The input package should not treat structure as a temporary internal result. It should treat structure as an inspectable artifact.
-
----
-
-## 10. Domain 4: Safety Mechanism Context
-
-Safety mechanism context defines what protection exists or is assumed.
-
-Minimum files:
-
-```text
-inputs/safety_mechanisms.yaml
-inputs/ep_to_sm_map.csv
-```
-
-A simple safety mechanism library:
-
-```yaml
-mechanisms:
-  endpoint_parity:
-    type: endpoint
-    description: Detects parity mismatch on protected endpoint state.
-    suitable_for:
-      - register_group
-      - scalar_ff
-    coverage_scope:
-      ep: 0.90
-      cone: 0.00
-      path: 0.00
-    alarm_required: true
-    corrects: false
-
-  memory_ecc:
-    type: memory
-    description: Detects and corrects selected memory bit errors.
-    suitable_for:
-      - memory
-      - register_file
-    coverage_scope:
-      memory: 0.99
-    alarm_required: true
-    corrects: true
-
-  end_to_end_crc:
-    type: path
-    description: Detects transaction-level data corruption.
-    suitable_for:
-      - bus
-      - interface
-      - datapath
-    coverage_scope:
-      path: 0.95
-    alarm_required: true
-    corrects: false
-```
-
-A simple endpoint-to-safety-mechanism map:
-
-```csv
-endpoint,safety_mechanism,alarm,coverage_assumption,comment
-toy_counter.count[7:0],endpoint_parity,toy_counter.alarm,0.90,parity protects counter state
-toy_counter.count_parity,none,,0.00,parity bit itself is not protected
-toy_counter.alarm,none,,0.00,alarm path protection not modeled in D02
-```
-
-The input checker should verify:
-
-```text
-Are all referenced safety mechanisms defined?
-Are coverage values between 0 and 1?
-Are alarms defined when the mechanism requires alarm reporting?
-Are mapped endpoints syntactically valid?
-Are comments or assumptions present?
-Are unsupported mechanisms flagged?
-```
-
-The key idea is:
-
-> A safety mechanism should not be represented only by its name. It should have scope, assumptions, alarm behavior, and traceability.
-
----
-
-## 11. Domain 5: Fault Campaign Context
-
-Fault campaign context defines what to inject and how to observe the result.
-
-Minimum files:
-
-```text
-inputs/fault.list
-inputs/alarm.list
-inputs/observe_points.list
-inputs/sim.vcd
-inputs/campaign.yaml
-```
-
-A minimal fault list:
-
-```text
-toy_counter.count[0] stuck_at_0
-toy_counter.count[0] stuck_at_1
-toy_counter.count_parity stuck_at_0
-toy_counter.alarm stuck_at_0
-```
-
-A minimal alarm list:
-
-```text
-toy_counter.alarm
-```
-
-A minimal observe point list:
-
-```text
-toy_counter.count
-toy_counter.count_parity
-toy_counter.alarm
-```
-
-A minimal campaign configuration:
-
-```yaml
-campaign:
-  name: d02_input_package_campaign
-  golden_context: inputs/sim.vcd
-  fault_list: inputs/fault.list
-  alarm_list: inputs/alarm.list
-  observe_points: inputs/observe_points.list
-  injection_window:
-    start: 30
-    end: 200
-  classification:
-    outcomes:
-      - detected
-      - safe
-      - unsafe
-      - unresolved
-```
-
-The input checker should verify:
-
-```text
-Does fault.list exist and contain valid entries?
-Does alarm.list exist?
-Do alarm signals appear in VCD or design hierarchy?
-Do observe points appear in VCD or design hierarchy?
-Does sim.vcd exist?
-Does the VCD cover the active window?
-Are fault injection windows inside simulation time?
-Are fault nodes mapped to known design objects or allowed as unresolved placeholders?
-```
-
-This is where many practical errors happen.
-
----
-
-## 12. Why Alarm List and Observe Points Are Separate
-
-An alarm is not the same thing as an observe point.
-
-| Item | Meaning |
-|---|---|
-| Alarm | A diagnostic indication from a safety mechanism |
-| Observe point | A signal used to check whether behavior changed |
-| Golden value | Expected value from non-fault simulation |
-| Faulted value | Value after fault injection |
-| Outcome | Classification derived from comparison and alarm behavior |
-
-A fault can change an observe point without triggering an alarm. That may be unsafe.
-
-A fault can trigger an alarm while also changing observe points. That may be detected.
-
-A fault may not change any relevant observe point. That may be safe.
-
-A fault may lack enough data to determine what happened. That may be unresolved.
-
-```mermaid
-flowchart TD
-    A[Faulted Run] --> B[Compare Observe Points]
-    A --> C[Check Alarm List]
-    B --> D{Deviation?}
-    C --> E{Alarm?}
-    D -- No --> F[Safe]
-    D -- Yes --> E
-    E -- Yes --> G[Detected]
-    E -- No --> H[Unsafe or Unresolved]
-```
-
-**Figure 5. Alarm list and observe points serve different purposes in fault outcome classification.**
-
-The input package must keep them separate.
-
----
-
-## 13. VCD as Safety Context
-
-The VCD file should not be treated only as a waveform dump.
-
-In a fault campaign, it becomes the golden safety context.
-
-It tells the flow:
-
-```text
-what the non-fault behavior was
-which signals were active
-when reset was released
-which time windows are meaningful
-which alarms were originally inactive or active
-which observe points can be compared
-```
-
-A good VCD safety context extractor can generate:
-
-```text
-vcd_context.json
-signal_activity.csv
-state_window.json
-missing_signal_report.csv
-```
-
-A simplified VCD context:
-
-```json
-{
-  "timescale": "1ns",
-  "start_time": 0,
-  "end_time": 250,
-  "clock": "clk",
-  "reset": "rst_n",
-  "active_window": {
-    "start": 30,
-    "end": 200
-  },
-  "signals": {
-    "toy_counter.count": {
-      "present": true,
-      "toggles": 17
-    },
-    "toy_counter.alarm": {
-      "present": true,
-      "toggles": 0
-    }
-  }
-}
-```
-
-The input checker should flag:
-
-```text
-missing alarm signal
-missing observe point signal
-empty VCD
-VCD time shorter than campaign window
-no clock activity
-reset never released
-signal naming mismatch
-```
-
-A fault campaign without a valid VCD context can easily produce unresolved or misleading results.
-
----
-
-## 14. Domain 6: FMEDA Context
-
-FMEDA context connects hardware evidence to safety reporting.
-
-Minimum files:
-
-```text
-inputs/failure_modes.yaml
-inputs/fmeda_tree.yaml
-```
-
-A simplified failure mode library:
-
-```yaml
-failure_modes:
-  - id: FM_DATA_CORRUPTION
-    name: data_corruption
-    category: data_integrity
-    applicable_to:
-      - datapath
-      - register_group
-      - bus
-    recommended_mechanisms:
-      - endpoint_parity
-      - end_to_end_crc
-      - duplication
-    review_status: draft
-
-  - id: FM_ALARM_NOT_ASSERTED
-    name: alarm_not_asserted
-    category: diagnostic_failure
-    applicable_to:
-      - alarm_path
-      - monitor
-      - safety_mechanism
-    recommended_mechanisms:
-      - redundant_alarm
-      - alarm_monitor
-    review_status: draft
-```
-
-A simplified FMEDA tree:
-
-```yaml
-component: toy_soc
-parts:
-  - id: PART_COUNTER
-    name: toy_counter
-    block_type: register_group
-    instances:
-      - toy_counter
-    failure_modes:
-      - FM_DATA_CORRUPTION
-      - FM_ALARM_NOT_ASSERTED
-```
-
-The input checker should verify:
-
-```text
-Are failure mode IDs unique?
-Are failure mode names unique?
-Are categories valid?
-Are referenced safety mechanisms defined?
-Are part IDs unique?
-Are block types known?
-Are mapped instances valid or explicitly unresolved?
-Is review status present?
-```
-
-Why is FMEDA context needed so early?
-
-Because without it, fault injection results remain raw signal-level data:
-
-```text
-toy_counter.count[0] stuck_at_0 detected
-```
-
-With FMEDA context, the same result becomes safety evidence:
-
-```text
-PART_COUNTER / FM_DATA_CORRUPTION / endpoint_parity / detected
-```
-
-That is a much more useful engineering result.
-
----
-
-## 15. Domain 7: Reporting and Session Context
-
-Safety evidence must be reproducible.
-
-The input package should define how a run is identified:
-
-```text
-project name
-demo name
-session name
-tool version
-input version
-timestamp
-run mode
-output directory
-report format
-```
-
-A simple manifest:
-
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D02_input_package
-  top_module: toy_counter
-
-session:
-  name: d02_input_check_baseline
-  run_mode: input_validation
-  output_dir: outputs
-
-tools:
-  input_checker: safeic-inputcheck
-  expected_schema_version: 0.1
-
-reports:
-  input_check_report: outputs/input_check.rpt
-  manifest_summary: outputs/manifest_summary.md
-  package_index: outputs/input_package_index.csv
-```
-
-The input checker should produce:
-
-```text
-outputs/input_check.rpt
-outputs/input_package_index.csv
-outputs/manifest_summary.md
-outputs/missing_inputs.csv
-outputs/schema_warnings.csv
-```
-
-This turns the input package into a controlled run artifact.
-
----
-
-## 16. The D02 Input Package Directory
-
-The D02 demo uses the following directory structure:
-
-```text
-D02_input_package/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    rtl/
-      toy_counter.v
-      toy_counter_tb.v
-
-    filelist.f
-    top.yaml
-    clkdef.clk
-
-    fit_inputs.yaml
-    design_stats.yaml
-
-    safety_mechanisms.yaml
-    ep_to_sm_map.csv
-
-    failure_modes.yaml
-    fmeda_tree.yaml
-
-    fault.list
-    alarm.list
-    observe_points.list
-    campaign.yaml
-    sim.vcd
-
-  intermediate/
-    .gitkeep
-
-  outputs/
-    input_check.rpt
-    input_package_index.csv
-    manifest_summary.md
-    missing_inputs.csv
-    schema_warnings.csv
-
-  schemas/
-    manifest_schema.yaml
-    safety_mechanisms_schema.yaml
-    failure_modes_schema.yaml
-    campaign_schema.yaml
-```
-
-The directory layout itself is part of the methodology.
-
-It separates:
-
-```text
-source inputs
-generated intermediate artifacts
-final outputs
-schemas
-scripts
-```
-
-This avoids mixing source assumptions with generated reports.
-
----
-
-## 17. The `manifest.yaml` File
-
-The manifest is the central index of the project.
+A 90% coverage value has different meaning depending on the underlying FIT contribution.
 
 Example:
 
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D02_input_package
-  top_module: toy_counter
-  description: Minimal input package for functional safety analysis and fault injection.
-
-design:
-  filelist: inputs/filelist.f
-  top_config: inputs/top.yaml
-  clock_def: inputs/clkdef.clk
-
-reliability:
-  fit_inputs: inputs/fit_inputs.yaml
-  design_stats: inputs/design_stats.yaml
-
-safety:
-  safety_mechanisms: inputs/safety_mechanisms.yaml
-  ep_to_sm_map: inputs/ep_to_sm_map.csv
-  failure_modes: inputs/failure_modes.yaml
-  fmeda_tree: inputs/fmeda_tree.yaml
-
-fault_campaign:
-  fault_list: inputs/fault.list
-  alarm_list: inputs/alarm.list
-  observe_points: inputs/observe_points.list
-  campaign_config: inputs/campaign.yaml
-  golden_vcd: inputs/sim.vcd
-
-outputs:
-  report_dir: outputs
-```
-
-The input checker reads the manifest first, then validates each referenced artifact.
-
-This makes the project portable:
-
 ```text
-Do not hardcode paths inside scripts.
-Put paths in manifest.yaml.
-Let tools read the manifest.
+Case A:
+  base FIT = 10 FIT
+  diagnostic coverage = 90%
+  residual FIT = 1 FIT
+
+Case B:
+  base FIT = 100 FIT
+  diagnostic coverage = 90%
+  residual FIT = 10 FIT
 ```
 
----
+The same diagnostic coverage leads to very different residual risk.
 
-## 18. The `safeic-inputcheck` Tool
-
-The generic tool `safeic-inputcheck` performs validation.
+Therefore, Base FIT Rate must be known before diagnostic coverage can be interpreted.
 
 ```mermaid
 flowchart LR
-    A[manifest.yaml] --> B[safeic-inputcheck]
-    C[Input Files] --> B
-    D[Schemas] --> B
-    B --> E[input_check.rpt]
-    B --> F[input_package_index.csv]
-    B --> G[missing_inputs.csv]
-    B --> H[schema_warnings.csv]
+    A[Design Scope] --> B[Base FIT Rate]
+    B --> C[Failure Mode Priority]
+    C --> D[Safety Mechanism Planning]
+    D --> E[Diagnostic Coverage]
+    E --> F[Residual FIT]
+    F --> G[FMEDA Review]
 ```
 
-**Figure 6. The input checker validates paths, schemas, references, and safety-flow consistency.**
+**Figure 1. Base FIT Rate is the risk baseline that gives diagnostic coverage and residual FIT their meaning.**
 
-It should check four levels:
+The first principle of D02 is:
 
-```text
-file existence
-schema validity
-cross-reference consistency
-safety-flow readiness
-```
-
-### 18.1 File Existence
-
-```text
-Does each required file exist?
-Is the file empty?
-Is the file readable?
-Is the path relative and portable?
-```
-
-### 18.2 Schema Validity
-
-```text
-Does YAML parse?
-Does CSV have required columns?
-Are numeric fields valid?
-Are enumerated values legal?
-Are lists non-empty where required?
-```
-
-### 18.3 Cross-Reference Consistency
-
-```text
-Does ep_to_sm_map reference known safety mechanisms?
-Does failure_modes.yaml reference known mechanisms?
-Does campaign.yaml reference existing fault/alarm/observe files?
-Do alarm signals appear in alarm.list?
-Do observe points appear in VCD or design hierarchy?
-```
-
-### 18.4 Safety-Flow Readiness
-
-```text
-Can BFR run?
-Can structure extraction run?
-Can DC estimation run?
-Can VCD context extraction run?
-Can fault classification run?
-Which later stages are blocked?
-```
-
-A useful checker does not only say pass or fail. It should tell the engineer which stage is blocked and why.
+> Diagnostic coverage is not meaningful without knowing the base failure-rate contribution it covers.
 
 ---
 
-## 19. Input Readiness Levels
+## 3. Random Hardware Failure View
 
-Not every input package needs to be complete for every stage.
+Automotive functional safety analysis often distinguishes systematic faults and random hardware faults.
 
-D02 introduces input readiness levels.
+D02 focuses on random hardware faults.
 
-| Level | Meaning | Example |
-|---|---|---|
-| L0 | Project skeleton exists | README, manifest, directory structure |
-| L1 | Design context ready | filelist, top, clock/reset |
-| L2 | FIT analysis ready | fit inputs, design stats |
-| L3 | Structure analysis ready | design files sufficient for graph extraction |
-| L4 | DC estimation ready | SM library and EP-to-SM map available |
-| L5 | Fault campaign ready | fault list, alarm list, observe points, VCD |
-| L6 | FMEDA reporting ready | failure modes and part/sub-part model |
-| L7 | Full closed-loop ready | all above plus report configuration |
+A simplified random hardware failure view is:
+
+```text
+hardware structure
+  -> failure mechanism
+  -> failure rate contribution
+  -> failure mode
+  -> potential safety impact
+```
+
+At chip level, the analysis may consider:
+
+```text
+logic cells
+sequential elements
+memories
+clock/reset logic
+interconnect
+technology assumptions
+package assumptions
+mission profile
+environmental profile
+```
+
+The purpose of Base FIT Rate is not to prove that the design is safe.
+
+It answers a narrower question:
+
+```text
+What is the unprotected random hardware failure baseline of this design scope?
+```
+
+Safety mechanisms are considered later.
+
+This separation is important.
+
+If base failure-rate modeling and diagnostic coverage are mixed too early, the resulting safety argument becomes hard to review.
+
+---
+
+## 4. FIT and Base FIT Rate
+
+FIT means Failure In Time.
+
+A common engineering definition is:
+
+```text
+1 FIT = 1 failure per 10^9 operating hours
+```
+
+Base FIT Rate means the initial failure rate before safety mechanisms are credited.
+
+In this series, D02 uses:
+
+```text
+Base FIT Rate
+BFR
+initial FIT
+unprotected FIT baseline
+```
+
+as equivalent conceptual terms.
+
+The Base FIT Rate can be grouped by:
+
+```text
+design block
+part
+sub-part
+failure mode
+endpoint
+technology element
+```
+
+A simple output table may look like:
+
+```csv
+object,category,base_fit,standard
+toy_counter.count,sequential_state,0.052,iec_62380
+toy_counter.alarm,combinational_alarm,0.010,iec_62380
+toy_counter.control,control_logic,0.016,iec_62380
+```
+
+This table is not the final FMEDA.
+
+It is the beginning of a safety evidence chain.
+
+---
+
+## 5. Relationship Between Base FIT and FMEDA
+
+FMEDA is usually where failure modes, FIT values, diagnostic coverage, residual FIT, and safety mechanisms are reviewed together.
+
+Conceptually:
+
+```text
+FMEDA row =
+  part/sub-part
+  failure mode
+  base FIT
+  safety mechanism
+  diagnostic coverage
+  residual FIT
+  review status
+```
+
+D02 only produces the early part of this row:
+
+```text
+part/sub-part
+failure-rate baseline
+possibly failure mode category
+```
+
+Later demos will add:
+
+```text
+estimated diagnostic coverage
+measured diagnostic coverage
+selected diagnostic coverage
+fault campaign evidence
+residual FIT
+review actions
+```
 
 ```mermaid
 flowchart TD
-    L0[L0 Skeleton] --> L1[L1 Design Ready]
-    L1 --> L2[L2 FIT Ready]
-    L2 --> L3[L3 Structure Ready]
-    L3 --> L4[L4 DC Ready]
-    L4 --> L5[L5 Fault Campaign Ready]
-    L5 --> L6[L6 FMEDA Ready]
-    L6 --> L7[L7 Closed Loop Ready]
+    A[D02 Base FIT Rate] --> B[Base FIT Table]
+    B --> C[D06 Diagnostic Coverage]
+    C --> D[D13 Fault Outcome Evidence]
+    D --> E[D16 FMEDA Data Model]
+    E --> F[Reviewable FMEDA Evidence]
 ```
 
-**Figure 7. Input readiness levels help engineers understand what can run and what is still blocked.**
+**Figure 2. Base FIT Rate is the initial quantitative input to later FMEDA evidence.**
 
-Example report:
+The second principle of D02 is:
 
-```text
-Readiness Summary
-=================
-
-L0 Skeleton             PASS
-L1 Design Ready         PASS
-L2 FIT Ready            PASS
-L3 Structure Ready      PASS
-L4 DC Ready             WARN
-L5 Fault Campaign Ready FAIL
-L6 FMEDA Ready          PASS
-L7 Closed Loop Ready    FAIL
-
-Blocking Issues:
-  - inputs/sim.vcd is missing
-  - observe point toy_counter.count not found in VCD
-  - ep_to_sm_map references undefined endpoint toy_counter.hidden_state
-```
-
-This is more useful than a single error message.
+> FMEDA should not begin from an empty spreadsheet. It should begin from a traceable Base FIT Rate model.
 
 ---
 
-## 20. Example `input_check.rpt`
+## 6. Standards: IEC 62380 and SN 29500
 
-A good report is human-readable.
+D01 made the FIT standard explicit.
+
+D02 uses that setting.
+
+The two standard identifiers in this series are:
 
 ```text
-SafeIC Input Package Check Report
-=================================
-
-Project:
-  name : automotive_safeic_practice
-  demo : D02_input_package
-  top  : toy_counter
-
-File Existence:
-  [PASS] inputs/filelist.f
-  [PASS] inputs/top.yaml
-  [PASS] inputs/clkdef.clk
-  [PASS] inputs/fit_inputs.yaml
-  [PASS] inputs/safety_mechanisms.yaml
-  [PASS] inputs/ep_to_sm_map.csv
-  [PASS] inputs/failure_modes.yaml
-  [PASS] inputs/fmeda_tree.yaml
-  [PASS] inputs/fault.list
-  [PASS] inputs/alarm.list
-  [PASS] inputs/observe_points.list
-  [PASS] inputs/campaign.yaml
-  [WARN] inputs/sim.vcd exists but does not include toy_counter.hidden_state
-
-Schema Checks:
-  [PASS] manifest.yaml
-  [PASS] safety_mechanisms.yaml
-  [PASS] failure_modes.yaml
-  [PASS] campaign.yaml
-
-Cross References:
-  [PASS] ep_to_sm_map safety mechanism references
-  [PASS] failure mode recommended mechanisms
-  [PASS] alarm list file referenced by campaign.yaml
-  [WARN] observe point toy_counter.hidden_state not found in VCD
-
-Readiness:
-  L0 Skeleton             PASS
-  L1 Design Ready         PASS
-  L2 FIT Ready            PASS
-  L3 Structure Ready      PASS
-  L4 DC Ready             PASS
-  L5 Fault Campaign Ready WARN
-  L6 FMEDA Ready          PASS
-  L7 Closed Loop Ready    WARN
-
-Overall Status:
-  WARN
+iec_62380
+sn_29500
 ```
 
-The report should be strict enough to catch real mistakes but practical enough to allow staged development.
+The public demo does not need to reproduce the full mathematical content of these standards.
+
+Instead, it demonstrates the engineering discipline:
+
+```text
+the selected standard is configured
+the selected standard is recorded in the manifest
+the selected standard appears in generated output names
+the selected standard appears in the report summary
+```
+
+Example D02 configuration:
+
+```ini
+fit_standard = iec_62380
+```
+
+A later demo can compare:
+
+```ini
+fit_standard = sn_29500
+```
+
+The important point is that the standard is part of the run identity.
+
+A Base FIT result without a standard label is incomplete.
 
 ---
 
-## 21. Example `input_package_index.csv`
+## 7. D02 Input Dependency on D01
 
-The package index is machine-readable.
+D02 should consume the D01 input package.
+
+Required D01 artifacts:
+
+```text
+manifest.yaml
+inputs/rtl/toy_counter.v
+inputs/filelist/filelist.f
+inputs/clock/toy_counter.clk
+inputs/fit/FIT_inputs.common.txt
+inputs/analysis/analysis_bfr.fusaini
+outputs/preflight_check.csv
+outputs/expected_analysis_outputs.csv
+```
+
+D02 adds a Base FIT run layer:
+
+```text
+inputs/base_fit/base_fit_config.yaml
+scripts/run_base_fit.csh
+tools/parse_base_fit_report.py
+outputs/base_fit_summary.csv
+outputs/base_fit_by_object.csv
+outputs/base_fit_review.md
+```
+
+The flow is:
+
+```mermaid
+flowchart LR
+    A[D01 Input Package] --> B[D02 Base FIT Configuration]
+    B --> C[Analysis Engine Run]
+    C --> D[Base FIT Reports]
+    D --> E[Parsed FIT Tables]
+    E --> F[Review Summary]
+```
+
+**Figure 3. D02 consumes D01 input context and produces parsed Base FIT artifacts.**
+
+D02 should not silently recreate D01.
+
+It should explicitly depend on it.
+
+That makes the flow easier to review.
+
+---
+
+## 8. Tool Flow Abstraction
+
+The real execution is abstracted as:
+
+```text
+analysis_engine --fusaini inputs/analysis/analysis_bfr.fusaini
+```
+
+The public script should call the configured executable:
+
+```csh
+$SAFEIC_ANALYSIS_ENGINE \
+  --fusaini inputs/analysis/analysis_bfr.fusaini
+```
+
+But D02 should also support public preflight mode.
+
+If the real engine is not configured, the demo can still generate:
+
+```text
+base_fit_expected_outputs.csv
+base_fit_run_plan.md
+base_fit_placeholder_summary.csv
+```
+
+This keeps the GitHub demo runnable while preserving the real-tool execution path.
+
+Suggested execution modes:
+
+```text
+preflight_only
+sample_report_parse
+real_engine_run
+```
+
+### 8.1 preflight_only
+
+Checks whether input package and configuration are complete.
+
+### 8.2 sample_report_parse
+
+Uses a public-safe sample report to demonstrate parsing and interpretation.
+
+### 8.3 real_engine_run
+
+Invokes the configured real analysis engine.
+
+This three-mode design is important for public technical demonstration.
+
+---
+
+## 9. D02 Demo Architecture
+
+D02 should contain three layers.
+
+```mermaid
+flowchart TD
+    A[D01 Input Package] --> B[D02 Preflight]
+    B --> C{Execution Mode}
+    C -- preflight_only --> D[Run Plan and Expected Outputs]
+    C -- sample_report_parse --> E[Parse Public Sample Report]
+    C -- real_engine_run --> F[Invoke Analysis Engine]
+    E --> G[Base FIT Tables]
+    F --> G
+    G --> H[Base FIT Review Summary]
+```
+
+**Figure 4. D02 supports public preflight, sample report parsing, and optional real-engine execution.**
+
+This structure allows the same demo to serve two audiences:
+
+```text
+public reader:
+  can inspect methodology and run sample parsing
+
+local engineer:
+  can connect the real analysis engine and produce real reports
+```
+
+---
+
+## 10. Input Data Model
+
+D02 input data model extends D01.
+
+```text
+d01_context:
+  manifest
+  filelist
+  clock_definition
+  fit_setup
+  analysis_config
+
+base_fit:
+  fit_standard
+  run_mode
+  expected_report_patterns
+  sample_report
+  output_parser_policy
+
+toolchain:
+  analysis_engine_env
+  execution_shell
+```
+
+Suggested `inputs/base_fit/base_fit_config.yaml`:
+
+```yaml
+base_fit:
+  name: toy_counter_base_fit
+  top_module: toy_counter
+  fit_standard: iec_62380
+  execution_mode: sample_report_parse
+
+inputs:
+  d01_manifest: ../D01_analysis_input_package/manifest.yaml
+  analysis_config: ../D01_analysis_input_package/inputs/analysis/analysis_bfr.fusaini
+  fit_setup: ../D01_analysis_input_package/inputs/fit/FIT_inputs.common.txt
+  sample_report: inputs/base_fit/sample_base_fit_report.rpt
+
+toolchain:
+  analysis_engine_env: SAFEIC_ANALYSIS_ENGINE
+
+outputs:
+  base_fit_by_object: outputs/base_fit_by_object.csv
+  base_fit_by_category: outputs/base_fit_by_category.csv
+  base_fit_summary: outputs/base_fit_summary.csv
+  review: outputs/base_fit_review.md
+```
+
+The demo should not hide whether it used sample mode or real tool mode.
+
+---
+
+## 11. Output Data Model
+
+D02 should produce structured output tables.
+
+### 11.1 Base FIT by Object
 
 ```csv
-domain,file,role,required,status,notes
-design,inputs/filelist.f,rtl_filelist,true,PASS,
-design,inputs/top.yaml,top_config,true,PASS,
-design,inputs/clkdef.clk,clock_reset_config,true,PASS,
-reliability,inputs/fit_inputs.yaml,fit_model,true,PASS,
-reliability,inputs/design_stats.yaml,design_statistics,true,PASS,
-safety,inputs/safety_mechanisms.yaml,sm_library,true,PASS,
-safety,inputs/ep_to_sm_map.csv,endpoint_to_sm_map,true,PASS,
-fmeda,inputs/failure_modes.yaml,failure_mode_library,true,PASS,
-fmeda,inputs/fmeda_tree.yaml,part_subpart_model,true,PASS,
-campaign,inputs/fault.list,fault_list,true,PASS,
-campaign,inputs/alarm.list,alarm_list,true,PASS,
-campaign,inputs/observe_points.list,observe_points,true,PASS,
-campaign,inputs/sim.vcd,golden_vcd,true,WARN,missing toy_counter.hidden_state
+object,object_type,category,base_fit,fit_standard,evidence_source
+toy_counter.count[0],reg,sequential_state,0.013,iec_62380,sample_report
+toy_counter.count[1],reg,sequential_state,0.013,iec_62380,sample_report
+toy_counter.alarm,wire,alarm_logic,0.010,iec_62380,sample_report
 ```
 
-This CSV can later be consumed by:
+### 11.2 Base FIT by Category
 
-```text
-safeic-report
-safeic-flow
-CI checks
-documentation generator
+```csv
+category,base_fit,percentage
+sequential_state,0.052,66.67
+alarm_logic,0.010,12.82
+control_logic,0.016,20.51
 ```
+
+### 11.3 Base FIT Summary
+
+```csv
+metric,value,unit
+total_base_fit,0.078,FIT
+dominant_category,sequential_state,text
+fit_standard,iec_62380,text
+execution_mode,sample_report_parse,text
+```
+
+These tables allow later demos to reason about failure-mode priorities.
 
 ---
 
-## 22. Demo Execution
+## 12. Interpreting Base FIT Reports
 
-A simple D02 run script:
+A Base FIT report should not be treated as a final answer.
 
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
+It should be interpreted as a quantitative baseline.
 
-safeic-inputcheck \
-  --manifest manifest.yaml \
-  --schema-dir schemas \
-  --output-dir outputs
+Key questions:
+
+```text
+What is the total base FIT?
+Which objects or categories dominate?
+Which failure-rate contributors should be mapped to failure modes?
+Which categories require safety mechanisms?
+Which values should flow into FMEDA?
+Which assumptions should be reviewed?
 ```
 
-A csh version:
+For D02, a review summary may say:
+
+```text
+The sequential state category dominates the toy design Base FIT Rate.
+This suggests that later failure-mode mapping should pay attention to state corruption and alarm-path observability.
+```
+
+This interpretation is more useful than simply printing a number.
+
+---
+
+## 13. Why Grouping Matters
+
+Raw object-level FIT values can be too detailed.
+
+Grouping makes engineering review possible.
+
+Useful grouping dimensions:
+
+```text
+object type
+design category
+part
+sub-part
+failure mode candidate
+safety mechanism candidate
+```
+
+For the toy design:
+
+```text
+sequential_state:
+  count[3:0]
+
+alarm_logic:
+  alarm
+
+control_logic:
+  en path and update logic
+```
+
+The grouping does not have to be perfect in D02.
+
+It only needs to create a traceable bridge from raw design objects to later FMEDA rows.
+
+---
+
+## 14. From Base FIT to Failure Mode Priority
+
+Base FIT results help prioritize failure-mode analysis.
+
+Example:
+
+```csv
+failure_mode_candidate,base_fit,priority_reason
+FM_COUNTER_STATE_CORRUPTION,0.052,dominant sequential state contribution
+FM_ALARM_NOT_ASSERTED,0.010,alarm path directly affects detection
+FM_CONTROL_UPDATE_ERROR,0.016,control logic affects state transition
+```
+
+This is not yet final FMEDA.
+
+It is an early planning view.
+
+```mermaid
+flowchart LR
+    A[Base FIT by Object] --> B[Category Grouping]
+    B --> C[Failure Mode Candidate]
+    C --> D[Safety Mechanism Planning]
+    D --> E[Fault List Generation]
+```
+
+**Figure 5. Base FIT grouping supports failure-mode prioritization and later fault list generation.**
+
+This is how D02 connects quantitative reliability modeling to safety engineering decisions.
+
+---
+
+## 15. Relationship to Diagnostic Coverage
+
+Diagnostic coverage will later answer:
+
+```text
+How much of the base failure-rate contribution is detected or controlled?
+```
+
+Residual FIT can be simplified as:
+
+```text
+residual_fit = base_fit × (1 - diagnostic_coverage)
+```
+
+In practice, the actual formula and grouping may be more detailed.
+
+However, the conceptual dependency is clear:
+
+```text
+base_fit first
+diagnostic_coverage second
+residual_fit third
+```
+
+This is why D02 must be completed before meaningful DC interpretation.
+
+---
+
+## 16. Relationship to Fault List Generation
+
+Base FIT also informs fault list generation.
+
+A fault list should not be a random set of signals.
+
+It should reflect safety-relevant design objects and failure-mode priorities.
+
+For example, if Base FIT review shows that counter state dominates the toy design risk, later fault list generation should include:
+
+```text
+toy_counter.count[0]
+toy_counter.count[1]
+toy_counter.count[2]
+toy_counter.count[3]
+```
+
+If alarm logic is safety-relevant, later fault list generation should include:
+
+```text
+toy_counter.alarm
+```
+
+D02 does not generate the final fault list.
+
+But it tells D08 what must not be ignored.
+
+---
+
+## 17. Relationship to Common Safety Database
+
+A common safety database, or review workspace, is useful because Base FIT is not the final endpoint.
+
+The same evidence must later connect to:
+
+```text
+DCE
+coverage report
+fault list
+fault campaign result
+FMEDA rows
+failure mode mapping
+safety mechanism mapping
+```
+
+D02 should therefore produce machine-readable outputs.
+
+Do not rely only on human-readable reports.
+
+The key idea is:
+
+> If a Base FIT result cannot be parsed, indexed, and mapped forward, it cannot become reliable FMEDA evidence.
+
+---
+
+## 18. D02 Directory Structure
+
+Recommended D02 structure:
+
+```text
+D02_base_fit_rate/
+  README.md
+  manifest.yaml
+
+  inputs/
+    base_fit/
+      base_fit_config.yaml
+      sample_base_fit_report.rpt
+
+  scripts/
+    setup_toolchain.template.csh
+    run_demo.csh
+    run_demo.sh
+
+  tools/
+    preflight_base_fit.py
+    parse_base_fit_report.py
+    summarize_base_fit.py
+
+  outputs/
+    base_fit_by_object.csv
+    base_fit_by_category.csv
+    base_fit_summary.csv
+    failure_mode_priority_seed.csv
+    base_fit_expected_outputs.csv
+    base_fit_review.md
+    demo_summary.md
+
+  logs/
+    run_demo.log
+
+  docs/
+    design_notes.md
+```
+
+The sample report allows public readers to run the parser without a real tool.
+
+The optional real engine path allows local engineers to execute the actual flow.
+
+---
+
+## 19. csh Execution Path
+
+D02 should keep csh as a first-class execution path.
+
+Example:
 
 ```csh
 #!/bin/csh -f
 
-set DEMO = D02_input_package
-echo "Running $DEMO"
+set DEMO = D02_base_fit_rate
+set ROOT = `cd "$0:h/.." && pwd`
 
-safeic-inputcheck \
+cd "$ROOT"
+
+if ( -e scripts/setup_toolchain.local.csh ) then
+  source scripts/setup_toolchain.local.csh
+else
+  source scripts/setup_toolchain.template.csh
+endif
+
+mkdir -p outputs logs
+
+python3 tools/preflight_base_fit.py \
   --manifest manifest.yaml \
-  --schema-dir schemas \
-  --output-dir outputs
+  |& tee logs/run_demo.log
+
+python3 tools/parse_base_fit_report.py \
+  --config inputs/base_fit/base_fit_config.yaml \
+  --report inputs/base_fit/sample_base_fit_report.rpt \
+  --output-dir outputs \
+  |& tee -a logs/run_demo.log
 ```
 
-Expected outputs:
+If the real engine is configured, the script may optionally generate or invoke:
 
 ```text
-outputs/input_check.rpt
-outputs/input_package_index.csv
-outputs/manifest_summary.md
-outputs/missing_inputs.csv
-outputs/schema_warnings.csv
+outputs/base_fit_command.csh
 ```
 
-D02 is intentionally simple. It does not compute FIT, extract structure, or inject faults. It only validates that the project is ready for those stages.
+But the public run should succeed without it.
 
 ---
 
-## 23. Why D02 Should Be Built Before More Complex Demos
+## 20. Sample Report Parsing
 
-It may be tempting to skip input checking and jump directly to fault injection.
+Public demo should include a small sample report.
 
-That is a mistake.
-
-A fault campaign can produce thousands of results. If the input package is wrong, all of those results may be unusable.
-
-Examples:
+Example:
 
 ```text
-wrong alarm list
-  -> detected faults may be classified as unsafe
+# sample_base_fit_report.rpt
 
-missing observe point
-  -> unsafe faults may become unresolved
+Base FIT Rate Report
+Top: toy_counter
+FIT Standard: iec_62380
 
-wrong clock/reset window
-  -> faults injected during reset may look safe
+Object                         Type        Category           BaseFIT
+toy_counter.count[0]           reg         sequential_state   0.013
+toy_counter.count[1]           reg         sequential_state   0.013
+toy_counter.count[2]           reg         sequential_state   0.013
+toy_counter.count[3]           reg         sequential_state   0.013
+toy_counter.alarm              wire        alarm_logic        0.010
+toy_counter.en_path            logic       control_logic      0.016
 
-missing failure mode mapping
-  -> results cannot be summarized for FMEDA
-
-inconsistent safety mechanism map
-  -> DC estimate is not traceable
-
-wrong VCD scope
-  -> important state signals are missing
+Total Base FIT: 0.078
 ```
 
-Input validation is not a small administrative step. It is the first safety quality gate.
+The parser should generate CSV tables.
+
+This demonstrates engineering capability:
+
+```text
+not only running a tool
+but converting tool report content into structured evidence
+```
 
 ---
 
-## 24. Common Mistakes
+## 21. Review Summary
 
-### 24.1 Hardcoding Paths in Scripts
-
-Bad:
-
-```bash
-safeic-bfr --fit-inputs ../../my_tmp/fit.yaml
-```
-
-Better:
-
-```bash
-safeic-bfr --manifest manifest.yaml
-```
-
-The manifest should be the source of truth.
-
-### 24.2 Mixing Generated and Source Files
-
-Bad:
+D02 should generate:
 
 ```text
-inputs/
-  fault_result.csv
-  base_fit_report.csv
-  sim.vcd
-  toy_counter.v
+outputs/base_fit_review.md
 ```
 
-Better:
+It should explain:
 
 ```text
-inputs/
-intermediate/
-outputs/
-reports/
+total base FIT
+dominant category
+object-level contributors
+failure-mode priority seed
+standard used
+execution mode
+limitations
+next step
 ```
 
-Generated results should not be mixed with source assumptions.
+Example:
 
-### 24.3 Using Informal Signal Names
+```md
+# Base FIT Review
 
-Bad:
+Top module: toy_counter  
+FIT standard: iec_62380  
+Total Base FIT: 0.078 FIT  
 
-```text
-counter alarm
-main data
-error flag
+## Dominant Contributor
+
+The sequential_state category contributes 0.052 FIT, which is 66.67% of the total base FIT.
+
+## Engineering Interpretation
+
+Later structural safety modeling and fault list generation should prioritize counter state corruption and alarm-path behavior.
+
+## Limitations
+
+This public demo uses a simplified sample report and does not represent production FIT signoff.
 ```
 
-Better:
-
-```text
-toy_counter.alarm
-toy_counter.count[7:0]
-top.u_bus.integrity_error
-```
-
-Signal naming should be precise and traceable.
-
-### 24.4 Treating VCD as Optional
-
-A fault campaign without golden activity context is often incomplete.
-
-VCD or equivalent simulation data is needed to compare golden and faulted behavior.
-
-### 24.5 Treating Failure Modes as Comments
-
-Failure modes should be machine-readable, not only written in notes.
-
-Bad:
-
-```text
-This block may have some data error.
-```
-
-Better:
-
-```yaml
-id: FM_DATA_CORRUPTION
-category: data_integrity
-applicable_to: [datapath, bus]
-```
-
-### 24.6 Ignoring Review Status
-
-Safety assumptions evolve.
-
-A failure mode, safety mechanism, or coverage assumption should have review status:
-
-```text
-draft
-reviewed
-approved
-deprecated
-```
-
-This prevents immature assumptions from being treated as final evidence.
+The report should be engineering-readable, not just raw output.
 
 ---
 
-## 25. Methodology: Make Inputs Reviewable Before Making Tools Smart
+## 22. Tool Architecture
 
-The input package is the foundation for tool automation.
-
-A smart tool cannot compensate for ambiguous inputs.
-
-A practical development sequence is:
+D02 helper tools:
 
 ```text
-1. Define directory structure.
-2. Define manifest format.
-3. Define schemas.
-4. Define minimal toy design.
-5. Define fault/alarm/observe lists.
-6. Define safety mechanism library.
-7. Define failure mode library.
-8. Run input checker.
-9. Fix all blocking issues.
-10. Only then run downstream analysis.
+tools/
+  preflight_base_fit.py
+  parse_base_fit_report.py
+  summarize_base_fit.py
 ```
 
-The principle is:
+Responsibilities:
 
-> Before optimizing safety analysis, make the evidence inputs explicit and reviewable.
+| Module | Responsibility |
+|---|---|
+| `preflight_base_fit.py` | Validate D01 dependency and D02 configuration |
+| `parse_base_fit_report.py` | Parse sample or real report into structured CSV |
+| `summarize_base_fit.py` | Generate category summary and review markdown |
+
+This modularity matters.
+
+Parsing, summarization, and preflight should not be mixed into one large script.
+
+---
+
+## 23. Common Pitfalls
+
+### 23.1 Treating Base FIT as Final Safety Metric
+
+Base FIT is the unprotected baseline, not the final residual risk.
+
+### 23.2 Forgetting the FIT Standard
+
+A Base FIT number without standard context is incomplete.
+
+### 23.3 Not Grouping Contributors
+
+Object-level FIT tables need grouping to support safety decisions.
+
+### 23.4 Mixing Diagnostic Coverage Too Early
+
+D02 should not credit safety mechanisms prematurely.
+
+### 23.5 Using Unparseable Reports Only
+
+Human-readable reports are useful, but structured CSV outputs are necessary for later flow automation.
+
+### 23.6 Hiding Execution Mode
+
+A sample-report run and a real-engine run must be labeled differently.
+
+---
+
+## 24. Review Checklist
+
+A reviewer should be able to answer:
+
+```text
+Which D01 input package is used?
+Which FIT standard is selected?
+Was the run sample mode or real engine mode?
+What is the total Base FIT?
+Which objects dominate the Base FIT?
+Which categories dominate the Base FIT?
+Which failure-mode candidates should be prioritized?
+Which outputs will later feed diagnostic coverage and FMEDA?
+Are assumptions and limitations visible?
+```
+
+If these questions cannot be answered, the Base FIT result is not review-ready.
+
+---
+
+## 25. How D02 Connects to Later Demos
+
+D02 provides the quantitative baseline for the next steps.
+
+```mermaid
+flowchart TD
+    A[D01 Analysis Input Package] --> B[D02 Base FIT Rate]
+    B --> C[D03 FIT Standard Comparison]
+    B --> D[D04 Structural Safety Model]
+    D --> E[D05 Diagnostic Coverage Computation]
+    B --> F[D16 FMEDA Data Model]
+    E --> G[D17 Top-Down FMEDA Flow]
+    G --> H[D18 Evidence Traceability]
+```
+
+**Figure 6. D02 provides the Base FIT baseline for structural analysis, diagnostic coverage, and FMEDA evidence.**
+
+Without D02, later diagnostic coverage and residual FIT discussions are disconnected from quantitative risk.
 
 ---
 
 ## 26. Summary
 
-A functional safety verification project needs more than RTL and a testbench.
-
-It needs a structured input package that connects:
+D02 introduces the first quantitative safety-analysis result in the series:
 
 ```text
-design context
-reliability assumptions
-structural safety model
-safety mechanism definitions
-fault campaign inputs
-alarm and observe points
-VCD safety context
-failure mode library
-FMEDA hierarchy
-reporting metadata
+D02_base_fit_rate
 ```
 
-The second demo:
+It consumes the D01 input package and establishes:
 
 ```text
-D02_input_package
+Base FIT Rate
+FIT standard context
+object-level FIT contribution
+category-level FIT contribution
+failure-mode priority seed
+structured output tables
+review summary
 ```
 
-introduces a generic input validation tool:
+The core lesson is:
 
-```text
-safeic-inputcheck
-```
+> Base FIT Rate is the random hardware failure baseline. It must be established before diagnostic coverage, residual FIT, fault prioritization, and FMEDA review can be interpreted.
 
-The tool validates:
+D02 proves that the flow is not just a collection of commands.
 
-```text
-file existence
-schema correctness
-cross-reference consistency
-safety-flow readiness
-```
-
-The central lesson is:
-
-> If the input package is not explicit, traceable, and reviewable, the safety result cannot be trusted.
-
-D02 does not try to produce final safety metrics. It builds the quality gate that makes all later safety analysis and fault campaign steps meaningful.
+It is a traceable engineering pipeline from input context to quantitative safety baseline.
 
 ---
 
 ## 27. D02 Demo Checklist
 
-For `D02_input_package`, the expected deliverables are:
+Expected D02 deliverables:
 
 ```text
 [ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
 [ ] manifest.yaml
 
-[ ] inputs/rtl/toy_counter.v
-[ ] inputs/rtl/toy_counter_tb.v
-[ ] inputs/filelist.f
-[ ] inputs/top.yaml
-[ ] inputs/clkdef.clk
+[ ] inputs/base_fit/base_fit_config.yaml
+[ ] inputs/base_fit/sample_base_fit_report.rpt
 
-[ ] inputs/fit_inputs.yaml
-[ ] inputs/design_stats.yaml
+[ ] scripts/setup_toolchain.template.csh
+[ ] scripts/run_demo.csh
+[ ] scripts/run_demo.sh
 
-[ ] inputs/safety_mechanisms.yaml
-[ ] inputs/ep_to_sm_map.csv
+[ ] tools/preflight_base_fit.py
+[ ] tools/parse_base_fit_report.py
+[ ] tools/summarize_base_fit.py
 
-[ ] inputs/failure_modes.yaml
-[ ] inputs/fmeda_tree.yaml
+[ ] outputs/base_fit_by_object.csv
+[ ] outputs/base_fit_by_category.csv
+[ ] outputs/base_fit_summary.csv
+[ ] outputs/failure_mode_priority_seed.csv
+[ ] outputs/base_fit_expected_outputs.csv
+[ ] outputs/base_fit_review.md
+[ ] outputs/demo_summary.md
 
-[ ] inputs/fault.list
-[ ] inputs/alarm.list
-[ ] inputs/observe_points.list
-[ ] inputs/campaign.yaml
-[ ] inputs/sim.vcd
+[ ] logs/run_demo.log
 
-[ ] schemas/manifest_schema.yaml
-[ ] schemas/safety_mechanisms_schema.yaml
-[ ] schemas/failure_modes_schema.yaml
-[ ] schemas/campaign_schema.yaml
-
-[ ] outputs/input_check.rpt
-[ ] outputs/input_package_index.csv
-[ ] outputs/manifest_summary.md
-[ ] outputs/missing_inputs.csv
-[ ] outputs/schema_warnings.csv
+[ ] docs/design_notes.md
 ```
 
 A successful D02 run should answer:
 
 ```text
-Is the project input package complete?
-Which files are present?
-Which files are missing?
-Which schemas are valid?
-Which cross-references are broken?
-Which downstream stages are ready?
-Which stages are blocked?
+Was the Base FIT Rate context complete?
+Which FIT standard was used?
+What is the total Base FIT?
+Which objects and categories dominate?
+How should failure-mode analysis be prioritized?
+Can the result feed diagnostic coverage and FMEDA?
+Can the run be reproduced or replayed?
 ```
