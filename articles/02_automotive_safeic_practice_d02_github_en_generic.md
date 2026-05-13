@@ -1,326 +1,255 @@
-# [Automotive Safe-IC Practice 02] Base FIT Rate: Establishing the Random Hardware Failure Baseline
+# [Automotive Safe-IC Practice 02] Base FIT Rate: Building the Random Hardware Failure Baseline
 
 **Author**: Darren H. Chen  
 **Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D02_base_fit_rate  
-**Tags**: Automotive Chip, Functional Safety, ISO 26262, Random Hardware Failure, FIT, Base FIT Rate, IEC 62380, SN 29500, Diagnostic Coverage, FMEDA, Safety Analysis Flow
+**Demo**: `D02_base_fit_rate`  
+**Tags**: Automotive Chip, Functional Safety, ISO 26262, ASIL, FIT, Base FIT Rate, BFR, IEC 62380, SN 29500, Diagnostic Coverage, Fault List, DCE, Common FuSa Database, FMEDA, Safety Evidence
 
 ---
 
-## 1. Problem Context
+## 1. Why D02 Starts from Base FIT Rate
 
-The first article built a reproducible analysis input package.
-
-D01 focused on:
+D01 built the first engineering artifact of this series:
 
 ```text
-RTL
-filelist
-clock definition
-FIT setup
-analysis configuration
-manifest
-preflight check
-expected output index
-optional analysis command
+D01_analysis_input_package
 ```
 
-That input package answers:
+It answered a basic reproducibility question:
+
+> Which RTL, filelist, clock definition, FIT setup, analysis initialization file, database session, and output policy define this safety-analysis run?
+
+D02 uses that input package to establish the first quantitative safety baseline:
 
 ```text
-What design is being analyzed?
-Which files are used?
-Which clock model is used?
-Which FIT setup is used?
-Which FIT standard is selected?
-How can the run be reproduced?
+Base FIT Rate
 ```
 
-The second demo moves one step forward:
+Base FIT Rate, or BFR, is the estimated random hardware failure exposure before safety mechanisms are credited. It is not the final safety metric. It is not diagnostic coverage. It is not a fault-campaign result. It is the baseline that tells us how much random hardware failure exposure exists before we start claiming detection, mitigation, or residual-risk reduction.
+
+A practical safety flow should not jump directly to diagnostic coverage or FMEDA conclusions. It should first answer:
 
 ```text
-D02_base_fit_rate
+How much random hardware failure exposure exists in the design?
+Where does that exposure come from?
+Which design objects dominate the failure contribution?
+Which FIT standard and mission assumptions were used?
+Can the result be traced back to the D01 input package?
 ```
 
-The goal of D02 is to establish the **Base FIT Rate** of the design.
-
-Base FIT Rate is the random hardware failure baseline before diagnostic coverage and safety mechanisms are credited.
-
-In a safety workflow, this is a foundational result.
-
-Before asking:
-
-```text
-How much failure risk can the safety mechanism detect?
-```
-
-we must first ask:
-
-```text
-How much random hardware failure exposure exists before protection?
-```
-
-This article explains the technical meaning of Base FIT Rate, why it is required before diagnostic coverage, how a safety analysis engine consumes the D01 input package, and how the generated reports should be interpreted.
-
-The public article and demo still use neutral names:
-
-```text
-analysis_engine
-common_safety_database
-DCE
-coverage_report
-base_fit_report
-```
-
-The actual tool executable is configured through environment variables and local setup scripts.
+That is the purpose of D02.
 
 ---
 
-## 2. Why Base FIT Rate Comes Before Diagnostic Coverage
+## 2. Basic Concepts Before the Demo
 
-It is tempting to start functional safety analysis from diagnostic coverage.
-
-For example:
-
-```text
-diagnostic coverage = 90%
-```
-
-But this number is incomplete by itself.
-
-A 90% coverage value has different meaning depending on the underlying FIT contribution.
-
-Example:
-
-```text
-Case A:
-  base FIT = 10 FIT
-  diagnostic coverage = 90%
-  residual FIT = 1 FIT
-
-Case B:
-  base FIT = 100 FIT
-  diagnostic coverage = 90%
-  residual FIT = 10 FIT
-```
-
-The same diagnostic coverage leads to very different residual risk.
-
-Therefore, Base FIT Rate must be known before diagnostic coverage can be interpreted.
-
-```mermaid
-flowchart LR
-    A[Design Scope] --> B[Base FIT Rate]
-    B --> C[Failure Mode Priority]
-    C --> D[Safety Mechanism Planning]
-    D --> E[Diagnostic Coverage]
-    E --> F[Residual FIT]
-    F --> G[FMEDA Review]
-```
-
-**Figure 1. Base FIT Rate is the risk baseline that gives diagnostic coverage and residual FIT their meaning.**
-
-The first principle of D02 is:
-
-> Diagnostic coverage is not meaningful without knowing the base failure-rate contribution it covers.
+D02 introduces more numerical concepts than D01, so it is useful to define the terms carefully before discussing the demo.
 
 ---
 
-## 3. Random Hardware Failure View
+### 2.1 FIT
 
-Automotive functional safety analysis often distinguishes systematic faults and random hardware faults.
+FIT means **Failure In Time**.
 
-D02 focuses on random hardware faults.
-
-A simplified random hardware failure view is:
-
-```text
-hardware structure
-  -> failure mechanism
-  -> failure rate contribution
-  -> failure mode
-  -> potential safety impact
-```
-
-At chip level, the analysis may consider:
-
-```text
-logic cells
-sequential elements
-memories
-clock/reset logic
-interconnect
-technology assumptions
-package assumptions
-mission profile
-environmental profile
-```
-
-The purpose of Base FIT Rate is not to prove that the design is safe.
-
-It answers a narrower question:
-
-```text
-What is the unprotected random hardware failure baseline of this design scope?
-```
-
-Safety mechanisms are considered later.
-
-This separation is important.
-
-If base failure-rate modeling and diagnostic coverage are mixed too early, the resulting safety argument becomes hard to review.
-
----
-
-## 4. FIT and Base FIT Rate
-
-FIT means Failure In Time.
-
-A common engineering definition is:
+A common engineering interpretation is:
 
 ```text
 1 FIT = 1 failure per 10^9 operating hours
 ```
 
-Base FIT Rate means the initial failure rate before safety mechanisms are credited.
-
-In this series, D02 uses:
+Equivalently:
 
 ```text
-Base FIT Rate
-BFR
-initial FIT
-unprotected FIT baseline
+1 FIT = 1E-09 failures / hour
 ```
 
-as equivalent conceptual terms.
+FIT is a failure-rate unit. It is not a pass/fail result.
 
-The Base FIT Rate can be grouped by:
+At chip level, FIT analysis estimates how susceptible the silicon, package, memory, logic, and other design elements are to random hardware failures under a defined reliability model and mission profile.
+
+A simplified mental model is:
 
 ```text
-design block
-part
-sub-part
-failure mode
-endpoint
-technology element
+FIT = estimated random hardware failure exposure under specified assumptions
 ```
 
-A simple output table may look like:
-
-```csv
-object,category,base_fit,standard
-toy_counter.count,sequential_state,0.052,iec_62380
-toy_counter.alarm,combinational_alarm,0.010,iec_62380
-toy_counter.control,control_logic,0.016,iec_62380
-```
-
-This table is not the final FMEDA.
-
-It is the beginning of a safety evidence chain.
+The assumptions matter. A FIT number without its standard, technology assumptions, mission profile, temperature context, and design scope is not reviewable enough.
 
 ---
 
-## 5. Relationship Between Base FIT and FMEDA
+### 2.2 Base FIT Rate
 
-FMEDA is usually where failure modes, FIT values, diagnostic coverage, residual FIT, and safety mechanisms are reviewed together.
+Base FIT Rate is the initial FIT result before safety mechanisms are added or credited.
 
-Conceptually:
-
-```text
-FMEDA row =
-  part/sub-part
-  failure mode
-  base FIT
-  safety mechanism
-  diagnostic coverage
-  residual FIT
-  review status
-```
-
-D02 only produces the early part of this row:
+In this article, BFR means:
 
 ```text
-part/sub-part
-failure-rate baseline
-possibly failure mode category
+Base FIT Rate = unprotected random hardware failure baseline
 ```
 
-Later demos will add:
+It answers:
 
 ```text
-estimated diagnostic coverage
-measured diagnostic coverage
-selected diagnostic coverage
-fault campaign evidence
-residual FIT
-review actions
+Before claiming diagnostic coverage, how much random hardware failure exposure exists?
 ```
+
+This is why BFR should appear early in the safety-analysis workflow.
+
+```mermaid
+flowchart LR
+    A[D01 Input Package] --> B[D02 Base FIT Rate]
+    B --> C[D03 FIT Standard Review]
+    C --> D[D04 Structural Safety Model]
+    D --> E[D05 Common FuSa Database]
+    E --> F[D06 Safety Exploration]
+    F --> G[D08 Fault List Generation]
+    G --> H[D12 Fault Campaign]
+    H --> I[D14 Final Metrics]
+    I --> J[FMEDA Evidence]
+```
+
+**Figure 1. D02 establishes the quantitative baseline used by later safety analysis and verification stages.**
+
+---
+
+### 2.3 Random Hardware Faults
+
+D02 focuses on random hardware faults, not systematic design bugs.
+
+A simplified distinction is:
+
+| Category | Typical Cause | Main Engineering Response |
+|---|---|---|
+| Systematic fault | Requirement, design, verification, process, or implementation issue | Process discipline, verification, review, traceability |
+| Random hardware fault | Physical effect during operation | Safety mechanisms, diagnostic coverage, fault campaign, residual-risk analysis |
+
+Examples of random hardware fault concerns include:
+
+```text
+permanent stuck-at behavior
+single event upset
+memory bit flip
+aging-related degradation
+package-related failure
+electrical overstress-related failure
+```
+
+BFR estimates the exposure before the design claims that safety mechanisms can detect or control these events.
+
+---
+
+### 2.4 Diagnostic Coverage Is Not Base FIT Rate
+
+Diagnostic Coverage, or DC, describes how much of the relevant fault exposure is detected, controlled, made safe, or otherwise covered by safety mechanisms.
+
+Base FIT Rate and diagnostic coverage answer different questions.
+
+```text
+Base FIT Rate:
+  How much random hardware failure exposure exists?
+
+Diagnostic Coverage:
+  How much of that exposure can be detected or controlled?
+
+Residual FIT:
+  How much exposure remains after credited coverage?
+```
+
+A simplified relationship is:
+
+```text
+Residual FIT = Base FIT × (1 - Diagnostic Coverage)
+```
+
+This equation is only a conceptual explanation. Real FMEDA work may split the calculation by failure mode, part, sub-part, safety mechanism, safety goal, fault class, and ASIL target.
+
+The important lesson is:
+
+> Diagnostic coverage has no engineering meaning unless the failure-rate baseline is known.
+
+---
+
+### 2.5 FIT Contribution
+
+A total FIT value is useful, but it is not enough.
+
+D02 should also expose **FIT contribution**.
+
+FIT contribution answers:
+
+```text
+Which objects, blocks, element types, or failure categories dominate the Base FIT Rate?
+```
+
+A simple contribution table may look like this:
+
+```csv
+object,category,base_fit,percentage
+counter_reg[0],sequential,0.013,25.0
+counter_reg[1],sequential,0.013,25.0
+counter_reg[2],sequential,0.013,25.0
+counter_reg[3],sequential,0.013,25.0
+```
+
+For a larger design, contribution ranking becomes a design-planning tool.
+
+It helps answer:
+
+```text
+Which block deserves safety exploration first?
+Which storage elements dominate exposure?
+Which memory or logic group may require ECC, parity, lockstep, or duplication?
+Which result should be traced into FMEDA rows?
+```
+
+---
+
+## 3. D02 in the Complete Safe-IC Flow
+
+D02 is not an isolated metrics demo.
+
+It is the first numerical checkpoint in the evidence chain.
 
 ```mermaid
 flowchart TD
-    A[D02 Base FIT Rate] --> B[Base FIT Table]
-    B --> C[D06 Diagnostic Coverage]
-    C --> D[D13 Fault Outcome Evidence]
-    D --> E[D16 FMEDA Data Model]
-    E --> F[Reviewable FMEDA Evidence]
+    A[RTL / Netlist Snapshot] --> B[D01 Analysis Input Package]
+    B --> C[D02 Base FIT Rate]
+    C --> D[Contribution Ranking]
+    D --> E[Safety Mechanism Planning]
+    E --> F[Fault List Generation]
+    F --> G[Fault Campaign]
+    G --> H[Outcome Classification]
+    H --> I[Final Metrics]
+    I --> J[FMEDA Review]
 ```
 
-**Figure 2. Base FIT Rate is the initial quantitative input to later FMEDA evidence.**
+**Figure 2. Base FIT Rate turns the D01 input context into the first quantitative safety baseline.**
 
-The second principle of D02 is:
+D02 should produce results that later demos can consume:
 
-> FMEDA should not begin from an empty spreadsheet. It should begin from a traceable Base FIT Rate model.
+| Later Demo | How It Uses D02 |
+|---|---|
+| D03 FIT Standards | Compares BFR under IEC 62380 and SN 29500-style assumptions |
+| D04 Structural Safety Model | Maps FIT contribution to endpoints, startpoints, and structural building blocks |
+| D05 Common FuSa Database | Stores BFR and related evidence into `.fdb::session` |
+| D06 Safety Exploration | Uses contribution ranking to decide which safety mechanisms to explore |
+| D08 Fault List Generation | Connects FIT baseline to fault population generation |
+| D14 Final Metrics | Compares final metrics against the original baseline |
+| D16 FMEDA Data Model | Maps BFR and residual contribution into FMEDA rows |
+
+The goal is not just to print a number.
+
+The goal is to create a baseline that remains traceable through the rest of the flow.
 
 ---
 
-## 6. Standards: IEC 62380 and SN 29500
+## 4. What D02 Consumes from D01
 
-D01 made the FIT standard explicit.
+D02 should not rebuild the world.
 
-D02 uses that setting.
+It consumes the D01 input package.
 
-The two standard identifiers in this series are:
-
-```text
-iec_62380
-sn_29500
-```
-
-The public demo does not need to reproduce the full mathematical content of these standards.
-
-Instead, it demonstrates the engineering discipline:
-
-```text
-the selected standard is configured
-the selected standard is recorded in the manifest
-the selected standard appears in generated output names
-the selected standard appears in the report summary
-```
-
-Example D02 configuration:
-
-```ini
-fit_standard = iec_62380
-```
-
-A later demo can compare:
-
-```ini
-fit_standard = sn_29500
-```
-
-The important point is that the standard is part of the run identity.
-
-A Base FIT result without a standard label is incomplete.
-
----
-
-## 7. D02 Input Dependency on D01
-
-D02 should consume the D01 input package.
-
-Required D01 artifacts:
+From D01, D02 uses:
 
 ```text
 manifest.yaml
@@ -329,393 +258,41 @@ inputs/filelist/filelist.f
 inputs/clock/toy_counter.clk
 inputs/fit/FIT_inputs.common.txt
 inputs/analysis/analysis_bfr.fusaini
-outputs/preflight_check.csv
-outputs/expected_analysis_outputs.csv
+scripts/setup_toolchain.template.csh
+scripts/setup_toolchain.local.csh
 ```
 
-D02 adds a Base FIT run layer:
+The D01 package already established:
 
 ```text
-inputs/base_fit/base_fit_config.yaml
-scripts/run_base_fit.csh
-tools/parse_base_fit_report.py
-outputs/base_fit_summary.csv
-outputs/base_fit_by_object.csv
-outputs/base_fit_review.md
+design scope
+clock model
+FIT standard
+FIT setup
+analysis initialization file
+toolchain mapping
+output directory policy
+database/session naming policy
 ```
 
-The flow is:
-
-```mermaid
-flowchart LR
-    A[D01 Input Package] --> B[D02 Base FIT Configuration]
-    B --> C[Analysis Engine Run]
-    C --> D[Base FIT Reports]
-    D --> E[Parsed FIT Tables]
-    E --> F[Review Summary]
-```
-
-**Figure 3. D02 consumes D01 input context and produces parsed Base FIT artifacts.**
-
-D02 should not silently recreate D01.
-
-It should explicitly depend on it.
-
-That makes the flow easier to review.
-
----
-
-## 8. Tool Flow Abstraction
-
-The real execution is abstracted as:
+D02 adds:
 
 ```text
-analysis_engine --fusaini inputs/analysis/analysis_bfr.fusaini
-```
-
-The public script should call the configured executable:
-
-```csh
-$SAFEIC_ANALYSIS_ENGINE \
-  --fusaini inputs/analysis/analysis_bfr.fusaini
-```
-
-But D02 should also support public preflight mode.
-
-If the real engine is not configured, the demo can still generate:
-
-```text
-base_fit_expected_outputs.csv
-base_fit_run_plan.md
-base_fit_placeholder_summary.csv
-```
-
-This keeps the GitHub demo runnable while preserving the real-tool execution path.
-
-Suggested execution modes:
-
-```text
-preflight_only
-sample_report_parse
-real_engine_run
-```
-
-### 8.1 preflight_only
-
-Checks whether input package and configuration are complete.
-
-### 8.2 sample_report_parse
-
-Uses a public-safe sample report to demonstrate parsing and interpretation.
-
-### 8.3 real_engine_run
-
-Invokes the configured real analysis engine.
-
-This three-mode design is important for public technical demonstration.
-
----
-
-## 9. D02 Demo Architecture
-
-D02 should contain three layers.
-
-```mermaid
-flowchart TD
-    A[D01 Input Package] --> B[D02 Preflight]
-    B --> C{Execution Mode}
-    C -- preflight_only --> D[Run Plan and Expected Outputs]
-    C -- sample_report_parse --> E[Parse Public Sample Report]
-    C -- real_engine_run --> F[Invoke Analysis Engine]
-    E --> G[Base FIT Tables]
-    F --> G
-    G --> H[Base FIT Review Summary]
-```
-
-**Figure 4. D02 supports public preflight, sample report parsing, and optional real-engine execution.**
-
-This structure allows the same demo to serve two audiences:
-
-```text
-public reader:
-  can inspect methodology and run sample parsing
-
-local engineer:
-  can connect the real analysis engine and produce real reports
+BFR execution wrapper
+BFR report parser
+FIT contribution table
+BFR summary report
+BFR evidence index
+comparison hooks for later FIT-standard experiments
 ```
 
 ---
 
-## 10. Input Data Model
+## 5. Recommended D02 Directory Structure
 
-D02 input data model extends D01.
+The D02 demo should remain small and inspectable.
 
-```text
-d01_context:
-  manifest
-  filelist
-  clock_definition
-  fit_setup
-  analysis_config
-
-base_fit:
-  fit_standard
-  run_mode
-  expected_report_patterns
-  sample_report
-  output_parser_policy
-
-toolchain:
-  analysis_engine_env
-  execution_shell
-```
-
-Suggested `inputs/base_fit/base_fit_config.yaml`:
-
-```yaml
-base_fit:
-  name: toy_counter_base_fit
-  top_module: toy_counter
-  fit_standard: iec_62380
-  execution_mode: sample_report_parse
-
-inputs:
-  d01_manifest: ../D01_analysis_input_package/manifest.yaml
-  analysis_config: ../D01_analysis_input_package/inputs/analysis/analysis_bfr.fusaini
-  fit_setup: ../D01_analysis_input_package/inputs/fit/FIT_inputs.common.txt
-  sample_report: inputs/base_fit/sample_base_fit_report.rpt
-
-toolchain:
-  analysis_engine_env: SAFEIC_ANALYSIS_ENGINE
-
-outputs:
-  base_fit_by_object: outputs/base_fit_by_object.csv
-  base_fit_by_category: outputs/base_fit_by_category.csv
-  base_fit_summary: outputs/base_fit_summary.csv
-  review: outputs/base_fit_review.md
-```
-
-The demo should not hide whether it used sample mode or real tool mode.
-
----
-
-## 11. Output Data Model
-
-D02 should produce structured output tables.
-
-### 11.1 Base FIT by Object
-
-```csv
-object,object_type,category,base_fit,fit_standard,evidence_source
-toy_counter.count[0],reg,sequential_state,0.013,iec_62380,sample_report
-toy_counter.count[1],reg,sequential_state,0.013,iec_62380,sample_report
-toy_counter.alarm,wire,alarm_logic,0.010,iec_62380,sample_report
-```
-
-### 11.2 Base FIT by Category
-
-```csv
-category,base_fit,percentage
-sequential_state,0.052,66.67
-alarm_logic,0.010,12.82
-control_logic,0.016,20.51
-```
-
-### 11.3 Base FIT Summary
-
-```csv
-metric,value,unit
-total_base_fit,0.078,FIT
-dominant_category,sequential_state,text
-fit_standard,iec_62380,text
-execution_mode,sample_report_parse,text
-```
-
-These tables allow later demos to reason about failure-mode priorities.
-
----
-
-## 12. Interpreting Base FIT Reports
-
-A Base FIT report should not be treated as a final answer.
-
-It should be interpreted as a quantitative baseline.
-
-Key questions:
-
-```text
-What is the total base FIT?
-Which objects or categories dominate?
-Which failure-rate contributors should be mapped to failure modes?
-Which categories require safety mechanisms?
-Which values should flow into FMEDA?
-Which assumptions should be reviewed?
-```
-
-For D02, a review summary may say:
-
-```text
-The sequential state category dominates the toy design Base FIT Rate.
-This suggests that later failure-mode mapping should pay attention to state corruption and alarm-path observability.
-```
-
-This interpretation is more useful than simply printing a number.
-
----
-
-## 13. Why Grouping Matters
-
-Raw object-level FIT values can be too detailed.
-
-Grouping makes engineering review possible.
-
-Useful grouping dimensions:
-
-```text
-object type
-design category
-part
-sub-part
-failure mode candidate
-safety mechanism candidate
-```
-
-For the toy design:
-
-```text
-sequential_state:
-  count[3:0]
-
-alarm_logic:
-  alarm
-
-control_logic:
-  en path and update logic
-```
-
-The grouping does not have to be perfect in D02.
-
-It only needs to create a traceable bridge from raw design objects to later FMEDA rows.
-
----
-
-## 14. From Base FIT to Failure Mode Priority
-
-Base FIT results help prioritize failure-mode analysis.
-
-Example:
-
-```csv
-failure_mode_candidate,base_fit,priority_reason
-FM_COUNTER_STATE_CORRUPTION,0.052,dominant sequential state contribution
-FM_ALARM_NOT_ASSERTED,0.010,alarm path directly affects detection
-FM_CONTROL_UPDATE_ERROR,0.016,control logic affects state transition
-```
-
-This is not yet final FMEDA.
-
-It is an early planning view.
-
-```mermaid
-flowchart LR
-    A[Base FIT by Object] --> B[Category Grouping]
-    B --> C[Failure Mode Candidate]
-    C --> D[Safety Mechanism Planning]
-    D --> E[Fault List Generation]
-```
-
-**Figure 5. Base FIT grouping supports failure-mode prioritization and later fault list generation.**
-
-This is how D02 connects quantitative reliability modeling to safety engineering decisions.
-
----
-
-## 15. Relationship to Diagnostic Coverage
-
-Diagnostic coverage will later answer:
-
-```text
-How much of the base failure-rate contribution is detected or controlled?
-```
-
-Residual FIT can be simplified as:
-
-```text
-residual_fit = base_fit × (1 - diagnostic_coverage)
-```
-
-In practice, the actual formula and grouping may be more detailed.
-
-However, the conceptual dependency is clear:
-
-```text
-base_fit first
-diagnostic_coverage second
-residual_fit third
-```
-
-This is why D02 must be completed before meaningful DC interpretation.
-
----
-
-## 16. Relationship to Fault List Generation
-
-Base FIT also informs fault list generation.
-
-A fault list should not be a random set of signals.
-
-It should reflect safety-relevant design objects and failure-mode priorities.
-
-For example, if Base FIT review shows that counter state dominates the toy design risk, later fault list generation should include:
-
-```text
-toy_counter.count[0]
-toy_counter.count[1]
-toy_counter.count[2]
-toy_counter.count[3]
-```
-
-If alarm logic is safety-relevant, later fault list generation should include:
-
-```text
-toy_counter.alarm
-```
-
-D02 does not generate the final fault list.
-
-But it tells D08 what must not be ignored.
-
----
-
-## 17. Relationship to Common Safety Database
-
-A common safety database, or review workspace, is useful because Base FIT is not the final endpoint.
-
-The same evidence must later connect to:
-
-```text
-DCE
-coverage report
-fault list
-fault campaign result
-FMEDA rows
-failure mode mapping
-safety mechanism mapping
-```
-
-D02 should therefore produce machine-readable outputs.
-
-Do not rely only on human-readable reports.
-
-The key idea is:
-
-> If a Base FIT result cannot be parsed, indexed, and mapped forward, it cannot become reliable FMEDA evidence.
-
----
-
-## 18. D02 Directory Structure
-
-Recommended D02 structure:
+Recommended layout:
 
 ```text
 D02_base_fit_rate/
@@ -723,9 +300,16 @@ D02_base_fit_rate/
   manifest.yaml
 
   inputs/
-    base_fit/
-      base_fit_config.yaml
-      sample_base_fit_report.rpt
+    rtl/
+      toy_counter.v
+    filelist/
+      filelist.f
+    clock/
+      toy_counter.clk
+    fit/
+      FIT_inputs.common.txt
+    analysis/
+      analysis_bfr.fusaini
 
   scripts/
     setup_toolchain.template.csh
@@ -733,35 +317,577 @@ D02_base_fit_rate/
     run_demo.sh
 
   tools/
-    preflight_base_fit.py
-    parse_base_fit_report.py
-    summarize_base_fit.py
+    parse_analysis_config.py
+    run_bfr_preflight.py
+    parse_bfr_reports.py
+    build_bfr_summary.py
 
   outputs/
-    base_fit_by_object.csv
-    base_fit_by_category.csv
-    base_fit_summary.csv
-    failure_mode_priority_seed.csv
-    base_fit_expected_outputs.csv
-    base_fit_review.md
+    input_inventory.csv
+    analysis_options.csv
+    bfr_preflight_check.csv
+    expected_bfr_outputs.csv
+    bfr_summary.csv
+    fit_contribution.csv
+    bfr_report.md
+    evidence_index.csv
+    analysis_command.csh
     demo_summary.md
 
   logs/
     run_demo.log
 
   docs/
-    design_notes.md
+    bfr_notes.md
 ```
 
-The sample report allows public readers to run the parser without a real tool.
+D02 can either copy the D01 input files or reference a shared D01 package.
 
-The optional real engine path allows local engineers to execute the actual flow.
+For GitHub publication, copying the minimal toy inputs is easier for readers:
+
+```text
+D02 is self-contained.
+```
+
+For internal regression, a shared input package may be better:
+
+```text
+D02 consumes D01 outputs directly.
+```
+
+Both approaches are valid as long as the manifest makes the dependency explicit.
+
+---
+
+## 6. D02 Manifest
+
+The manifest should make D02's run identity clear.
+
+Example:
+
+```yaml
+project:
+  name: automotive_safeic_practice
+  article: 02
+  demo: D02_base_fit_rate
+  top_module: toy_counter
+
+inputs:
+  rtl_file: inputs/rtl/toy_counter.v
+  filelist: inputs/filelist/filelist.f
+  clkdef: inputs/clock/toy_counter.clk
+  fit_setup: inputs/fit/FIT_inputs.common.txt
+  analysis_config: inputs/analysis/analysis_bfr.fusaini
+
+analysis:
+  goal: base_fit_rate
+  mode: analysis
+  fit_standard: iec_62380
+  database_session: outputs/db/toy_counter.fdb::D02_BFR
+
+outputs:
+  bfr_summary: outputs/bfr_summary.csv
+  fit_contribution: outputs/fit_contribution.csv
+  bfr_report: outputs/bfr_report.md
+  evidence_index: outputs/evidence_index.csv
+  analysis_command: outputs/analysis_command.csh
+
+toolchain:
+  analysis_engine_env: SAFEIC_ANALYSIS_ENGINE
+  setup_template: scripts/setup_toolchain.template.csh
+```
+
+The important point is that BFR is not just a report. It is a run identity.
+
+```text
+BFR = design snapshot + FIT standard + FIT setup + clock model + analysis options + evidence location
+```
+
+---
+
+## 7. Analysis Initialization File for BFR
+
+D02 continues to use an initialization-file-driven flow.
+
+Example:
+
+```ini
+# inputs/analysis/analysis_bfr.fusaini
+
+mode = analysis
+top = toy_counter
+
+filelist = inputs/filelist/filelist.f
+clkdef = inputs/clock/toy_counter.clk
+fit_setup = inputs/fit/FIT_inputs.common.txt
+
+fit_standard = iec_62380
+block_level = true
+consolidated_report = sparse
+
+write_fusa_db = true
+fusa_db_name = outputs/db/toy_counter.fdb::D02_BFR
+overwrite_session = true
+overwrite_fusa_db = true
+
+ss_save_fault_list_to_db = true
+```
+
+D02 does not need to validate a real safety mechanism yet.
+
+However, it should already preserve database and fault-list hooks because later demos will rely on the same evidence chain.
+
+The command generated by the demo can be:
+
+```csh
+$SAFEIC_ANALYSIS_ENGINE \
+  --fusaini inputs/analysis/analysis_bfr.fusaini \
+  |& tee logs/analysis_engine.log
+```
+
+This command is intentionally boring.
+
+The methodology is in the input package, the initialization file, and the evidence model.
+
+---
+
+## 8. FIT Setup File
+
+D02 should continue to keep reliability assumptions separate from the command line.
+
+Example:
+
+```text
+# inputs/fit/FIT_inputs.common.txt
+
+PROJECT_NAME = automotive_safeic_practice
+TOP_MODULE   = toy_counter
+FIT_STANDARD = iec_62380
+MISSION_PROFILE = demo_motor_control
+ASIL_TARGET = ASIL_B_OR_HIGHER_DEMO_PLACEHOLDER
+
+# Public demo placeholders.
+# A production setup would provide technology, package, memory,
+# transistor count, mission profile, and diagnostic coverage definitions.
+```
+
+This file is not a production reliability model.
+
+It is a public-safe placeholder showing where reliability assumptions belong.
+
+The principle is:
+
+> FIT numbers must be traceable to their reliability assumptions.
+
+---
+
+## 9. Expected BFR Outputs
+
+A real BFR run may generate several report files.
+
+D02 should not hard-code one fragile filename. It should model expected outputs by purpose.
+
+Example:
+
+```csv
+artifact,purpose,required_for_public_demo,used_by_later_demo
+input_inventory.csv,input file inventory,yes,D19
+analysis_options.csv,normalized analysis options,yes,D03/D19
+bfr_preflight_check.csv,BFR preflight checks,yes,D19
+bfr_summary.csv,normalized BFR summary,yes,D03/D14/D16
+fit_contribution.csv,object or category FIT contribution,yes,D04/D06/D16
+bfr_report.md,human-readable BFR report,yes,D02/D19
+evidence_index.csv,index of generated evidence,yes,D19
+analysis_command.csh,reproducible real analysis command,yes,D02
+analysis_engine.log,real tool log if configured,no,D19
+toy_counter_IEC_62380.DCE,DCE-style output if generated,no,D04/D05/D16
+toy_counter_SS.summary.rpt,tool summary report if generated,no,D02/D19
+toy_counter_Perm_EquivFault.list,permanent fault list if generated,no,D08/D11
+SAFA_SA_Alarms.list,alarm list if generated,no,D10/D11
+```
+
+The public demo can generate normalized placeholder CSV files in preflight mode.
+
+When the real analysis engine is configured, the same parser interface can ingest real reports.
+
+---
+
+## 10. Preflight Mode and Real Analysis Mode
+
+D02 should follow the same execution philosophy as D01.
+
+There are two modes:
+
+```text
+preflight-only mode
+real-analysis mode
+```
+
+### 10.1 Preflight-Only Mode
+
+Preflight-only mode runs without the real analysis engine.
+
+It checks:
+
+```text
+manifest exists
+analysis config exists
+RTL file exists
+filelist exists
+clock file exists
+FIT setup exists
+fit_standard is explicit
+mode is analysis
+database session is defined
+output directory is writable
+BFR output schema can be generated
+```
+
+It also creates normalized sample outputs so that the downstream data shape is visible.
+
+### 10.2 Real-Analysis Mode
+
+Real-analysis mode runs only when:
+
+```text
+SAFEIC_ANALYSIS_ENGINE
+```
+
+is configured.
+
+It then generates and optionally executes:
+
+```text
+outputs/analysis_command.csh
+```
+
+After the real run, D02 parsers should look for:
+
+```text
+summary report
+FIT report
+FIT contribution report
+DCE file
+fault list
+alarm list
+database session
+analysis log
+```
+
+The public demo should not fail just because real tool outputs are absent.
+
+It should report:
+
+```text
+PASSED_WITH_WARNINGS
+```
+
+when the public preflight is complete but real analysis has not been executed.
+
+---
+
+## 11. Tool Flow Architecture
+
+D02 helper tools can remain simple.
+
+Recommended modules:
+
+```text
+tools/
+  parse_analysis_config.py
+  run_bfr_preflight.py
+  parse_bfr_reports.py
+  build_bfr_summary.py
+```
+
+Responsibilities:
+
+| Module | Responsibility |
+|---|---|
+| `parse_analysis_config.py` | Parse `key = value` initialization files |
+| `run_bfr_preflight.py` | Validate inputs and generate command script |
+| `parse_bfr_reports.py` | Parse real or sample BFR report artifacts |
+| `build_bfr_summary.py` | Build normalized CSV and Markdown summaries |
+
+A good D02 parser should be conservative:
+
+```text
+read real reports if present
+otherwise generate placeholder/sample outputs
+never pretend placeholder values are certified safety results
+always label sample data clearly
+```
+
+---
+
+## 12. Example BFR Summary CSV
+
+D02 should normalize the BFR result into a small CSV file.
+
+Example:
+
+```csv
+metric,value,unit,source,notes
+top_module,toy_counter,,manifest.yaml,design scope
+fit_standard,iec_62380,,analysis_bfr.fusaini,run identity
+base_fit_total,0.052,FIT,sample_public_demo,illustrative placeholder only
+permanent_fit,0.040,FIT,sample_public_demo,illustrative placeholder only
+transient_fit,0.012,FIT,sample_public_demo,illustrative placeholder only
+database_session,outputs/db/toy_counter.fdb::D02_BFR,,analysis_bfr.fusaini,planned session
+```
+
+For a real run, `source` should reference the actual report:
+
+```text
+toy_counter_SS.summary.rpt
+toy_counter_IEC_62380.FIT.rpt
+analysis_engine.log
+outputs/db/toy_counter.fdb::D02_BFR
+```
+
+The parser should not collapse all information into one number.
+
+BFR is a baseline. It must remain traceable.
+
+---
+
+## 13. Example FIT Contribution CSV
+
+D02 should also create a contribution table.
+
+Example:
+
+```csv
+object,category,base_fit,unit,percentage,source,notes
+toy_counter.count[0],sequential,0.013,FIT,25.0,sample_public_demo,illustrative placeholder only
+toy_counter.count[1],sequential,0.013,FIT,25.0,sample_public_demo,illustrative placeholder only
+toy_counter.count[2],sequential,0.013,FIT,25.0,sample_public_demo,illustrative placeholder only
+toy_counter.count[3],sequential,0.013,FIT,25.0,sample_public_demo,illustrative placeholder only
+```
+
+A real design may group contribution by:
+
+```text
+module
+instance
+register
+memory
+standard-cell class
+failure mode
+part/sub-part
+safety mechanism boundary
+```
+
+D02 should keep the table schema extensible because later demos will map contribution into structural elements and FMEDA rows.
+
+---
+
+## 14. BFR Report Markdown
+
+The human-readable report should explain the result, not only list files.
+
+Suggested `outputs/bfr_report.md`:
+
+```md
+# D02 Base FIT Rate Report
+
+## Run Identity
+
+- Demo: D02_base_fit_rate
+- Top module: toy_counter
+- FIT standard: iec_62380
+- Analysis config: inputs/analysis/analysis_bfr.fusaini
+- FIT setup: inputs/fit/FIT_inputs.common.txt
+- Database session: outputs/db/toy_counter.fdb::D02_BFR
+
+## Result
+
+Base FIT Rate was generated in public demo mode.
+Values are illustrative placeholders unless a real analysis report is parsed.
+
+## Key Observations
+
+- The input package is complete.
+- FIT standard is explicit.
+- BFR output schema is ready for D03, D04, D06, D14, and D16.
+
+## Next Step
+
+D03 compares FIT-standard assumptions and explains why DCE and BFR evidence must not be mixed across standards.
+```
+
+This report helps a reader understand D02 without reading the scripts first.
+
+---
+
+## 15. Why `.fdb::session` Still Matters in D02
+
+Even though D02 focuses on BFR, it should already prepare the database evidence path.
+
+The session name:
+
+```text
+outputs/db/toy_counter.fdb::D02_BFR
+```
+
+means:
+
+```text
+database file: outputs/db/toy_counter.fdb
+session name:  D02_BFR
+```
+
+A database may later contain multiple sessions:
+
+```text
+D02_BFR
+D08_fault_list
+D12_fault_campaign
+D14_final_metrics
+```
+
+This makes the evidence chain easier to organize.
+
+```mermaid
+flowchart LR
+    A[D02_BFR Session] --> B[D08 Fault List Session]
+    B --> C[D12 Fault Campaign Session]
+    C --> D[D14 Final Metrics Session]
+    D --> E[FMEDA Review]
+```
+
+**Figure 3. D02 should start the database evidence chain even before fault campaigns are executed.**
+
+The key principle is:
+
+> Database planning should not begin after fault campaigns. It should begin when the first baseline metric is generated.
+
+---
+
+## 16. BFR Is Not a Safety Claim
+
+A common mistake is to treat BFR as a final safety claim.
+
+It is not.
+
+BFR does not prove that the design is safe.
+
+BFR does not prove that a safety mechanism works.
+
+BFR does not prove diagnostic coverage.
+
+BFR only provides the baseline exposure.
+
+A better interpretation is:
+
+```text
+BFR tells us what needs to be protected, prioritized, or justified.
+```
+
+For example:
+
+```text
+High BFR contribution in a register group
+    -> may require safety mechanism planning
+
+High memory contribution
+    -> may suggest ECC or parity exploration
+
+High contribution in a control block
+    -> may affect failure-mode priority
+
+Low contribution in an unreachable or non-safety-relevant block
+    -> may still require justification, but may not dominate residual risk
+```
+
+D02 therefore prepares the design conversation for D06 safety exploration and later fault campaigns.
+
+---
+
+## 17. How BFR Connects to Safety Mechanism Planning
+
+Safety mechanisms should not be inserted randomly.
+
+They should respond to risk, architecture, and diagnostic needs.
+
+D02 helps create a ranked view:
+
+```text
+Where is the random hardware failure exposure?
+```
+
+Later demos can ask:
+
+```text
+Which exposure is safety-relevant?
+Which endpoints are affected?
+Which failure modes can be produced?
+Which safety mechanism should cover them?
+Which alarms should be connected?
+Which fault campaign should validate the coverage?
+```
+
+```mermaid
+flowchart TD
+    A[BFR Contribution] --> B[Structural Safety Model]
+    B --> C[Endpoint / Startpoint Mapping]
+    C --> D[Safety Mechanism Candidate]
+    D --> E[Fault List]
+    E --> F[Fault Campaign]
+    F --> G[Diagnostic Coverage Evidence]
+```
+
+**Figure 4. BFR contribution becomes useful when it is connected to structure, safety mechanisms, and fault campaign evidence.**
+
+---
+
+## 18. How BFR Connects to FMEDA
+
+FMEDA is not just a spreadsheet.
+
+It is a structured safety argument that connects:
+
+```text
+function
+failure mode
+failure rate
+safety mechanism
+diagnostic coverage
+residual risk
+evidence source
+```
+
+D02 provides the early failure-rate side of that argument.
+
+A simplified FMEDA-style row may eventually look like this:
+
+```csv
+function,failure_mode,base_fit,safety_mechanism,dc,residual_fit,evidence
+counter_state,incorrect_count_state,0.052,alarm_monitor,TBD,TBD,D02_BFR + D12_campaign
+```
+
+D02 fills only the baseline part.
+
+Later demos fill:
+
+```text
+failure mode mapping
+safety mechanism mapping
+fault campaign result
+diagnostic coverage
+residual FIT
+final FMEDA row evidence
+```
+
+The key point is:
+
+> BFR is not the end of the FMEDA story. It is one of the first numeric inputs to the story.
 
 ---
 
 ## 19. csh Execution Path
 
-D02 should keep csh as a first-class execution path.
+D02 should provide a first-class csh wrapper because many EDA environments still rely on csh-based setup scripts.
 
 Example:
 
@@ -779,161 +905,220 @@ else
   source scripts/setup_toolchain.template.csh
 endif
 
-mkdir -p outputs logs
+mkdir -p outputs logs outputs/db
 
-python3 tools/preflight_base_fit.py \
+python3 tools/run_bfr_preflight.py \
   --manifest manifest.yaml \
   |& tee logs/run_demo.log
 
-python3 tools/parse_base_fit_report.py \
-  --config inputs/base_fit/base_fit_config.yaml \
-  --report inputs/base_fit/sample_base_fit_report.rpt \
-  --output-dir outputs \
+python3 tools/build_bfr_summary.py \
+  --manifest manifest.yaml \
+  --out-dir outputs \
   |& tee -a logs/run_demo.log
+
+if ( $?SAFEIC_ANALYSIS_ENGINE ) then
+  echo "[INFO] SAFEIC_ANALYSIS_ENGINE is configured."
+  echo "[INFO] Review outputs/analysis_command.csh before executing real analysis."
+else
+  echo "[WARN] SAFEIC_ANALYSIS_ENGINE is not set. Preflight-only BFR demo completed."
+endif
 ```
 
-If the real engine is configured, the script may optionally generate or invoke:
+The generated `analysis_command.csh` must contain real newlines.
 
-```text
-outputs/base_fit_command.csh
-```
-
-But the public run should succeed without it.
+It must not contain literal `\n` text.
 
 ---
 
-## 20. Sample Report Parsing
+## 20. Bash Execution Path
 
-Public demo should include a small sample report.
+A bash wrapper is also useful for general GitHub users.
 
 Example:
 
-```text
-# sample_base_fit_report.rpt
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-Base FIT Rate Report
-Top: toy_counter
-FIT Standard: iec_62380
+DEMO=D02_base_fit_rate
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-Object                         Type        Category           BaseFIT
-toy_counter.count[0]           reg         sequential_state   0.013
-toy_counter.count[1]           reg         sequential_state   0.013
-toy_counter.count[2]           reg         sequential_state   0.013
-toy_counter.count[3]           reg         sequential_state   0.013
-toy_counter.alarm              wire        alarm_logic        0.010
-toy_counter.en_path            logic       control_logic      0.016
+cd "${ROOT}"
+mkdir -p outputs logs outputs/db
 
-Total Base FIT: 0.078
+python3 tools/run_bfr_preflight.py \
+  --manifest manifest.yaml 2>&1 | tee logs/run_demo.log
+
+python3 tools/build_bfr_summary.py \
+  --manifest manifest.yaml \
+  --out-dir outputs 2>&1 | tee -a logs/run_demo.log
 ```
 
-The parser should generate CSV tables.
-
-This demonstrates engineering capability:
-
-```text
-not only running a tool
-but converting tool report content into structured evidence
-```
+Bash is convenient, but the csh path remains important for older EDA environments.
 
 ---
 
-## 21. Review Summary
+## 21. D02 Preflight Checks
 
-D02 should generate:
+D02 preflight should check:
 
 ```text
-outputs/base_fit_review.md
+manifest exists
+analysis config exists
+RTL file exists
+filelist exists
+clock definition exists
+FIT setup exists
+mode is analysis
+fit_standard is explicit
+database session is defined
+write_fusa_db policy is defined
+output directory is writable
+analysis command can be generated
+BFR summary schema can be generated
 ```
 
-It should explain:
+Example `bfr_preflight_check.csv`:
+
+```csv
+check,status,details
+manifest_exists,PASS,manifest.yaml
+analysis_config_exists,PASS,inputs/analysis/analysis_bfr.fusaini
+rtl_exists,PASS,inputs/rtl/toy_counter.v
+filelist_exists,PASS,inputs/filelist/filelist.f
+clkdef_exists,PASS,inputs/clock/toy_counter.clk
+fit_setup_exists,PASS,inputs/fit/FIT_inputs.common.txt
+mode_is_analysis,PASS,analysis
+fit_standard_explicit,PASS,iec_62380
+database_session_defined,PASS,outputs/db/toy_counter.fdb::D02_BFR
+analysis_engine_configured,WARN,SAFEIC_ANALYSIS_ENGINE not set
+```
+
+Warnings are acceptable.
+
+Hidden assumptions are not.
+
+---
+
+## 22. D02 Demo Summary
+
+After running D02, the most important human-readable file should be:
 
 ```text
-total base FIT
-dominant category
-object-level contributors
-failure-mode priority seed
-standard used
-execution mode
-limitations
-next step
+outputs/demo_summary.md
+```
+
+It should summarize:
+
+```text
+design under analysis
+top module
+FIT standard
+BFR mode
+input files
+preflight status
+whether real analysis was executed
+where BFR summary is stored
+where contribution table is stored
+where evidence index is stored
+next demo dependency
 ```
 
 Example:
 
 ```md
-# Base FIT Review
+# D02 Demo Summary
 
-Top module: toy_counter  
+Design: toy_counter  
+Top: toy_counter  
 FIT standard: iec_62380  
-Total Base FIT: 0.078 FIT  
+Mode: preflight-only BFR schema generation  
 
-## Dominant Contributor
+## Result
 
-The sequential_state category contributes 0.052 FIT, which is 66.67% of the total base FIT.
+D02 completed in public demo mode.
+BFR output schema was generated.
+Sample values are illustrative placeholders.
 
-## Engineering Interpretation
+## Warnings
 
-Later structural safety modeling and fault list generation should prioritize counter state corruption and alarm-path behavior.
+- SAFEIC_ANALYSIS_ENGINE is not configured.
+- Real analysis was not executed.
 
-## Limitations
+## Generated Files
 
-This public demo uses a simplified sample report and does not represent production FIT signoff.
+- outputs/bfr_summary.csv
+- outputs/fit_contribution.csv
+- outputs/bfr_report.md
+- outputs/evidence_index.csv
+- outputs/analysis_command.csh
+
+## Next Step
+
+D03 compares FIT-standard assumptions and explains why BFR/DCE evidence must remain standard-specific.
 ```
-
-The report should be engineering-readable, not just raw output.
 
 ---
 
-## 22. Tool Architecture
+## 23. Common Mistakes
 
-D02 helper tools:
+### 23.1 Treating BFR as the Final Safety Metric
 
-```text
-tools/
-  preflight_base_fit.py
-  parse_base_fit_report.py
-  summarize_base_fit.py
-```
+BFR is only the baseline.
 
-Responsibilities:
-
-| Module | Responsibility |
-|---|---|
-| `preflight_base_fit.py` | Validate D01 dependency and D02 configuration |
-| `parse_base_fit_report.py` | Parse sample or real report into structured CSV |
-| `summarize_base_fit.py` | Generate category summary and review markdown |
-
-This modularity matters.
-
-Parsing, summarization, and preflight should not be mixed into one large script.
+It must later be connected to safety mechanisms, diagnostic coverage, fault-campaign evidence, and residual risk.
 
 ---
 
-## 23. Common Pitfalls
+### 23.2 Reporting a FIT Number Without Run Identity
 
-### 23.1 Treating Base FIT as Final Safety Metric
+This is weak:
 
-Base FIT is the unprotected baseline, not the final residual risk.
+```csv
+top,base_fit
+toy_counter,0.052
+```
 
-### 23.2 Forgetting the FIT Standard
+This is better:
 
-A Base FIT number without standard context is incomplete.
+```csv
+top,base_fit,unit,fit_standard,fit_setup,analysis_config,evidence_session
+toy_counter,0.052,FIT,iec_62380,inputs/fit/FIT_inputs.common.txt,inputs/analysis/analysis_bfr.fusaini,outputs/db/toy_counter.fdb::D02_BFR
+```
 
-### 23.3 Not Grouping Contributors
+---
 
-Object-level FIT tables need grouping to support safety decisions.
+### 23.3 Mixing FIT Standards
 
-### 23.4 Mixing Diagnostic Coverage Too Early
+A BFR result generated under one standard should not be silently compared or merged with a result generated under another standard.
 
-D02 should not credit safety mechanisms prematurely.
+D03 will focus on this problem.
 
-### 23.5 Using Unparseable Reports Only
+D02 should already record the standard in every normalized output.
 
-Human-readable reports are useful, but structured CSV outputs are necessary for later flow automation.
+---
 
-### 23.6 Hiding Execution Mode
+### 23.4 Ignoring Contribution Ranking
 
-A sample-report run and a real-engine run must be labeled differently.
+A total FIT number is too coarse.
+
+Contribution ranking is what turns BFR into engineering guidance.
+
+---
+
+### 23.5 Overclaiming Placeholder Demo Values
+
+Public demo values are illustrative unless generated from a real analysis engine.
+
+The report must label them clearly.
+
+---
+
+### 23.6 Forgetting the Database Session
+
+Even if D02 only generates public CSV files, the `.fdb::session` plan should already be present.
+
+Later evidence integration depends on it.
 
 ---
 
@@ -942,73 +1127,116 @@ A sample-report run and a real-engine run must be labeled differently.
 A reviewer should be able to answer:
 
 ```text
-Which D01 input package is used?
-Which FIT standard is selected?
-Was the run sample mode or real engine mode?
-What is the total Base FIT?
-Which objects dominate the Base FIT?
-Which categories dominate the Base FIT?
-Which failure-mode candidates should be prioritized?
-Which outputs will later feed diagnostic coverage and FMEDA?
-Are assumptions and limitations visible?
+Which design was analyzed?
+Which top module was used?
+Which filelist was used?
+Which clock definition was used?
+Which FIT setup file was used?
+Which FIT standard was selected?
+Was this a public preflight run or a real analysis run?
+Where is the BFR summary stored?
+Where is the FIT contribution table stored?
+Is the database session defined?
+Are placeholder values clearly labeled?
+Can the real analysis command be reproduced?
+Which later demos consume the BFR evidence?
 ```
 
-If these questions cannot be answered, the Base FIT result is not review-ready.
+If these answers are unclear, D02 is not ready.
 
 ---
 
-## 25. How D02 Connects to Later Demos
+## 25. D02 Acceptance Criteria
 
-D02 provides the quantitative baseline for the next steps.
+D02 is considered complete when:
 
-```mermaid
-flowchart TD
-    A[D01 Analysis Input Package] --> B[D02 Base FIT Rate]
-    B --> C[D03 FIT Standard Comparison]
-    B --> D[D04 Structural Safety Model]
-    D --> E[D05 Diagnostic Coverage Computation]
-    B --> F[D16 FMEDA Data Model]
-    E --> G[D17 Top-Down FMEDA Flow]
-    G --> H[D18 Evidence Traceability]
+```text
+[ ] The D01 input package is carried forward or referenced.
+[ ] The top module is explicit.
+[ ] The filelist is explicit.
+[ ] The clock definition is explicit.
+[ ] The FIT setup file is explicit.
+[ ] The FIT standard is explicit.
+[ ] The analysis mode is analysis.
+[ ] The BFR database session is defined.
+[ ] The real analysis command is generated with real newlines.
+[ ] The demo runs without a real tool in preflight-only mode.
+[ ] Placeholder values are clearly labeled.
+[ ] bfr_summary.csv is generated.
+[ ] fit_contribution.csv is generated.
+[ ] bfr_report.md is generated.
+[ ] evidence_index.csv is generated.
+[ ] D03 can consume the BFR outputs.
 ```
-
-**Figure 6. D02 provides the Base FIT baseline for structural analysis, diagnostic coverage, and FMEDA evidence.**
-
-Without D02, later diagnostic coverage and residual FIT discussions are disconnected from quantitative risk.
 
 ---
 
-## 26. Summary
+## 26. How D03 Builds on D02
 
-D02 introduces the first quantitative safety-analysis result in the series:
+D03 will focus on FIT-standard control.
+
+D02 uses one selected standard, for example:
+
+```text
+iec_62380
+```
+
+D03 will compare the effect of changing the FIT-standard context:
+
+```text
+iec_62380
+sn_29500
+```
+
+The key D03 question is:
+
+> What changes when the same design and input package are evaluated under a different FIT standard?
+
+D03 will also explain why DCE-style evidence and BFR outputs must not be mixed across standards unless the flow explicitly supports that comparison.
+
+---
+
+## 27. Summary
+
+D02 introduces the first quantitative checkpoint of the Automotive Safe-IC practice flow:
 
 ```text
 D02_base_fit_rate
 ```
 
-It consumes the D01 input package and establishes:
+It builds on D01 and creates a reproducible Base FIT Rate evidence package.
+
+The main outputs are:
 
 ```text
-Base FIT Rate
-FIT standard context
-object-level FIT contribution
-category-level FIT contribution
-failure-mode priority seed
-structured output tables
-review summary
+bfr_summary.csv
+fit_contribution.csv
+bfr_report.md
+evidence_index.csv
+analysis_command.csh
+demo_summary.md
 ```
 
-The core lesson is:
+The main lessons are:
 
-> Base FIT Rate is the random hardware failure baseline. It must be established before diagnostic coverage, residual FIT, fault prioritization, and FMEDA review can be interpreted.
+```text
+BFR is the random hardware failure baseline.
+BFR is not diagnostic coverage.
+BFR is not the final safety claim.
+BFR must be tied to FIT standard, mission assumptions, design scope, and evidence source.
+FIT contribution is as important as total FIT.
+The database session plan should begin at the BFR stage.
+```
 
-D02 proves that the flow is not just a collection of commands.
+A mature functional safety flow does not start by claiming coverage.
 
-It is a traceable engineering pipeline from input context to quantitative safety baseline.
+It first establishes the baseline exposure that coverage must address.
+
+That is the role of D02.
 
 ---
 
-## 27. D02 Demo Checklist
+## 28. D02 Demo Deliverables
 
 Expected D02 deliverables:
 
@@ -1016,38 +1244,44 @@ Expected D02 deliverables:
 [ ] README.md
 [ ] manifest.yaml
 
-[ ] inputs/base_fit/base_fit_config.yaml
-[ ] inputs/base_fit/sample_base_fit_report.rpt
+[ ] inputs/rtl/toy_counter.v
+[ ] inputs/filelist/filelist.f
+[ ] inputs/clock/toy_counter.clk
+[ ] inputs/fit/FIT_inputs.common.txt
+[ ] inputs/analysis/analysis_bfr.fusaini
 
 [ ] scripts/setup_toolchain.template.csh
 [ ] scripts/run_demo.csh
 [ ] scripts/run_demo.sh
 
-[ ] tools/preflight_base_fit.py
-[ ] tools/parse_base_fit_report.py
-[ ] tools/summarize_base_fit.py
+[ ] tools/parse_analysis_config.py
+[ ] tools/run_bfr_preflight.py
+[ ] tools/parse_bfr_reports.py
+[ ] tools/build_bfr_summary.py
 
-[ ] outputs/base_fit_by_object.csv
-[ ] outputs/base_fit_by_category.csv
-[ ] outputs/base_fit_summary.csv
-[ ] outputs/failure_mode_priority_seed.csv
-[ ] outputs/base_fit_expected_outputs.csv
-[ ] outputs/base_fit_review.md
+[ ] outputs/input_inventory.csv
+[ ] outputs/analysis_options.csv
+[ ] outputs/bfr_preflight_check.csv
+[ ] outputs/expected_bfr_outputs.csv
+[ ] outputs/bfr_summary.csv
+[ ] outputs/fit_contribution.csv
+[ ] outputs/bfr_report.md
+[ ] outputs/evidence_index.csv
+[ ] outputs/analysis_command.csh
 [ ] outputs/demo_summary.md
 
 [ ] logs/run_demo.log
 
-[ ] docs/design_notes.md
+[ ] docs/bfr_notes.md
 ```
 
 A successful D02 run should answer:
 
 ```text
-Was the Base FIT Rate context complete?
-Which FIT standard was used?
-What is the total Base FIT?
-Which objects and categories dominate?
-How should failure-mode analysis be prioritized?
-Can the result feed diagnostic coverage and FMEDA?
-Can the run be reproduced or replayed?
+Is the BFR run identity clear?
+Is the FIT standard explicit?
+Is the baseline traceable to D01 inputs?
+Are the BFR summary and contribution table generated?
+Are placeholder values clearly separated from real analysis results?
+Can later demos consume the BFR evidence?
 ```
