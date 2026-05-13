@@ -3,8 +3,6 @@
 **Author**: Darren H. Chen  
 **Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
 **Demo**: `D01_analysis_input_package`  
-**Platform**: GitHub article + reproducible demo project  
-
 **Tags**: Automotive Chip, Functional Safety, ISO 26262, ASIL, FIT, Base FIT Rate, Diagnostic Coverage, Fault Campaign, FMEDA, FuSa Database, Reproducible EDA Flow
 
 ---
