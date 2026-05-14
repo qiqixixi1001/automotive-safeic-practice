@@ -3,8 +3,6 @@
 **Author**: Darren H. Chen  
 **Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
 **Demo**: `D03_fit_standard_and_mission_profile_fixed_v2`  
-**Platform**: GitHub technical article + reproducible demo project  
-
 **Tags**: Automotive Chip, Functional Safety, ISO 26262, FIT, Base FIT Rate, Mission Profile, IEC 62380, SN 29500, Lambda, Reliability Prediction, DCE, FMEDA, Evidence Flow, Run Identity
 
 ---
