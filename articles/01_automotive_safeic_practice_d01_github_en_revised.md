@@ -1,68 +1,78 @@
-# [Automotive Safe-IC Practice 01] Analysis Input Package: A Reproducible Safety Analysis Context for FIT, Fault Lists, and FMEDA Evidence
+# [Automotive Safe-IC Practice 01] Analysis Input Package: Building a Reproducible Safety Evidence Context
 
 **Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
+**Direction**: Automotive Chip Functional Safety Analysis and Fault-Injection Practice  
 **Demo**: `D01_analysis_input_package`  
-**Tags**: Automotive Chip, Functional Safety, ISO 26262, ASIL, FIT, Base FIT Rate, Diagnostic Coverage, Fault Campaign, FMEDA, FuSa Database, Reproducible EDA Flow
+**Tags**: Automotive Chip, Functional Safety, ISO 26262, ASIL, FIT, Base FIT Rate, Diagnostic Coverage, Fault Campaign, FMEDA, Evidence Database, Reproducible EDA Flow
 
 ---
 
-## 1. Start with the Basic Concepts
+## 1. Why This Article Starts from an Input Package
 
-Before discussing the demo structure, it is useful to define a few basic concepts.
-
-Many functional safety discussions quickly jump into SPFM, LFM, PMHF, or FMEDA. For a practical engineering flow, however, it is better to first understand the input package, fault, error, failure, FIT, diagnostic coverage, and fault injection context.
-
-This series does not start from a tool button or a vendor-specific command.
-
-It starts from a reproducible engineering input package.
-
-A safety result is not supported by one command line alone. It is supported by a reviewable set of inputs, configuration files, logs, reports, database sessions, and evidence artifacts.
-
-### 1.1 What Functional Safety Means
-
-In automotive electronics, functional safety is usually discussed in the context of ISO 26262.
-
-A practical interpretation is:
+Many functional safety discussions start from metrics:
 
 ```text
-When an electrical/electronic system malfunctions, can the system still avoid unacceptable risk?
+FIT
+SPFM
+LFM
+PMHF
+diagnostic coverage
+FMEDA
 ```
 
-It does not only ask:
+These metrics are important, but they are not the best starting point for an engineering practice series.
+
+A functional safety result is only meaningful when its input context is reproducible. A number without a reviewable input package is difficult to audit, difficult to reproduce, and difficult to reuse in later fault campaigns or FMEDA work.
+
+For that reason, this first demo does not start from a vendor-specific command or a tool GUI.
+
+It starts from a simple question:
 
 ```text
-Does the design have a bug?
+What files, assumptions, configuration items, and evidence indexes are required
+before a safety analysis result can be trusted?
 ```
 
-It further asks:
+The answer is the **analysis input package**.
+
+In this series, D01 is the root of the entire Safe-IC evidence chain. It prepares the design boundary, reliability setup, clock definition, analysis options, database session name, output structure, and run manifest. Later demos can then build on the same foundation without redesigning the directory structure or changing the evidence model.
+
+---
+
+## 2. Basic Concepts Before the Demo
+
+Before describing the demo structure, several terms should be clarified.
+
+### 2.1 Functional Safety
+
+In the automotive context, functional safety is mainly discussed under ISO 26262. A practical engineering interpretation is:
 
 ```text
-If a register, logic cone, memory element, or interface signal in the chip experiences a random hardware fault,
-can the system detect it, control it, recover from it, or move to a safe state?
+When an electrical/electronic system malfunctions, can the system avoid unreasonable risk?
 ```
 
-In short, functional safety cares about what happens after something goes wrong.
+This question is different from ordinary functional verification.
 
-This is different from ordinary functional verification.
-
-Functional verification usually focuses on:
+Functional verification asks:
 
 ```text
-Under legal inputs and constraints, does the design implement the specification?
+Does the design implement the specification under intended operating conditions?
 ```
 
-Functional safety verification adds another question:
+Functional safety adds another question:
 
 ```text
-When hardware faults occur, do the safety mechanisms prevent dangerous behavior?
+When a hardware fault occurs during field operation, does the design detect, control,
+correct, isolate, or safely tolerate the abnormal behavior?
 ```
 
-### 1.2 ISO 26262 and ASIL
+A normal RTL test may prove that a counter increments correctly. A safety analysis or fault campaign asks what happens when a counter bit flips, a control signal is stuck, a memory word is corrupted, or a checker output is delayed.
 
-ISO 26262 is a major functional safety standard for automotive electrical/electronic systems.
+### 2.2 ISO 26262 and ASIL
 
-ASIL means **Automotive Safety Integrity Level**. It is commonly divided into:
+**ISO 26262** is the major functional safety standard for road-vehicle electrical and electronic systems.
+
+**ASIL** means **Automotive Safety Integrity Level**. It is commonly divided into:
 
 ```text
 ASIL A
@@ -73,7 +83,7 @@ ASIL D
 
 ASIL D is the most stringent level.
 
-ASIL is not selected arbitrarily at the chip level. It is derived from system-level hazard analysis and risk assessment. Typical factors include:
+ASIL is not chosen randomly at the chip level. It is derived from system-level hazard analysis and risk assessment. Typical factors include:
 
 ```text
 Severity
@@ -81,26 +91,25 @@ Exposure
 Controllability
 ```
 
-At the semiconductor level, the safety analysis must provide hardware evidence, such as:
+At the semiconductor level, the design team must provide evidence that helps answer questions such as:
 
 ```text
-Is the random hardware failure rate low enough?
-Are critical failures covered by safety mechanisms?
-Is the residual risk acceptable?
-Can the evidence be used in FMEDA?
+What is the random hardware failure rate?
+Which internal structures contribute most to the risk?
+Which safety mechanisms cover which failure modes?
+Which faults remain residual or unsafe?
+Can the evidence support an FMEDA table?
 ```
 
-Therefore, chip-level safety work must connect design structure, reliability prediction, diagnostic coverage, fault injection results, and FMEDA rows. A standalone percentage or a standalone FIT number is not enough.
+### 2.3 Fault, Error, and Failure
 
-### 1.3 Fault, Error, and Failure
+The terms **fault**, **error**, and **failure** are often used together, but they describe different points in a cause-effect chain.
 
-These three terms often appear together, but they do not mean the same thing.
-
-| Term | Practical Meaning | Example |
+| Term | Practical meaning | Example |
 |---|---|---|
-| Fault | The defect or fault source | A register bit flips; a net is stuck-at-1 |
-| Error | The incorrect internal state | A computed value differs from the expected value |
-| Failure | The externally visible functional failure | The wrong output violates a safety goal |
+| Fault | The defect or abnormal physical/logical condition | A register bit flips; a net is stuck-at-1 |
+| Error | The incorrect internal state caused by the fault | A counter contains the wrong value |
+| Failure | The externally visible violation of intended behavior | A safety goal is violated |
 
 A simplified chain is:
 
@@ -108,60 +117,57 @@ A simplified chain is:
 fault -> error -> failure
 ```
 
-For example:
+A fault does not always become a failure. It may be masked, corrected, detected, or may never propagate to a safety-relevant output. Functional safety analysis studies this propagation and classification.
 
-```text
-count[2] experiences a bit flip            = fault
-the counter value becomes incorrect        = error
-the incorrect value affects control output = failure
-```
+### 2.4 Systematic Faults and Random Hardware Faults
 
-Functional safety analysis does not merely record that a fault occurred. It studies whether the fault propagates into an error, whether the error becomes a failure, and whether a safety mechanism detects or controls it.
-
-### 1.4 Systematic Faults and Random Hardware Faults
-
-Functional safety usually distinguishes between:
+Functional safety usually distinguishes between two major categories:
 
 ```text
 systematic faults
 random hardware faults
 ```
 
-A systematic fault is caused by a deterministic problem in the design, implementation, verification, manufacturing, or maintenance process. Examples include:
+A **systematic fault** comes from a deterministic problem in specification, design, implementation, verification, manufacturing, or maintenance. Examples include:
 
 ```text
 RTL bug
 incorrect requirement interpretation
-verification gap
-constraint error
-software logic defect
+incorrect clock-domain assumption
+incomplete verification plan
+wrong software logic
+incorrect constraint
 ```
 
-A random hardware fault occurs during the lifetime of the device. Examples include:
+A **random hardware fault** appears during the lifetime of the device. Examples include:
 
 ```text
+single-event upset
 soft error
-single event upset
-aging-related defect
 stuck-at fault
-transient fault
+transient bit flip
+aging-related defect
+memory corruption
 ```
 
 This article series focuses mainly on chip-level random hardware faults:
 
 ```text
 random hardware faults
-    -> FIT / BFR
-    -> diagnostic coverage
-    -> fault list
+    -> base failure-rate analysis
+    -> structural safety modeling
+    -> diagnostic coverage preparation
+    -> fault list generation
+    -> simulation safety context
     -> fault campaign
-    -> final safety metrics
+    -> outcome classification
+    -> final metric validation
     -> FMEDA evidence
 ```
 
-### 1.5 What a Safety Mechanism Is
+### 2.5 Safety Mechanism
 
-A safety mechanism, or SM, is a mechanism added to detect, control, correct, or isolate faults.
+A **safety mechanism**, often abbreviated as **SM**, is a mechanism used to detect, control, correct, isolate, or mitigate a fault.
 
 Common examples include:
 
@@ -177,656 +183,153 @@ BIST
 timeout monitor
 range checker
 protocol checker
-alarm aggregation
+alarm aggregator
 ```
 
 For example, a register group may use parity:
 
 ```text
-data bits + parity bit
+data bits + parity bit + parity checker
 ```
 
-If one bit flips, a parity checker can detect the mismatch and trigger an alarm.
-
-The fault outcome may then be classified as:
-
-```text
-detected fault
-```
-
-If a fault changes the machine state but no alarm fires and the design does not enter a safe state, it may become:
-
-```text
-unsafe fault
-```
+If one data bit flips, the parity checker can detect the mismatch and raise an alarm. In a fault campaign, this fault may be classified as detected if the alarm is observed within the required window.
 
 ---
 
-## 2. Why D01 Does Not Start from a Tool Command
+## 3. D01 in the Updated 20-Demo Planning
 
-In ordinary RTL verification, an engineer may start from commands such as:
-
-```text
-compile RTL
-run simulation
-check pass/fail
-```
-
-Functional safety analysis requires a richer context.
-
-A single safety analysis run depends on:
-
-```text
-design files
-top module
-filelist ordering
-clock definition
-reset assumptions
-FIT standard
-FIT setup
-mission profile
-technology assumptions
-package assumptions
-memory assumptions
-safety mechanism assumptions
-analysis initialization options
-common safety database settings
-report policy
-fault list generation policy
-execution command
-tool log
-```
-
-If these inputs are not explicitly captured, the results are hard to reproduce and review.
-
-For example, two runs may use the same RTL but different FIT standards:
-
-```text
-iec_62380
-sn_29500
-```
-
-The FIT values, DCE files, summary reports, and interpretation may differ.
-
-Two runs may also use the same design but different clock definitions. That can change sequential element recognition, fault propagation boundaries, and diagnostic coverage behavior.
-
-The first engineering principle of D01 is:
-
-> A safety analysis result is meaningful only when its input context is explicit, versioned, and reviewable.
-
-D01 is not about producing a number as quickly as possible. It is about organizing the context behind that number.
-
----
-
-## 3. Where D01 Sits in the Safe-IC Flow
-
-This series uses a 20-step core flow. D01 is the root of the entire evidence chain.
+The updated series is organized around a complete Safe-IC workflow rather than isolated scripts. D01 is the first step.
 
 ```mermaid
 flowchart TD
-    A[D01 Analysis Input Package] --> B[D02 Base FIT Rate]
-    B --> C[D03 FIT Standard and Mission Profile]
-    C --> D[D04 Structural Safety Model]
-    D --> E[D05 Common FuSa Database]
-    E --> F[D06 Safety Mechanism Mapping]
-    F --> G[D07 Diagnostic Coverage Preparation]
-    G --> H[D08 Fault List Generation]
-    H --> I[D09 Simulation Safety Context]
-    I --> J[D10 Alarm and Observe Point Definition]
-    J --> K[D11 Fault Campaign Setup]
-    K --> L[D12 Fault Injection Execution]
-    L --> M[D13 Fault Outcome Classification]
-    M --> N[D14 Final Metric Validation]
-    N --> O[D15 FMEDA Evidence Package]
+    D01[D01 Analysis Input Package] --> D02[D02 Base FIT Rate]
+    D02 --> D03[D03 FIT Standard and Mission Profile]
+    D03 --> D04[D04 Structural Safety Model]
+    D04 --> D05[D05 Common Evidence Database]
+    D05 --> D06[D06 Safety Exploration]
+    D06 --> D07[D07 Safety Mechanism Map]
+    D07 --> D08[D08 Fault List Generation]
+    D08 --> D09[D09 Simulation Safety Context]
+    D09 --> D10[D10 Alarm and Observe Point]
+    D10 --> D11[D11 Fault Campaign Setup]
+    D11 --> D12[D12 Fault Injection Execution]
+    D12 --> D13[D13 Fault Outcome Classification]
+    D13 --> D14[D14 Result Writeback and Final Metrics]
+    D14 --> D15[D15 FMEDA Data Model]
+    D15 --> D16[D16 Top-Down FMEDA Flow]
+    D16 --> D17[D17 Diagnostic Coverage Closure]
+    D17 --> D18[D18 Regression Gate]
+    D18 --> D19[D19 Evidence Traceability]
+    D19 --> D20[D20 End-to-End Mini Flow]
 ```
 
-**Figure 1. D01 is the entry point for safety analysis, fault lists, fault injection, and FMEDA evidence.**
+D01 must therefore prepare the context for later demos, even if it does not execute every stage itself.
 
-D01 should reserve evidence directories for later stages:
+The key idea is:
 
 ```text
-Base FIT reports
-DCE-style safety analysis results
-permanent fault lists
-transient fault lists
-alarm lists
-observe point specifications
-fault campaign results
-common safety database sessions
-FMEDA-oriented summaries
-logs and manifests
+D01 does not prove final safety compliance.
+D01 prepares a reproducible context from which later safety evidence can be generated.
 ```
-
-If D01 is only a loose script folder, D02, D05, D08, D11, and D14 will all need to repair the structure later.
-
-A mature engineering flow starts with a stable entry point.
 
 ---
 
-## 4. Safety Analysis vs. Safety Verification
+## 4. Safety Analysis and Safety Verification
 
-D01 primarily supports safety analysis, but it must also reserve interfaces for safety verification.
+The updated planning separates two related but different activities.
 
 ### 4.1 Safety Analysis
 
-Safety analysis asks:
+Safety analysis asks questions such as:
 
 ```text
-How much FIT is contributed by random hardware faults?
-Which structures are safety-relevant?
-Which endpoints and startpoints matter?
-How much diagnostic coverage can be credited from safety mechanism assumptions?
-Can a fault list be generated?
-How can the results be used by FMEDA?
+What is the base random hardware failure rate?
+Which design structures contribute to the failure rate?
+Which failure modes are relevant?
+Which safety mechanisms may provide diagnostic coverage?
+Can fault lists or structural evidence be generated for later campaigns?
+Can the result support FMEDA preparation?
 ```
 
-This series uses a neutral name for the analysis executable:
+In the public demo, the analysis backend is represented by a neutral environment variable:
 
 ```text
-safeic_analysis_engine
+SAFEIC_ANALYSIS_ENGINE
 ```
 
-Typical inputs include:
-
-```text
-RTL / netlist
-filelist
-clock definition
-FIT setup
-analysis initialization file
-library / memory / package information
-common safety database settings
-```
+This is not a real product command. It is a placeholder for a locally configured analysis backend.
 
 ### 4.2 Safety Verification
 
-Safety verification asks:
+Safety verification asks questions such as:
 
 ```text
-After a fault is injected into the design, does the safety mechanism actually respond?
-Does an alarm fire?
-Does the fault propagate to an observe point?
-Does the behavior become unsafe?
-How should the fault outcome be classified?
+After a fault is injected, does an alarm fire?
+Does the error propagate to an observe point?
+Does the design enter a safe state?
+Is the fault detected, safe, unsafe, or unresolved?
+Does the response occur within the required timing window?
 ```
 
-This series uses a neutral name for the fault campaign executable:
+In the public demo, the fault-campaign backend is represented by another neutral environment variable:
 
 ```text
-safeic_fault_engine
+SAFEIC_FAULT_ENGINE
 ```
 
-Typical inputs include:
+D01 does not run a full fault campaign. It only reserves the directory structure and evidence model so that later demos can use the same package.
+
+### 4.3 Why D01 Must Know Both Sides
+
+The output of safety analysis often becomes the input to safety verification:
 
 ```text
-fault list
-VCD / simulation safety context
-alarm list
-observe point
-FTTI / simulation window
-fault campaign configuration
-common safety database session
+base failure-rate report -> safety exploration
+structural safety model  -> diagnostic coverage preparation
+fault list               -> fault campaign setup
+database session         -> result writeback and FMEDA
 ```
 
-### 4.3 Why D01 Needs Both Perspectives
-
-The early outputs of safety analysis become inputs to safety verification.
-
-For example:
-
-```text
-D02 / D08 generate or index fault lists
-D09 prepares VCD and good-machine context
-D10 defines alarms and observe points
-D11 builds the fault campaign input package
-D12 executes fault injection
-D13 classifies detected / safe / unsafe / unresolved outcomes
-D14 writes back results and calculates final metrics
-```
-
-Therefore, D01 should reserve:
-
-```text
-outputs/reports/
-outputs/fault_lists/
-outputs/db/
-outputs/manifest/
-logs/
-```
-
-D01 is not the final safety run. It is the first bridge from design data to safety evidence.
+Therefore, D01 must include placeholders for both file-based evidence and database-based evidence.
 
 ---
 
-## 5. Basic Data-Exchange Protocols and File Conventions
+## 5. What “Protocol” Means in This Demo
 
-The word "protocol" here does not mean a network protocol. It means the data-exchange contract between flow stages.
+This article uses the word **protocol** in an engineering-flow sense.
 
-Common safety-flow protocols include:
+It does not mean Ethernet, PCIe, CAN, or a network protocol.
+
+Here, a protocol means:
+
+```text
+a stable data-exchange contract between two flow stages
+```
+
+For example, if D02 produces a fault list and D11 consumes it, both stages must agree on the location, naming rule, basic fields, and interpretation of that file. That agreement is a protocol.
+
+D01 introduces several practical protocols:
 
 ```text
 RTL/filelist input protocol
 clock definition protocol
-analysis initialization file protocol
+analysis initialization protocol
 FIT setup protocol
-common safety database session protocol
+evidence database session protocol
 fault list protocol
-alarm / observe point protocol
-VCD simulation context protocol
-evidence file naming protocol
+alarm and observe point protocol
+VCD safety-context protocol
+manifest protocol
+output index protocol
 ```
 
-These conventions make the stages connect reliably.
-
-### 5.1 RTL / Filelist Input Protocol
-
-RTL is the design source.
-
-A filelist tells the tool which RTL files should be analyzed and how they should be read.
-
-Example:
-
-```text
-# inputs/rtl/toy_counter.v
-# inputs/filelist/filelist.f
-inputs/rtl/toy_counter.v
-```
-
-Without a filelist, the analysis boundary is unclear.
-
-If filelist order, paths, macro definitions, or include paths are unstable, the same design may behave differently across machines.
-
-### 5.2 Clock Definition Protocol
-
-The clock definition tells the analysis engine which signals are clocks.
-
-Example:
-
-```text
-# inputs/clock/toy_counter.clk
-clk
-```
-
-It affects:
-
-```text
-register recognition
-sequential boundaries
-fault propagation
-good-machine context
-alarm timing
-observe point interpretation
-```
-
-Therefore, the clock file is safety-analysis input, not just a minor command-line option.
-
-### 5.3 Analysis Initialization File Protocol
-
-The analysis initialization file describes the option set for one analysis run.
-
-This series uses:
-
-```text
-inputs/analysis/analysis_bfr.fusaini
-```
-
-It collects design scope, FIT setup, FIT standard, database session, and output policy in one place.
-
-### 5.4 FIT Setup Protocol
-
-The FIT setup describes reliability-calculation assumptions, such as:
-
-```text
-FIT standard
-mission profile
-temperature
-manufacturing year
-package
-technology
-memory
-lambda values
-```
-
-D01 uses a simplified public-safe setup, but the location and format must be explicit.
-
-### 5.5 Common FuSa Database Session Protocol
-
-A common safety database is used to share structured evidence between safety analysis, fault campaigns, and FMEDA review.
-
-Example:
-
-```text
-outputs/db/toy_counter.fdb::D01_BFR
-```
-
-This can be read as:
-
-```text
-Database file: outputs/db/toy_counter.fdb
-Session name:  D01_BFR
-```
-
-The `.fdb` file is the evidence container. The session name is a named partition inside that container.
-
-### 5.6 Fault List Protocol
-
-A fault list is one input to a later fault campaign.
-
-It answers:
-
-```text
-Which faults should be injected?
-What type is each fault?
-Which design objects are affected?
-Is the fault permanent or transient?
-Is it primary, equivalent, or collapsed?
-```
-
-D01 does not require fault campaign closure, but it must reserve:
-
-```text
-outputs/fault_lists/
-```
-
-### 5.7 Alarm / Observe Point Protocol
-
-An alarm is a signal that indicates that a safety mechanism detected an abnormal condition.
-
-An observe point is a signal or state used to judge fault campaign behavior.
-
-Examples:
-
-```text
-alarm_o
-error_flag_o
-safe_state_o
-critical_output_o
-```
-
-A fault campaign cannot only check whether a fault was injected. It must check whether an alarm fired, whether an observe point changed, and whether the fault was handled within the intended window.
-
-### 5.8 VCD Simulation Context Protocol
-
-VCD means **Value Change Dump**. It records signal transitions during simulation.
-
-In a functional safety fault campaign, VCD can provide the golden-run or good-machine context.
-
-Fault injection should not happen in a vacuum. A fault is injected into a known normal execution context, and the campaign observes how behavior deviates from the golden context.
-
-D01 does not generate VCD, but it must keep the flow open for:
-
-```text
-simulation safety context
-VCD
-good machine
-FTTI
-observe point
-```
+These protocols make the demo reproducible and make later extensions easier.
 
 ---
 
-## 6. FIT, BFR, DC, and Residual FIT
+## 6. Core Files in the D01 Input Package
 
-### 6.1 FIT
-
-FIT means **Failure In Time**.
-
-A common engineering interpretation is:
-
-```text
-1 FIT = 1 failure per 10^9 operating hours
-```
-
-or:
-
-```text
-1 FIT = 10^-9 failures / hour
-```
-
-If a module has a failure rate of 10 FIT, it can be understood as:
-
-```text
-10 failures per 10^9 operating hours
-```
-
-In real engineering, FIT is not guessed. It depends on:
-
-```text
-process
-component type
-temperature
-mission profile
-package
-memory size
-gate-level structure
-transistor count
-usage environment
-```
-
-### 6.2 Base FIT Rate
-
-Base FIT Rate, or BFR, is the initial failure-rate baseline before safety mechanisms are credited.
-
-A practical definition is:
-
-```text
-How much random hardware failure exposure exists if no diagnostic contribution is credited yet?
-```
-
-BFR is the baseline for later safety mechanism evaluation.
-
-```mermaid
-flowchart LR
-    A[Design Structure] --> B[Base FIT Rate]
-    B --> C[Safety Mechanism Planning]
-    C --> D[Diagnostic Coverage]
-    D --> E[Residual FIT]
-    E --> F[FMEDA]
-```
-
-**Figure 2. BFR is the baseline for interpreting DC and residual FIT.**
-
-A standalone 90% diagnostic coverage value is not meaningful unless we know the failure-rate contribution it covers.
-
-### 6.3 Diagnostic Coverage
-
-Diagnostic Coverage, or DC, can be understood as the portion of relevant faults covered by a safety mechanism.
-
-Simplified:
-
-```text
-DC = covered faults / relevant faults
-```
-
-If FIT-weighted:
-
-```text
-FIT-weighted DC = covered FIT / total relevant FIT
-```
-
-Real engineering needs more care:
-
-```text
-Are safe faults included?
-How are unsafe faults defined?
-How are unresolved faults handled?
-Is the metric based on fault count or FIT weight?
-What is the observation window?
-Is FTTI satisfied?
-```
-
-DC is not a standalone percentage. It is tied to fault population, classification policy, FIT weighting, and simulation context.
-
-### 6.4 Residual FIT
-
-Residual FIT is the risk remaining after diagnostic coverage is credited.
-
-A simplified conceptual model is:
-
-```text
-Residual FIT = Base FIT x (1 - DC)
-```
-
-Example:
-
-```text
-Base FIT = 100 FIT
-DC = 90%
-Residual FIT = 10 FIT
-```
-
-This is only a conceptual formula. A real FMEDA may split the calculation by failure mode, part/sub-part, safety mechanism, and ASIL target.
-
----
-
-## 7. IEC 62380 and SN 29500: Why the FIT Standard Must Be Explicit
-
-The input package must explicitly specify the FIT standard.
-
-This series focuses on two standard identifiers:
-
-```text
-iec_62380
-sn_29500
-```
-
-They should not be hidden in tool defaults.
-
-The selected FIT standard affects:
-
-```text
-FIT calculation model
-required input data
-report naming
-DCE file naming
-metric interpretation
-hierarchical reuse
-```
-
-Example:
-
-```ini
-fit_standard = iec_62380
-```
-
-or:
-
-```ini
-fit_standard = sn_29500
-```
-
-### 7.1 What to Understand about IEC 62380
-
-IEC 62380 is commonly used for reliability prediction of electronic equipment.
-
-At minimum, the following concepts matter:
-
-```text
-mission profile
-temperature profile
-operating ratio
-non-operating ratio
-package contribution
-die contribution
-EOS contribution
-```
-
-Mission profile is especially important.
-
-It describes lifetime operating conditions, such as:
-
-```text
-how long the device runs at different temperatures
-the powered-on ratio
-the operating environment
-how thermal cycling affects the package
-```
-
-The same chip may have different predicted reliability in different automotive locations or thermal conditions.
-
-### 7.2 What to Understand about SN 29500
-
-SN 29500 is another commonly used reliability prediction method.
-
-At minimum, the following concepts matter:
-
-```text
-reference failure rate
-component category
-operating condition
-stress condition
-temperature factor
-technology-dependent failure rate
-```
-
-Switching the FIT standard is not merely changing a report format.
-
-Changing from `iec_62380` to `sn_29500` may affect:
-
-```text
-base FIT
-failure-mode priority
-FIT contribution ranking
-DCE file naming
-residual FIT interpretation in FMEDA
-```
-
-### 7.3 FIT Standard Is Part of Run Identity
-
-A robust input package should record the FIT standard in:
-
-```text
-analysis_bfr.fusaini
-manifest.yaml
-FIT_inputs.common.txt
-expected_analysis_outputs.csv
-```
-
-An incomplete result table would be:
-
-```csv
-object,base_fit
-toy_counter.count,0.052
-```
-
-A more reviewable table would be:
-
-```csv
-object,base_fit,fit_standard,evidence_source
-toy_counter.count,0.052,iec_62380,D02_base_fit_report
-```
-
-The second engineering principle is:
-
-> Never rely on an implicit FIT standard. If a run calculates safety metrics, the standard must be part of the run identity.
-
----
-
-## 8. Questions D01 Must Answer
-
-A reviewable input package should answer at least the following questions.
-
-| Question | D01 Artifact |
-|---|---|
-| Which design is analyzed? | RTL filelist and top module |
-| What is the design boundary? | `top = toy_counter` |
-| Which clocks are recognized? | `inputs/clock/toy_counter.clk` |
-| Which FIT standard is used? | `fit_standard = iec_62380` or `sn_29500` |
-| Which reliability setup is used? | `inputs/fit/FIT_inputs.common.txt` |
-| Which options are active? | `inputs/analysis/analysis_bfr.fusaini` |
-| Where are native reports produced? | `Outputs/` |
-| Where are managed reports indexed? | `outputs/reports/` |
-| Where are fault lists indexed? | `outputs/fault_lists/` |
-| Where is structured evidence stored? | `outputs/db/toy_counter.fdb::D01_BFR` |
-| How can the run be reproduced? | `outputs/analysis_command.csh` and logs |
-
-D01 does not need a complex directory tree. It needs clear answers.
-
----
-
-## 9. Recommended Repository Layout
-
-D01 uses a stable and reviewable layout.
+D01 contains a small design and a set of explicit configuration files.
 
 ```text
 D01_analysis_input_package/
@@ -841,16 +344,16 @@ D01_analysis_input_package/
 │   ├── clock/
 │   │   └── toy_counter.clk
 │   ├── fit/
-│   │   └── FIT_inputs.common.txt
+│   │   └── fit_inputs.common.txt
 │   ├── analysis/
-│   │   └── analysis_bfr.fusaini
+│   │   └── analysis_bfr.safeic.ini
 │   └── safety/
 │       ├── alarms.list
 │       └── observe_points.list
 │
 ├── scripts/
 │   ├── setup_toolchain.template.csh
-│   ├── setup_toolchain.local.csh      # local only, not committed
+│   ├── setup_toolchain.local.csh      # local only; not committed
 │   ├── run_demo.csh
 │   └── run_demo.sh
 │
@@ -858,9 +361,9 @@ D01_analysis_input_package/
 │   ├── preflight_input_package.py
 │   ├── parse_analysis_config.py
 │   ├── build_expected_outputs.py
-│   └── collect_tool_outputs.py
+│   └── collect_engine_outputs.py
 │
-├── Outputs/                          # native tool output, generated at runtime
+├── engine_outputs/                    # native backend output; generated
 │
 ├── outputs/
 │   ├── db/
@@ -870,82 +373,35 @@ D01_analysis_input_package/
 │   ├── manifest/
 │   ├── input_inventory.csv
 │   ├── analysis_options.csv
-│   ├── expected_analysis_outputs.csv
+│   ├── expected_outputs.csv
 │   ├── preflight_check.csv
-│   ├── tool_outputs_index.csv
+│   ├── engine_outputs_index.csv
 │   ├── analysis_command.csh
 │   └── demo_summary.md
 │
 ├── logs/
 │   ├── run_demo.log
 │   ├── analysis_engine.log
-│   └── collect_tool_outputs.log
+│   └── collect_engine_outputs.log
 │
 └── docs/
     └── design_notes.md
 ```
 
-The important distinction is:
+The distinction between the two output directories is intentional:
 
 ```text
-Outputs/ = native output directory produced by the configured analysis engine
-outputs/ = demo-managed output directory for manifests, indexes, summaries, and copied artifacts
+engine_outputs/ = files produced directly by the configured backend
+outputs/        = demo-managed indexes, summaries, copied artifacts, and review files
 ```
 
-This separation keeps tool-native behavior visible while providing a stable GitHub-friendly evidence structure.
+This separation avoids mixing internal backend behavior with the public demo evidence model.
 
 ---
 
-## 10. Toolchain Mapping and Local Configuration
+## 7. The Toy Design
 
-A public demo should not hard-code private installation paths.
-
-D01 uses neutral environment variables:
-
-```csh
-# scripts/setup_toolchain.template.csh
-#!/bin/csh -f
-
-setenv SAFEIC_TOOL_HOME /path/to/safeic/toolchain
-setenv SAFEIC_ANALYSIS_ENGINE $SAFEIC_TOOL_HOME/bin/safeic_analysis_engine
-setenv SAFEIC_FAULT_ENGINE    $SAFEIC_TOOL_HOME/bin/safeic_fault_engine
-
-setenv PATH $SAFEIC_TOOL_HOME/bin:$PATH
-```
-
-A real local setup can be written in:
-
-```text
-scripts/setup_toolchain.local.csh
-```
-
-Example:
-
-```csh
-#!/bin/csh -f
-
-setenv SAFEIC_TOOL_HOME /private/tool/install/path
-setenv SAFEIC_ANALYSIS_ENGINE $SAFEIC_TOOL_HOME/bin/analysis_engine
-setenv SAFEIC_FAULT_ENGINE    $SAFEIC_TOOL_HOME/bin/fault_campaign_engine
-
-setenv PATH $SAFEIC_TOOL_HOME/bin:$PATH
-```
-
-The local file should not be committed:
-
-```gitignore
-scripts/setup_toolchain.local.csh
-```
-
-This keeps the public demo publishable while allowing real engineering environments to map the generic flow to installed tools.
-
----
-
-## 11. The Toy Design Used by D01
-
-D01 should not start with a large SoC.
-
-The design should be small enough to inspect manually.
+D01 should not start from a large SoC. A small design is easier to inspect and explain.
 
 ```verilog
 module toy_counter (
@@ -970,26 +426,17 @@ assign alarm = inject_error_i | (count == 4'hF);
 endmodule
 ```
 
-The design contains:
+This small module is enough to demonstrate several safety-flow concepts:
 
 ```text
 clock
 reset
-state elements
-enable signal
+state element
+enable condition
 observable state
-alarm-like output
-```
-
-This is enough to support later demos:
-
-```text
-fault list generation
-VCD safety context
-alarm mapping
-observe point definition
-fault campaign execution
-fault outcome classification
+alarm-like signal
+fault target candidate
+observe point candidate
 ```
 
 The filelist is explicit:
@@ -999,242 +446,396 @@ The filelist is explicit:
 inputs/rtl/toy_counter.v
 ```
 
-The analysis config must also explicitly declare the top:
+The top module is also explicit:
 
 ```ini
 top = toy_counter
 ```
 
-A safety reviewer should never need to guess the top-level boundary.
+A reviewer should never need to infer the design boundary from a script or from a temporary command line.
 
 ---
 
-## 12. Why the Clock Definition Is Safety Evidence
+## 8. Clock Definition Protocol
 
-The clock file may contain only one line:
+The clock definition file may contain only one line:
 
 ```text
 clk
 ```
 
-It is still part of the safety evidence chain.
+It is still important evidence.
 
 Clock modeling affects:
 
 ```text
-state element classification
-sequential boundary recognition
-fault propagation interpretation
-safety context extraction
+state-element recognition
+sequential boundary identification
+fault propagation analysis
+simulation context interpretation
 alarm timing
-observe point interpretation
-fault campaign setup
+observe point timing
 ```
 
-If the clock definition is wrong, the tool may misidentify sequential boundaries. That can affect DCE, DC, fault lists, and fault campaigns.
+If the clock is wrong, later analysis may classify the structure incorrectly. That can affect diagnostic coverage, fault list generation, and fault campaign setup.
 
-Therefore D01 stores the clock file as:
+Therefore D01 stores the clock definition as a first-class input:
 
 ```text
 inputs/clock/toy_counter.clk
 ```
 
-It is not hidden inside a temporary command.
+It is not hidden in a shell command.
 
 ---
 
-## 13. FIT Setup File
+## 9. FIT, Base FIT Rate, and Residual FIT
 
-The FIT setup records the reliability calculation context.
+### 9.1 FIT
 
-One important lesson from real execution is that the FIT setup may not use the same syntax as the analysis initialization file.
+**FIT** means **Failure In Time**.
 
-In this demo, the FIT setup uses a simple `key value` style:
+A common engineering interpretation is:
 
 ```text
-# inputs/fit/FIT_inputs.common.txt
+1 FIT = 1 failure per 10^9 operating hours
+```
+
+or:
+
+```text
+1 FIT = 10^-9 failures / hour
+```
+
+FIT is not guessed from the RTL alone. In a real flow, FIT depends on assumptions such as:
+
+```text
+technology
+component type
+transistor count
+memory size
+temperature
+mission profile
+package
+operating ratio
+environment
+```
+
+### 9.2 Base FIT Rate
+
+**Base FIT Rate**, or **BFR**, is the baseline random hardware failure rate before diagnostic coverage is credited.
+
+A practical interpretation is:
+
+```text
+BFR answers how much random hardware failure exposure exists
+before safety mechanisms reduce the residual risk.
+```
+
+D02 will interpret the BFR result in more detail. D01 only prepares the required input context.
+
+### 9.3 Diagnostic Coverage
+
+**Diagnostic Coverage**, or **DC**, describes how much of the relevant fault population is detected or controlled by safety mechanisms.
+
+A simplified count-based expression is:
+
+```text
+DC = covered faults / relevant faults
+```
+
+A FIT-weighted expression is:
+
+```text
+FIT-weighted DC = covered FIT / total relevant FIT
+```
+
+In real safety work, DC depends on more than a percentage. It depends on:
+
+```text
+fault model
+fault population
+safety mechanism definition
+alarm definition
+observe point definition
+fault classification policy
+simulation window
+FTTI
+unresolved fault treatment
+```
+
+### 9.4 Residual FIT
+
+**Residual FIT** is the failure-rate contribution that remains after diagnostic coverage is considered.
+
+A simplified conceptual model is:
+
+```text
+residual FIT = base FIT x (1 - diagnostic coverage)
+```
+
+This formula is useful for intuition, but a real FMEDA usually splits the calculation by part, sub-part, failure mode, safety mechanism, and ASIL target.
+
+---
+
+## 10. FIT Setup Protocol
+
+The FIT setup records reliability assumptions.
+
+A simplified public-demo file may look like this:
+
+```text
+# inputs/fit/fit_inputs.common.txt
 
 MissionProfileType PassengerCompartment
 TemperatureJA 65
 MFG_YEAR 2026
 Process MOS.ASIC.STDCELL
-LambdaFile /path/to/defaults/Lambda_ISO26262.txt
-PitFile /path/to/defaults/Tech_PiT.txt
-MissionProfileFile /path/to/defaults/MissionProfile.txt
-DiagnosticCoverageFile /path/to/defaults/DC.txt
-TransistorCountFile /path/to/defaults/Lib.tc
+LambdaFile ${SAFEIC_DEFAULTS}/lambda_reference.txt
+TemperatureFactorFile ${SAFEIC_DEFAULTS}/temperature_factor.txt
+MissionProfileFile ${SAFEIC_DEFAULTS}/mission_profile.txt
+DiagnosticCoverageFile ${SAFEIC_DEFAULTS}/diagnostic_coverage.txt
+TransistorCountFile ${SAFEIC_DEFAULTS}/transistor_count.txt
 ```
 
-This is intentionally different from the `key = value` style used in the analysis initialization file.
+This file is intentionally separated from the command line.
 
-The third engineering principle is:
-
-> FIT numbers must be traceable to the reliability assumptions used to compute them.
-
-If a FIT report is separated from the FIT setup, it becomes difficult to review.
-
----
-
-## 14. Analysis Initialization File: The Center of D01
-
-The central configuration file is:
+A FIT result without the FIT setup is incomplete evidence. The review should be able to answer:
 
 ```text
-inputs/analysis/analysis_bfr.fusaini
-```
-
-It uses a `key = value` style:
-
-```ini
-mode = analysis
-
-top = toy_counter
-filelist = inputs/filelist/filelist.f
-clkdef = inputs/clock/toy_counter.clk
-fit_setup = inputs/fit/FIT_inputs.common.txt
-
-fit_standard = iec_62380
-block_level = true
-consolidated_report = sparse
-parser_messages = true
-
-write_fusa_db = true
-fusa_db_name = outputs/db/toy_counter.fdb::D01_BFR
-overwrite_session = true
-overwrite_fusa_db = true
-```
-
-This file has at least four responsibilities.
-
-### 14.1 Define the Design Scope
-
-```ini
-top = toy_counter
-filelist = inputs/filelist/filelist.f
-clkdef = inputs/clock/toy_counter.clk
-```
-
-### 14.2 Define the Reliability Setup
-
-```ini
-fit_setup = inputs/fit/FIT_inputs.common.txt
-fit_standard = iec_62380
-```
-
-### 14.3 Define the Evidence Storage Policy
-
-```ini
-write_fusa_db = true
-fusa_db_name = outputs/db/toy_counter.fdb::D01_BFR
-overwrite_session = true
-overwrite_fusa_db = true
-```
-
-### 14.4 Keep Analysis and Fault Campaign Options Separate
-
-D01 is a BFR-oriented analysis package. It should not mix fault campaign options into the BFR analysis config.
-
-For example, alarm lists and observe points are useful for later fault campaigns, but they should not be forced into the D01 analysis initialization file if the configured analysis engine does not accept them in this mode.
-
-The core D01 idea is:
-
-```text
-one initialization file
-one design boundary
-one FIT setup
-one database session
-one reproducible run identity
+Which mission profile was used?
+Which temperature assumption was used?
+Which manufacturing year was used?
+Which reference failure-rate data was used?
+Which package or process assumptions were used?
 ```
 
 ---
 
-## 15. Understanding `.fdb::session`
+## 11. IEC 62380 and SN 29500
 
-This configuration is central:
+The FIT standard must be explicit.
 
-```ini
-fusa_db_name = outputs/db/toy_counter.fdb::D01_BFR
-```
-
-It should be read as:
+This series uses two neutral standard identifiers:
 
 ```text
-Database file: outputs/db/toy_counter.fdb
+iec_62380
+sn_29500
+```
+
+### 11.1 IEC 62380
+
+IEC 62380 is a reliability-prediction model for electronic equipment. For integrated circuits, it typically involves concepts such as:
+
+```text
+die contribution
+package contribution
+electrical overstress contribution
+temperature profile
+thermal cycling
+operating ratio
+non-operating ratio
+mission profile
+```
+
+The mission profile matters because the same chip may experience very different thermal and operating conditions depending on where it is used in the vehicle.
+
+### 11.2 SN 29500
+
+SN 29500 is another reliability-prediction method widely used in automotive electronics. It is often built around reference failure rates and operating-condition conversion.
+
+Important concepts include:
+
+```text
+reference failure rate
+component category
+temperature factor
+stress condition
+operating condition
+technology-dependent failure rate
+```
+
+### 11.3 Why the Standard Is Part of Run Identity
+
+Changing the FIT standard is not just changing a report title. It may change:
+
+```text
+base failure-rate value
+failure-contribution ranking
+required input parameters
+review method
+FMEDA interpretation
+```
+
+Therefore D01 records the FIT standard in multiple places:
+
+```text
+inputs/analysis/analysis_bfr.safeic.ini
+manifest.yaml
+outputs/analysis_options.csv
+outputs/expected_outputs.csv
+```
+
+The engineering rule is:
+
+```text
+Never rely on an implicit FIT standard.
+```
+
+---
+
+## 12. Analysis Initialization Protocol
+
+The central analysis configuration is:
+
+```text
+inputs/analysis/analysis_bfr.safeic.ini
+```
+
+A public vendor-neutral example:
+
+```ini
+[run]
+mode = base_fit_analysis
+run_id = D01_BFR
+
+[design]
+top = toy_counter
+filelist = inputs/filelist/filelist.f
+clock_definition = inputs/clock/toy_counter.clk
+
+[reliability]
+fit_setup = inputs/fit/fit_inputs.common.txt
+fit_standard = iec_62380
+
+[evidence]
+write_database = true
+database = outputs/db/toy_counter.safeicdb
+session = D01_BFR
+native_output_dir = engine_outputs
+managed_output_dir = outputs
+
+[reports]
+summary_report = true
+contribution_report = true
+expected_output_index = outputs/expected_outputs.csv
+```
+
+The file has four responsibilities.
+
+First, it defines the design scope:
+
+```ini
+top = toy_counter
+filelist = inputs/filelist/filelist.f
+clock_definition = inputs/clock/toy_counter.clk
+```
+
+Second, it defines the reliability setup:
+
+```ini
+fit_setup = inputs/fit/fit_inputs.common.txt
+fit_standard = iec_62380
+```
+
+Third, it defines the evidence storage policy:
+
+```ini
+write_database = true
+database = outputs/db/toy_counter.safeicdb
+session = D01_BFR
+```
+
+Fourth, it keeps analysis and fault-campaign options separate.
+
+D01 is a base-FIT input package. It should not force alarm, observe-point, or fault-campaign execution options into the base-FIT analysis config.
+
+---
+
+## 13. Evidence Database Session Protocol
+
+D01 uses a generic database session model:
+
+```text
+outputs/db/toy_counter.safeicdb::D01_BFR
+```
+
+This can be read as:
+
+```text
+Database file: outputs/db/toy_counter.safeicdb
 Session name:  D01_BFR
 ```
 
-The `.fdb` file is the database file.
+The actual file extension can be mapped to a local tool implementation. The public article uses a neutral name to avoid binding the demo to one commercial command.
 
-`D01_BFR` is one session inside it.
-
-Later demos can write additional sessions:
+Later demos can add more sessions:
 
 ```text
-toy_counter.fdb::D01_BFR
-toy_counter.fdb::D02_BFR_SUMMARY
-toy_counter.fdb::D08_FAULT_LIST
-toy_counter.fdb::D12_FAULT_CAMPAIGN
-toy_counter.fdb::D14_FINAL_METRICS
-toy_counter.fdb::D15_FMEDA_EXPORT
+toy_counter.safeicdb::D01_BFR
+toy_counter.safeicdb::D02_BFR_SUMMARY
+toy_counter.safeicdb::D05_COMMON_DB_REVIEW
+toy_counter.safeicdb::D08_FAULT_LIST
+toy_counter.safeicdb::D12_FAULT_CAMPAIGN
+toy_counter.safeicdb::D14_FINAL_METRICS
+toy_counter.safeicdb::D15_FMEDA_EXPORT
 ```
 
 ```mermaid
 flowchart LR
-    A[Analysis Session: D01_BFR] --> DB[(toy_counter.fdb)]
-    B[Base FIT Summary Session] --> DB
-    C[Fault List Session] --> DB
-    D[Fault Campaign Session] --> DB
-    E[Final Metrics Session] --> DB
-    DB --> F[FMEDA / GUI / Review]
+    A[D01_BFR] --> DB[(toy_counter.safeicdb)]
+    B[D08_FAULT_LIST] --> DB
+    C[D12_FAULT_CAMPAIGN] --> DB
+    D[D14_FINAL_METRICS] --> DB
+    DB --> E[FMEDA Review]
 ```
 
-**Figure 3. The common safety database connects analysis, fault campaigns, and FMEDA evidence.**
-
-If `.fdb::session` is not introduced until later, the database flow will look like an afterthought. D01 should plan it from the beginning.
+The point is not the file extension. The point is that the database session becomes a structured evidence partition that later stages can read and update.
 
 ---
 
-## 16. File-Based Evidence and Database-Based Evidence
+## 14. File-Based Evidence and Database-Based Evidence
 
-A mature safety flow usually needs both.
+A practical safety flow needs both.
 
-### 16.1 File-Based Evidence
+### 14.1 File-Based Evidence
 
-File-based evidence is easy to inspect, diff, archive, and publish in a GitHub demo.
+File-based evidence is easy to inspect, diff, review, and publish.
 
-Typical files include:
+Typical artifacts include:
 
 ```text
-reports
+report files
 fault lists
-DCE files
 CSV summaries
 markdown summaries
-logs
-manifest
+input inventories
 preflight checks
+manifests
+command scripts
 ```
 
-### 16.2 Database-Based Evidence
+### 14.2 Database-Based Evidence
 
-Database-based evidence is better for cross-tool sharing.
+Database-based evidence is useful for cross-stage sharing.
 
-It can store:
+It can store structured data such as:
 
 ```text
 FIT values
 diagnostic coverage values
 fault lists
-fault simulation results
-part / sub-part mapping
-alarm information
-observe point settings
-safety mechanism maps
+fault campaign results
+part mapping
+failure mode mapping
+safety mechanism mapping
+alarm definitions
+observe point definitions
 ```
 
-### 16.3 Why D01 Prepares Both
+### 14.3 D01 Prepares Both
 
-D01 creates:
+D01 creates the directory and identity for both forms:
 
 ```text
 outputs/reports/
@@ -1244,23 +845,205 @@ outputs/db/
 outputs/manifest/
 ```
 
-A practical rule is:
+A simple rule:
 
-> Files provide transparency. Database sessions provide flow continuity.
+```text
+Files provide transparency.
+Database sessions provide continuity.
+```
 
 ---
 
-## 17. Generating a Reproducible Command
+## 15. DCE-Style Artifacts
 
-D01 should not rely only on manual commands.
+This series uses the neutral term **DCE-style artifact** to refer to diagnostic-coverage-element or structural safety-analysis files.
 
-It generates a reviewable command script:
+A DCE-style artifact helps connect design structure to later diagnostic coverage and FMEDA work.
+
+It may represent concepts such as:
+
+```text
+endpoint
+startpoint
+safety-relevant logic cone
+diagnostic coverage element
+block-level contribution
+hierarchical reuse point
+```
+
+In a real SoC, analysis is often hierarchical:
+
+```text
+IP block -> subsystem -> cluster -> top-level SoC
+```
+
+DCE-style artifacts support this reuse:
+
+```mermaid
+flowchart TD
+    A[IP-Level Analysis] --> B[IP Structural Evidence]
+    B --> C[Subsystem Analysis]
+    C --> D[Subsystem Structural Evidence]
+    D --> E[Top-Level Integration]
+    E --> F[FMEDA Evidence]
+```
+
+D01 does not claim final DCE quality. It only reserves the artifact model and output directories.
+
+---
+
+## 16. Fault List Protocol
+
+A fault list defines the fault population for a later campaign.
+
+It answers questions such as:
+
+```text
+Which object is faulted?
+What type of fault is injected?
+Is the fault permanent or transient?
+Is the target a net, register, memory bit, or port?
+Is the fault primary, equivalent, or collapsed?
+Which later campaign should consume it?
+```
+
+Typical categories in this series include:
+
+```text
+permanent stuck-at fault
+transient bit flip
+memory fault
+path-delay-related fault
+safe fault candidate
+safety-relevant fault candidate
+```
+
+D01 does not require fault campaign closure. It only prepares:
+
+```text
+outputs/fault_lists/
+outputs/expected_outputs.csv
+```
+
+D08 will focus on fault list generation.
+
+---
+
+## 17. Alarm and Observe Point Protocol
+
+A fault campaign must observe whether a fault is handled.
+
+An **alarm** is a signal that indicates a safety mechanism has detected an abnormal condition.
+
+An **observe point** is a signal or state used to judge whether the fault affected safety-relevant behavior.
+
+Examples:
+
+```text
+alarm
+error_flag
+safe_state
+critical_output
+control_state
+```
+
+A fault campaign should not only ask:
+
+```text
+Was a fault injected?
+```
+
+It should ask:
+
+```text
+Did the alarm fire?
+Did the observe point deviate from the golden context?
+Did the design enter a safe state?
+Did the response happen within the allowed timing window?
+```
+
+D01 provides placeholder lists:
+
+```text
+inputs/safety/alarms.list
+inputs/safety/observe_points.list
+```
+
+D10 will explain them in detail.
+
+---
+
+## 18. VCD and Simulation Safety Context
+
+**VCD** means **Value Change Dump**. It records signal transitions during simulation.
+
+In a safety verification flow, a VCD or similar waveform database can provide the **golden context** or **good-machine context**.
+
+A golden context means:
+
+```text
+the behavior of the design without injected faults
+```
+
+Fault injection is meaningful only when compared against this normal behavior.
+
+Related terms:
+
+| Term | Meaning |
+|---|---|
+| Golden run | The no-fault reference simulation |
+| Good machine | The expected normal machine behavior |
+| VCD | A waveform/value-change file used as simulation context |
+| Fault injection window | The time range in which faults may be injected |
+| FTTI | Fault Tolerant Time Interval; the time allowed to detect/control a fault |
+
+D01 does not generate the VCD. It only keeps the structure open for D09.
+
+---
+
+## 19. Neutral Toolchain Mapping
+
+A public demo should not hard-code private installation paths or product-specific commands.
+
+D01 uses neutral environment variables:
+
+```csh
+# scripts/setup_toolchain.template.csh
+#!/bin/csh -f
+
+setenv SAFEIC_TOOL_HOME /path/to/safeic/toolchain
+setenv SAFEIC_ANALYSIS_ENGINE $SAFEIC_TOOL_HOME/bin/safeic_analyze
+setenv SAFEIC_FAULT_ENGINE    $SAFEIC_TOOL_HOME/bin/safeic_fault_run
+setenv SAFEIC_DEFAULTS        $SAFEIC_TOOL_HOME/defaults
+
+setenv PATH $SAFEIC_TOOL_HOME/bin:$PATH
+```
+
+A local machine can map these names to real tools in:
+
+```text
+scripts/setup_toolchain.local.csh
+```
+
+This local file should not be committed:
+
+```text
+scripts/setup_toolchain.local.csh
+```
+
+The public article stays vendor-neutral, while a private engineering environment can still connect the demo to an installed backend.
+
+---
+
+## 20. Generated Analysis Command
+
+D01 generates a reviewable command script:
 
 ```text
 outputs/analysis_command.csh
 ```
 
-A generic form is:
+A neutral form:
 
 ```csh
 #!/bin/csh -f
@@ -1273,66 +1056,50 @@ if ( ! $?SAFEIC_ANALYSIS_ENGINE ) then
     exit 1
 endif
 
-mkdir -p logs outputs outputs/db outputs/reports outputs/fault_lists outputs/dce outputs/manifest
+mkdir -p logs outputs outputs/db outputs/reports outputs/fault_lists outputs/dce outputs/manifest engine_outputs
 
-echo "[INFO] Running configured safety analysis engine..."
-echo "[INFO] Config: inputs/analysis/analysis_bfr.fusaini"
+echo "[INFO] Running configured safety analysis backend."
+echo "[INFO] Config: inputs/analysis/analysis_bfr.safeic.ini"
 
-$SAFEIC_ANALYSIS_ENGINE <analysis-config-option> inputs/analysis/analysis_bfr.fusaini \
+$SAFEIC_ANALYSIS_ENGINE \
+    --config inputs/analysis/analysis_bfr.safeic.ini \
     |& tee logs/analysis_engine.log
 
 set rc = $status
-echo "[INFO] analysis engine exit code: $rc"
+echo "[INFO] analysis backend exit code: $rc"
 exit $rc
 ```
 
-The exact config option is determined by the demo's local tool wrapper and configuration. The public article should not hard-code a private commercial tool command.
+The key point is not the exact option name. A real local wrapper can adapt `--config` to the installed backend.
 
-This script is itself part of the evidence chain. It answers:
-
-```text
-How was this analysis executed?
-Which initialization file was used?
-Where was the log written?
-```
+The public version uses neutral names and avoids exposing private command syntax.
 
 One implementation detail matters:
 
 ```text
-The generated csh script must contain real newlines.
-It must not contain literal "\n" text.
+Generated csh scripts must contain real newlines.
+They must not contain literal "\n" characters.
 ```
-
-A broken example is:
-
-```text
-#!/bin/csh -f\nset ROOT = ...
-```
-
-That kind of file is not a valid command script in older EDA environments.
 
 ---
 
-## 18. Preflight Mode and Real Analysis Mode
+## 21. Preflight Mode and Real Backend Mode
 
-D01 has two modes.
+D01 supports two modes.
 
 ```mermaid
 flowchart TD
     A[Input Package] --> B[Preflight Checker]
     B --> C{SAFEIC_ANALYSIS_ENGINE configured?}
     C -- No --> D[Preflight-Only Mode]
-    C -- Yes --> E[Generate Real Command]
-    E --> F[Optional Real Analysis Run]
-    F --> G[Reports, DCE, Fault Lists, DB Session, Logs]
-    G --> H[Collect Native Outputs into Managed outputs/]
+    C -- Yes --> E[Generate Reviewable Command]
+    E --> F[Optional Backend Execution]
+    F --> G[Reports, Database Session, Indexes]
 ```
 
-**Figure 4. D01 can run public preflight and can also connect to a real analysis engine through configuration.**
+### 21.1 Preflight-Only Mode
 
-### 18.1 Preflight-Only Mode
-
-This mode does not require a real tool.
+Preflight-only mode does not require a commercial or private backend.
 
 It checks:
 
@@ -1345,42 +1112,34 @@ clock file exists
 FIT setup exists
 top module is configured
 FIT standard is explicit
-.fdb::session is configured
-output directories are creatable
-expected output names can be generated
-tool environment variables are present or warned
+database session is configured
+output directories can be created
+expected outputs can be indexed
+tool environment variables are present or reported as optional warnings
 ```
 
-Without a configured analysis engine, the result can be:
+### 21.2 Real Backend Mode
 
-```text
-PASS + WARN
-```
-
-That means the input package is complete, but the real tool is not configured.
-
-### 18.2 Real Analysis Mode
-
-When this environment variable exists:
+When the environment variable exists:
 
 ```text
 SAFEIC_ANALYSIS_ENGINE
 ```
 
-D01 can generate and run a real analysis command.
+D01 can generate and optionally run a real analysis command.
 
-This lets one demo serve two audiences:
+This allows one demo to serve two audiences:
 
 ```text
-public readers: understand the structure and run preflight
-engineering users: connect the package to a real analysis backend
+public readers: understand the package and run preflight
+engineering users: connect the package to a local backend
 ```
 
 ---
 
-## 19. Manifest: The Run Identity Index
+## 22. Manifest as Run Identity
 
-The manifest is the stable entry point of D01.
+The manifest is the run identity index.
 
 Example:
 
@@ -1394,13 +1153,13 @@ inputs:
   rtl_file: inputs/rtl/toy_counter.v
   filelist: inputs/filelist/filelist.f
   clock_definition: inputs/clock/toy_counter.clk
-  fit_setup: inputs/fit/FIT_inputs.common.txt
-  analysis_config: inputs/analysis/analysis_bfr.fusaini
+  fit_setup: inputs/fit/fit_inputs.common.txt
+  analysis_config: inputs/analysis/analysis_bfr.safeic.ini
 
 analysis:
-  mode: analysis
+  mode: base_fit_analysis
   fit_standard: iec_62380
-  database: outputs/db/toy_counter.fdb
+  database: outputs/db/toy_counter.safeicdb
   session: D01_BFR
 
 toolchain:
@@ -1409,8 +1168,8 @@ toolchain:
   shell_primary: csh
 
 outputs:
-  native_tool_outputs: Outputs
-  reports_dir: outputs/reports
+  native_output_dir: engine_outputs
+  managed_reports_dir: outputs/reports
   fault_lists_dir: outputs/fault_lists
   dce_dir: outputs/dce
   db_dir: outputs/db
@@ -1418,265 +1177,47 @@ outputs:
   summary: outputs/demo_summary.md
 ```
 
-The manifest is not a replacement for tool reports.
+The manifest is not a replacement for analysis reports.
 
-It is a reproducibility index.
+It answers:
 
-A reviewer should be able to open the manifest and quickly understand what D01 is preparing to analyze, how it will run, and where the evidence will be written.
+```text
+What design is this?
+Which configuration controls the run?
+Which reliability standard is selected?
+Where will evidence be stored?
+Which later demos can reuse the data?
+```
 
 ---
 
-## 20. Expected Output Model
+## 23. Expected Output Index
 
-Even in preflight-only mode, D01 should generate an expected output index.
+Even when D01 runs only in preflight mode, it can generate an expected output index.
 
 Example:
 
 ```csv
 artifact,purpose,produced_by,used_by_later_demo
-toy_counter_SF_SA.metric.summary.rpt,metric summary,D02,D05/D14
-toy_counter_IEC_62380.DCE,FIT-standard-specific DCE,D02,D04/D05/D15
-toy_counter.DCE,generic DCE,D02,D04/D05/D15
-toy_counter_Perm_EquivFault.list,equivalent permanent fault list,D08,D11/D12
-toy_counter_Perm_PrimaryFault.list,primary permanent fault list,D08,D11/D12
-toy_counter_Trans_EquivFault.list,equivalent transient fault list,D08,D11/D12
-toy_counter_Trans_PrimaryFault.list,primary transient fault list,D08,D11/D12
-analysis_engine_alarms.list,alarm candidate list,D08,D10/D11
-analysis_engine.log,tool execution log,D01/D02,D19
-toy_counter.fdb::D01_BFR,common safety database session,D01,D05/D11/D14/D15
+base_fit_summary.rpt,base FIT summary,D02,D03/D05/D14
+fit_contribution.rpt,FIT contribution ranking,D02,D04/D06/D15
+structural_safety_model.dce,structural safety evidence,D02/D04,D05/D15
+permanent_fault_candidates.list,permanent fault candidates,D08,D11/D12
+transient_fault_candidates.list,transient fault candidates,D08,D11/D12
+alarm_candidates.list,alarm candidate list,D08/D10,D11/D12
+toy_counter.safeicdb::D01_BFR,common database session,D01,D05/D14/D15
+analysis_engine.log,backend execution log,D01/D02,D19
 ```
 
-D01 does not deeply interpret these outputs.
+This table is not a claim that all artifacts have already been produced.
 
-It builds the output model.
-
-D02 explains the Base FIT summary.
-
-D08 explains fault lists.
-
-D11-D13 explain fault campaigns.
-
-D14-D15 connect the results to final metrics and FMEDA evidence.
+It is an output contract for the flow.
 
 ---
 
-## 21. Native Tool Output Collection
+## 24. Demo Summary Output
 
-In real execution, the configured analysis engine may generate native artifacts into a directory such as:
-
-```text
-Outputs/
-```
-
-The demo-managed directory is:
-
-```text
-outputs/
-```
-
-D01 should collect and index native outputs instead of hiding them.
-
-Example managed structure:
-
-```text
-outputs/reports/
-outputs/fault_lists/
-outputs/dce/
-outputs/tool_outputs_index.csv
-```
-
-Typical native artifacts may include:
-
-```text
-Outputs/toy_counter_IEC_62380.DCE
-Outputs/toy_counter.DCE
-Outputs/toy_counter_Perm_EquivFault.list
-Outputs/toy_counter_Perm_PrimaryFault.list
-Outputs/toy_counter_Trans_EquivFault.list
-Outputs/toy_counter_Trans_PrimaryFault.list
-Outputs/toy_counter_Coverage.rpt
-Outputs/toy_counter_SF_SA.metric.summary.rpt
-Outputs/analysis_engine_alarms.list
-outputs/db/toy_counter.fdb
-```
-
-A helper such as:
-
-```text
-tools/collect_tool_outputs.py
-```
-
-can copy or index these files into the demo-managed evidence tree.
-
-This makes GitHub review easier while preserving the native tool behavior.
-
----
-
-## 22. Why DCE-Style Artifacts Matter
-
-DCE-style artifacts can be understood as diagnostic-coverage-related safety analysis artifacts.
-
-Real automotive chips are hierarchical:
-
-```text
-IP block
-subsystem
-cluster
-top-level SoC
-```
-
-Safety analysis also needs hierarchical reuse.
-
-```mermaid
-flowchart TD
-    A[IP Block Analysis] --> B[Block DCE]
-    B --> C[Subsystem Analysis]
-    C --> D[Subsystem DCE]
-    D --> E[Top-Level Safety Analysis]
-    E --> F[FMEDA Evidence]
-```
-
-**Figure 5. DCE-style artifacts support hierarchical reuse of safety metric evidence.**
-
-D01 uses a tiny design, but the directory and naming model should be able to scale.
-
----
-
-## 23. D01 Helper Tools
-
-D01 helper tools should be simple, readable, and reviewable.
-
-Suggested tools:
-
-```text
-tools/preflight_input_package.py
-tools/parse_analysis_config.py
-tools/build_expected_outputs.py
-tools/collect_tool_outputs.py
-```
-
-Responsibilities:
-
-| Tool | Responsibility |
-|---|---|
-| `preflight_input_package.py` | Main entry point; runs checks and writes reports |
-| `parse_analysis_config.py` | Parses the `key = value` initialization file |
-| `build_expected_outputs.py` | Builds expected report, DCE, fault-list, and DB-session indexes |
-| `collect_tool_outputs.py` | Collects native `Outputs/` artifacts into managed `outputs/` directories |
-
-Implementation principles:
-
-```text
-compatible with Python 3.6+ or Python 3.8+
-no web service dependency
-no license dependency for preflight
-no heavy framework
-prefer readability, maintainability, and portability
-```
-
----
-
-## 24. csh Execution Path
-
-Many traditional EDA environments still use csh.
-
-Therefore D01 provides a first-class csh wrapper.
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D01_analysis_input_package
-set ROOT = `cd "$0:h/.." && pwd`
-
-cd "$ROOT"
-
-if ( -e scripts/setup_toolchain.local.csh ) then
-    source scripts/setup_toolchain.local.csh
-else
-    source scripts/setup_toolchain.template.csh
-endif
-
-mkdir -p outputs logs outputs/db outputs/reports outputs/fault_lists outputs/dce outputs/manifest
-
-python3 tools/preflight_input_package.py \
-    --manifest manifest.yaml \
-    |& tee logs/run_demo.log
-
-if ( $?SAFEIC_ANALYSIS_ENGINE ) then
-    echo "[INFO] SAFEIC_ANALYSIS_ENGINE is configured."
-    echo "[INFO] Review outputs/analysis_command.csh before running real analysis."
-else
-    echo "[WARN] SAFEIC_ANALYSIS_ENGINE is not set. Preflight-only mode completed."
-endif
-```
-
-The csh path should be conservative.
-
-It is not a place to show shell tricks. It is meant to run reliably on older EDA servers.
-
----
-
-## 25. Bash Execution Path
-
-A bash wrapper is also useful for open-source-style usage.
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "${ROOT}"
-
-mkdir -p outputs logs outputs/db outputs/reports outputs/fault_lists outputs/dce outputs/manifest
-
-python3 tools/preflight_input_package.py \
-    --manifest manifest.yaml 2>&1 | tee logs/run_demo.log
-```
-
-Bash improves accessibility for public readers.
-
-csh keeps compatibility with traditional EDA environments.
-
----
-
-## 26. Preflight Check Output
-
-Preflight output should be machine-readable.
-
-Example:
-
-```csv
-check,status,details
-manifest_exists,PASS,manifest.yaml
-analysis_config_exists,PASS,inputs/analysis/analysis_bfr.fusaini
-rtl_file_exists,PASS,inputs/rtl/toy_counter.v
-filelist_exists,PASS,inputs/filelist/filelist.f
-clock_definition_exists,PASS,inputs/clock/toy_counter.clk
-fit_setup_exists,PASS,inputs/fit/FIT_inputs.common.txt
-top_module_defined,PASS,toy_counter
-fit_standard_explicit,PASS,iec_62380
-fusa_db_session_defined,PASS,outputs/db/toy_counter.fdb::D01_BFR
-output_directories_created,PASS,outputs/db outputs/reports outputs/fault_lists outputs/dce outputs/manifest
-analysis_engine_configured,WARN,SAFEIC_ANALYSIS_ENGINE not set
-```
-
-Three statuses are enough:
-
-```text
-PASS: condition satisfied
-WARN: input package is complete, but an optional environment or backend is missing
-FAIL: package is incomplete and cannot proceed
-```
-
-Warnings are acceptable.
-
-Hidden assumptions are not.
-
----
-
-## 27. Demo Summary Output
-
-After running D01, the most important human-readable file is:
+The most important human-readable output is:
 
 ```text
 outputs/demo_summary.md
@@ -1690,9 +1231,9 @@ design under analysis
 top module
 FIT standard
 analysis initialization file
-common safety database session
+database session
 preflight status
-optional real command path
+optional backend command path
 expected outputs
 warnings
 next demo dependency
@@ -1706,159 +1247,31 @@ Example:
 Demo: D01_analysis_input_package  
 Top: toy_counter  
 FIT standard: iec_62380  
-Analysis config: inputs/analysis/analysis_bfr.fusaini  
-Database session: outputs/db/toy_counter.fdb::D01_BFR  
+Analysis config: inputs/analysis/analysis_bfr.safeic.ini  
+Database session: outputs/db/toy_counter.safeicdb::D01_BFR  
 Mode: preflight-only  
 
 ## Result
 
-Preflight completed with warnings.
+The input package is complete for preflight review.
 
-## Warnings
+## Notes
 
-- SAFEIC_ANALYSIS_ENGINE is not configured.
-- Real analysis was not executed.
+- The analysis backend is not configured in this public environment.
+- Real backend execution is optional and controlled by SAFEIC_ANALYSIS_ENGINE.
 
 ## Next Step
 
-Configure SAFEIC_ANALYSIS_ENGINE and use D02 to run Base FIT Rate analysis.
+Use D02 to run and interpret the Base FIT Rate analysis.
 ```
 
-This summary lets a reviewer understand the demo status without reading the scripts first.
+This summary avoids exposing private logs while still telling reviewers what the package is ready for.
 
 ---
 
-## 28. Real Analysis Success Criteria
+## 25. Review Checklist
 
-When a local environment has a real safety analysis engine configured, D01 can enter real analysis mode.
-
-A successful real run does not need to complete fault campaign closure.
-
-D01 success criteria are:
-
-```text
-[PASS] preflight completes successfully
-[PASS] analysis engine exit code = 0
-[PASS] RTL/top/clkdef are recognized
-[PASS] fit_standard is accepted by the configured engine
-[PASS] Base FIT / Lambda result appears in log or metric summary report
-[PASS] common safety database session is created
-[PASS] native tool artifacts are generated under Outputs/
-[PASS] demo collects Outputs/ artifacts into managed outputs/
-[PASS] logs contain no Error / Warning
-```
-
-Native artifacts may look like:
-
-```text
-Outputs/toy_counter_IEC_62380.DCE
-Outputs/toy_counter.DCE
-Outputs/toy_counter_Perm_EquivFault.list
-Outputs/toy_counter_Perm_PrimaryFault.list
-Outputs/toy_counter_Trans_EquivFault.list
-Outputs/toy_counter_Trans_PrimaryFault.list
-Outputs/toy_counter_Coverage.rpt
-Outputs/toy_counter_SF_SA.metric.summary.rpt
-Outputs/analysis_engine_alarms.list
-outputs/db/toy_counter.fdb
-```
-
-The existence of fault-list-style files does not mean D01 has completed a fault campaign.
-
-D01 only establishes the evidence-chain entry point.
-
-### 28.1 Why D01 Does Not Require a Non-Empty Fault List
-
-The D01 design is intentionally small, and D01 does not yet introduce safety mechanism mapping, simulation context, or fault campaign setup.
-
-Therefore, a non-empty fault list should not be the sole pass/fail criterion.
-
-A more accurate statement is:
-
-```text
-D01 verifies that the tool can generate or index fault-list-style artifacts.
-D01 does not require fault campaign coverage closure.
-D01 does not claim final diagnostic coverage success.
-```
-
-If a minimum design produces an empty fault list, that does not automatically mean D01 failed.
-
-The key is:
-
-```text
-the input package is parseable;
-BFR can be calculated;
-DCE/report/fault-list artifact model can be established;
-common safety database session can be created.
-```
-
----
-
-## 29. What D01 Should Not Do
-
-D01 should stay focused.
-
-It should not:
-
-```text
-claim final ASIL compliance
-claim production-grade FIT values
-claim diagnostic coverage closure
-start with a large SoC
-expose private tool paths
-publish private project logs
-hide critical configuration inside scripts
-keep only CSV files without database session planning
-mix fault campaign options into BFR analysis configuration
-```
-
-D01 is not a final metrics article.
-
-D01 is an evidence-context article.
-
-Its correct output is not a final safety conclusion. Its correct output is a reliable foundation for D02.
-
----
-
-## 30. Common Pitfalls
-
-### 30.1 Starting from Metrics Instead of Inputs
-
-A metric without input context is not reviewable.
-
-### 30.2 Leaving the FIT Standard Implicit
-
-If the standard is hidden inside defaults, results cannot be safely compared.
-
-### 30.3 Treating Clock Definition as a Minor Option
-
-Clock definition affects sequential analysis and fault campaign context.
-
-### 30.4 Mixing Public Demo Scripts with Private Tool Paths
-
-Public demos should use environment variables and ignored local setup files.
-
-### 30.5 Generating Broken csh Scripts
-
-Generated csh scripts must contain real newlines and valid csh syntax.
-
-### 30.6 Treating the Common Database as a Later Add-On
-
-The common database session should be planned from D01.
-
-### 30.7 Making D01 Too Large
-
-D01 should be small enough that every file can be inspected.
-
-### 30.8 Mixing Analysis Options and Fault Campaign Options
-
-A BFR analysis configuration should not force fault campaign-only options into the analysis engine.
-
----
-
-## 31. Review Checklist
-
-After reading D01 and opening the demo, a reviewer should be able to answer:
+After opening D01, a reviewer should be able to answer:
 
 ```text
 Which design is analyzed?
@@ -1868,14 +1281,13 @@ Which clock definition file is used?
 Which FIT setup file is used?
 Which FIT standard is selected?
 Which analysis initialization file controls the run?
-Where are native tool outputs expected?
+Where are backend-native outputs expected?
 Where are managed reports stored?
 Where are fault lists indexed?
-Where is the common safety database stored?
+Where is the evidence database stored?
 What is the database session name?
-Can the real tool path be configured without changing public scripts?
-Can preflight run without a real analysis engine?
-What command will be executed after the engine is configured?
+Can the backend be configured without editing public scripts?
+Can preflight run without a private backend?
 Which later demos consume the expected outputs?
 ```
 
@@ -1883,7 +1295,7 @@ If these answers are unclear, D01 is not ready.
 
 ---
 
-## 32. D01 Acceptance Criteria
+## 26. D01 Acceptance Criteria
 
 D01 is complete when:
 
@@ -1893,29 +1305,49 @@ D01 is complete when:
 [ ] clock definition is separated from RTL
 [ ] FIT setup is separated from command-line execution
 [ ] FIT standard is explicit
-[ ] FIT setup uses the expected key value style
-[ ] analysis initialization uses the expected key = value style
 [ ] output directories are deterministic
-[ ] native Outputs/ and managed outputs/ are distinguished
-[ ] common safety database session is defined from D01
-[ ] fault-list-style artifacts are planned
-[ ] csh command is generated
+[ ] backend-native output and demo-managed output are separated
+[ ] evidence database session is defined from D01
+[ ] fault-list-style artifact locations are planned
+[ ] csh command can be generated
 [ ] generated csh command contains real newlines
-[ ] manifest is generated
-[ ] preflight can run without a private analysis engine
-[ ] real analysis can be enabled through SAFEIC_ANALYSIS_ENGINE
+[ ] manifest exists
+[ ] preflight can run without a private backend
+[ ] real backend execution can be enabled through SAFEIC_ANALYSIS_ENGINE
 [ ] private local tool setup is not committed
 [ ] expected outputs are indexed for later demos
-[ ] native outputs can be collected into the managed output tree
+[ ] backend outputs can be collected into the managed output tree
 ```
 
 This is the first quality gate of the series.
 
 ---
 
-## 33. How D02 Builds on D01
+## 27. What D01 Should Not Claim
 
-D02 uses the D01 package to start the first real analysis goal:
+D01 should stay focused.
+
+It should not claim:
+
+```text
+final ASIL compliance
+production-grade FIT values
+diagnostic coverage closure
+complete fault campaign execution
+complete FMEDA signoff
+tool qualification
+certification readiness
+```
+
+D01 is an evidence-context demo, not a final metric demo.
+
+The correct output of D01 is not a final safety conclusion. The correct output is a reliable foundation for D02 through D20.
+
+---
+
+## 28. How D02 Builds on D01
+
+D02 uses the D01 package to perform and interpret the first real analysis goal:
 
 ```text
 Base FIT Rate
@@ -1926,24 +1358,21 @@ D02 focuses on:
 ```text
 why BFR is the early random hardware failure baseline
 how to read FIT contribution
-how to interpret metric summary reports
-how DCE-style output enters later flows
+how to compare FIT-standard assumptions
+how structural evidence enters later flows
 how BFR connects to safety exploration
 how fault lists connect to fault campaigns
 ```
 
-D01 prepares the context.
-
-D02 starts interpreting the result.
-
 Suggested D02 inputs from D01:
 
 ```text
-Outputs/toy_counter_SF_SA.metric.summary.rpt
-Outputs/toy_counter_Coverage.rpt
-Outputs/toy_counter_IEC_62380.DCE
-outputs/db/toy_counter.fdb
+inputs/analysis/analysis_bfr.safeic.ini
+inputs/fit/fit_inputs.common.txt
+outputs/db/toy_counter.safeicdb
+outputs/expected_outputs.csv
 logs/analysis_engine.log
+engine_outputs/
 ```
 
 Suggested D02 outputs:
@@ -1955,9 +1384,13 @@ outputs/fit_contribution.csv
 outputs/base_fit_evidence_index.csv
 ```
 
+D01 prepares the context.
+
+D02 starts interpreting the result.
+
 ---
 
-## 34. Summary
+## 29. Summary
 
 The first step in an automotive chip functional safety flow is not to calculate a number.
 
@@ -1972,12 +1405,12 @@ clock definition
 FIT setup
 analysis initialization file
 explicit FIT standard
-common safety database session
+evidence database session
 generated csh command
 manifest
 preflight report
 expected output index
-native output collection
+backend output collection
 logs
 ```
 
@@ -1986,8 +1419,10 @@ This input package becomes the root of the later flow:
 ```text
 analysis input
     -> Base FIT Rate
+    -> FIT standard and mission profile
     -> structural safety model
-    -> diagnostic coverage preparation
+    -> common evidence database
+    -> safety exploration
     -> fault list generation
     -> simulation safety context
     -> fault campaign
@@ -2000,11 +1435,11 @@ D01 is not a minor setup step.
 
 It is the first link in the safety evidence chain.
 
-A mature functional safety workflow must start with disciplined, reproducible, and reviewable input packaging.
+A mature Safe-IC workflow should start with disciplined, reproducible, and reviewable input packaging.
 
 ---
 
-## 35. D01 Demo Deliverables
+## 30. D01 Demo Deliverables
 
 Expected D01 deliverables:
 
@@ -2015,8 +1450,8 @@ Expected D01 deliverables:
 [ ] inputs/rtl/toy_counter.v
 [ ] inputs/filelist/filelist.f
 [ ] inputs/clock/toy_counter.clk
-[ ] inputs/fit/FIT_inputs.common.txt
-[ ] inputs/analysis/analysis_bfr.fusaini
+[ ] inputs/fit/fit_inputs.common.txt
+[ ] inputs/analysis/analysis_bfr.safeic.ini
 [ ] inputs/safety/alarms.list
 [ ] inputs/safety/observe_points.list
 
@@ -2027,30 +1462,33 @@ Expected D01 deliverables:
 [ ] tools/preflight_input_package.py
 [ ] tools/parse_analysis_config.py
 [ ] tools/build_expected_outputs.py
-[ ] tools/collect_tool_outputs.py
+[ ] tools/collect_engine_outputs.py
 
 [ ] outputs/input_inventory.csv
 [ ] outputs/analysis_options.csv
 [ ] outputs/preflight_check.csv
-[ ] outputs/expected_analysis_outputs.csv
-[ ] outputs/tool_outputs_index.csv
+[ ] outputs/expected_outputs.csv
+[ ] outputs/engine_outputs_index.csv
 [ ] outputs/analysis_command.csh
 [ ] outputs/demo_summary.md
 
-[ ] outputs/db/toy_counter.fdb
+[ ] outputs/db/toy_counter.safeicdb
 [ ] outputs/reports/
 [ ] outputs/fault_lists/
 [ ] outputs/dce/
 
 [ ] logs/run_demo.log
 [ ] logs/analysis_engine.log
-[ ] logs/collect_tool_outputs.log
+[ ] logs/collect_engine_outputs.log
 
 [ ] docs/design_notes.md
 ```
 
-A successful D01 run should clearly answer:
+A successful D01 package should answer one question clearly:
 
-> Is this safety analysis input package complete enough to support a reproducible Base FIT Rate run and continue into the later fault campaign evidence flow?
+```text
+Is this analysis input package complete enough to support a reproducible Base FIT Rate run
+and continue into the later fault-campaign evidence flow?
+```
 
 If the answer is yes, D01 has done its job.
