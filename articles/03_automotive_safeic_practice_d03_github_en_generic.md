@@ -1,215 +1,166 @@
-# [Automotive Safe-IC Practice 03] FIT Standard and Mission Profile: Making Reliability Assumptions Explicit
+# Automotive Safe-IC Practice 03: FIT Standards — IEC 62380 vs SN 29500
 
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: `D03_fit_standard_and_mission_profile`  
-**Tags**: Automotive Chip, Functional Safety, ISO 26262, FIT, Base FIT Rate, Mission Profile, IEC 62380, SN 29500, Lambda, Reliability Prediction, DCE, FMEDA, Evidence Flow
+Author: Darren H. Chen
 
----
+Direction: Automotive Chip Functional Safety / Safe-IC Verification Platform
 
-## 1. Why D03 Exists
+Demo: D03_fit_standards_iec62380_vs_sn29500
 
-D01 built a reproducible **analysis input package**.
-
-D02 consumed the D01 evidence and extracted the **Base FIT Rate** into structured outputs.
-
-D03 answers the next question:
-
-> Are the FIT numbers tied to explicit reliability assumptions, or are they accidentally tied to hidden defaults?
-
-This matters because a FIT value is not only a property of RTL.
-
-A FIT value is the result of a reliability model applied to a design under a defined operating context:
-
-```text
-design structure
-+ technology assumptions
-+ reliability prediction standard
-+ mission profile
-+ temperature assumptions
-+ manufacturing year
-+ lambda / failure-rate data
-+ package and environmental assumptions
-```
-
-If these assumptions are not visible, the Base FIT Rate is difficult to review, compare, or reuse in FMEDA.
-
-D03 therefore focuses on:
-
-```text
-FIT standard
-mission profile
-temperature context
-manufacturing year
-FIT setup protocol
-variant matrix
-run identity
-evidence comparison
-```
-
-The goal is not to claim that one reliability standard is universally better than another.
-
-The goal is to make reliability assumptions explicit, machine-readable, comparable, and traceable.
+Tags: ISO 26262, Functional Safety, Safe-IC, FIT, BFR, IEC 62380, SN 29500, Mission Profile, Reliability Prediction, FMEDA, Diagnostic Coverage, Evidence Traceability
 
 ---
 
-## 2. Recap: What D01 and D02 Already Established
+## 1. Why D03 Focuses on FIT Standards
 
-Before D03, the flow already has two layers.
+D01 built a reproducible **analysis input package**. It organized the RTL or netlist, filelist, clock definition, FIT setup, mission profile assumptions, analysis configuration, database session, output index, and execution wrapper.
 
-```text
-D01_analysis_input_package
-    -> prepares RTL, filelist, clock definition, FIT setup, analysis config, database session
-    -> optionally runs the configured safety analysis engine
-    -> generates native tool outputs, database evidence, logs, and managed evidence indexes
-
-D02_base_fit_rate
-    -> consumes D01 outputs
-    -> parses Base FIT Rate evidence
-    -> generates bfr_summary.csv
-    -> generates fit_contribution.csv
-    -> generates base_fit_evidence_index.csv
-```
-
-The key lesson from D02 is:
+D02 used that package to explain **Base FIT Rate**, or **BFR**. BFR answers a first safety-analysis question:
 
 ```text
-A Base FIT Rate number is useful only when its source evidence is traceable.
+How much random hardware failure exposure exists before any safety mechanism is credited?
 ```
 
-D03 extends this idea.
-
-It asks:
+D03 goes one layer deeper. It asks:
 
 ```text
-If the FIT standard changes, what changes?
-If the mission profile changes, what changes?
-If the temperature assumption changes, what changes?
-If the manufacturing year changes, what changes?
-Which file records each assumption?
-Which run generated the evidence?
-Which database session stores the result?
+Under which reliability prediction standard was that FIT value calculated?
 ```
 
-This is where Base FIT Rate becomes engineering evidence rather than a number copied from a report.
+That question is not a reporting detail. It is part of the engineering identity of the run.
+
+A Base FIT number without a FIT standard is incomplete. Two safety-analysis runs may use the same RTL, the same top module, the same clock definition, and the same mission profile name, but if one run uses IEC 62380 and the other uses SN 29500, the final FIT values, intermediate assumptions, report interpretation, and downstream evidence may differ.
+
+In this series, D03 is the third step in a 20-demo Safe-IC flow:
+
+```text
+D01  Analysis Input Package
+D02  Base FIT Rate
+D03  FIT Standards: IEC 62380 vs SN 29500
+D04  Structural Building Blocks
+D05  Common FuSa Database
+...
+D20  End-to-End Mini Flow
+```
+
+D03 sits between **BFR interpretation** and **structural safety modeling**:
+
+```mermaid
+flowchart LR
+    A[D01 Input Package] --> B[D02 Base FIT Rate]
+    B --> C[D03 FIT Standard and Mission Profile]
+    C --> D[D04 Endpoint / Startpoint / DCE Model]
+    D --> E[D05 Common Evidence Database]
+    E --> F[D06 Safety Exploration]
+```
+
+**Figure 1. D03 makes the FIT standard explicit before structural safety artifacts become evidence.**
+
+The reason is simple: once a flow starts producing DCE-style artifacts, endpoint contribution reports, diagnostic coverage estimates, fault lists, database sessions, and FMEDA summaries, the selected FIT standard must travel with the evidence. Otherwise, later stages may mix data that look similar but were produced under different reliability assumptions.
+
+D03 therefore treats the FIT standard as a first-class control point:
+
+```text
+not a comment
+not a hidden default
+not only a report suffix
+not a late-stage documentation field
+```
+
+It is part of the run identity.
 
 ---
 
-## 3. The Core Concept: FIT Is a Reliability Model Result
+## 2. The Engineering Meaning of FIT
 
-FIT means **Failure In Time**.
+**FIT** means **Failure In Time**.
 
-A common engineering interpretation is:
-
-```text
-1 FIT = 1 failure per 10^9 operating hours
-```
-
-But this definition alone is not enough.
-
-A FIT value is not measured directly from one RTL file. It is predicted by a reliability model.
-
-That model uses inputs such as:
+The common definition is:
 
 ```text
-component type
-technology process
-temperature
-mission profile
-operating ratio
-package model
-manufacturing year
-lambda data
-transistor count or design size model
+1 FIT = 1 failure per 1,000,000,000 hours
 ```
 
-A simplified view is:
+Equivalently:
 
 ```text
-FIT = reliability_model(design_structure, technology, environment, mission_profile)
+1 FIT = 1e-9 failures/hour
 ```
 
-This leads to a practical engineering rule:
+If a hardware element has a failure rate represented by lambda per hour, then:
 
-> Never record a FIT number without recording the reliability model and the assumptions used to compute it.
+```text
+FIT = lambda × 1e9
+lambda = FIT × 1e-9 failures/hour
+```
 
-D03 treats FIT as a **model-dependent metric**.
+FIT is a reliability unit. It is not the same as functional coverage, code coverage, assertion coverage, ATPG coverage, or fault-simulation coverage.
 
-That is why the demo does not only parse numbers. It also generates a run identity matrix and an evidence index.
+A design can have excellent functional coverage and still have a high random hardware failure exposure. Conversely, a design can have a small Base FIT value and still be unsafe if its few critical faults are not detected or controlled within the required time.
+
+In a chip-level safety flow, FIT is used to reason about random hardware failures such as:
+
+```text
+permanent stuck-at behavior
+transient soft errors
+memory bit upsets
+logic gate vulnerability
+package-related failures
+interface-related electrical overstress
+technology-dependent random failure effects
+```
+
+D02 focused on computing and reading the base FIT baseline. D03 focuses on the standard behind that computation.
+
+A mature engineering statement should not be:
+
+```text
+The design has 18.2 FIT.
+```
+
+It should be closer to:
+
+```text
+The design has a Base FIT result calculated with a specified reliability prediction standard,
+under a specified mission profile, using a specified technology setup, package model,
+clock definition, design boundary, and evidence database session.
+```
+
+That second form may look more verbose, but it is reviewable. It can be reproduced. It can be compared. It can be traced into FMEDA.
 
 ---
 
-## 4. What a FIT Standard Means
+## 3. Why IEC 62380 and SN 29500 Both Appear in Automotive Safety Work
 
-A FIT standard defines or references the method used to estimate failure rate.
+Automotive functional safety requires a quantitative treatment of random hardware failures. The exact project may be driven by a customer safety plan, an OEM expectation, an IP vendor safety manual, a Tier-1 integration rule, or an internal methodology.
 
-In this series, two identifiers are important from a methodology point of view:
-
-```text
-iec_62380
-sn_29500
-```
-
-They represent different reliability prediction approaches and input assumptions.
-
-The selected standard can affect:
+In practice, reliability prediction is often based on a recognized method or handbook. In this D03 demo, the two standards are:
 
 ```text
-permanent FIT
-transient FIT
-lambda contribution
-required setup files
-default data files
-report naming
-DCE naming
-comparison methodology
-FMEDA interpretation
+IEC 62380
+SN 29500
 ```
 
-A weak workflow looks like this:
+They both support reliability prediction, but they organize the calculation differently.
 
-```text
-run analysis
-copy FIT value
-forget which standard was used
-```
+At an engineering level, this means the following:
 
-A stronger workflow looks like this:
+| Topic | IEC 62380 Perspective | SN 29500 Perspective |
+|---|---|---|
+| Typical use | Reliability prediction for electronic equipment, PCBs, and components | Component failure-rate prediction based on reference failure rates and conversion models |
+| Strong focus | Mission profile, temperature phases, die/package/EOS decomposition | Component classification, reference conditions, stress conversion factors |
+| Important inputs | technology, transistor count, package, thermal mission profile, operating and non-operating ratios | component category, reference failure rate, voltage/current/temperature/load/environment factors |
+| Practical risk | Using the wrong mission profile can distort the result | Misclassifying the component or using wrong stress assumptions can distort the result |
+| Evidence concern | Need to preserve mission profile and decomposition assumptions | Need to preserve classification and conversion assumptions |
 
-```text
-variant_id = iec62380_passenger_65c
-fit_standard = iec_62380
-mission_profile_type = PassengerCompartment
-temperature_ja = 65
-mfg_year = 2026
-source_config = outputs/variant_analysis_configs/analysis_iec62380_passenger_65c.fusaini
-fit_setup = outputs/variant_fit_setups/FIT_iec62380_passenger_65c.txt
-database_session = outputs/db/toy_counter_iec62380_passenger_65c.fdb::D03_IEC62380_PASSENGER_65C
-```
-
-D03 turns this into a repeatable pattern.
+The goal of D03 is not to declare one standard universally superior. The goal is to build a repeatable comparison and evidence protocol so that the selected standard is visible, reproducible, and downstream-safe.
 
 ---
 
-## 5. IEC 62380: Engineering Interpretation
+## 4. IEC 62380: A Structural View of Die, Package, and EOS Contribution
 
-IEC 62380 is commonly used in reliability prediction for electronic components and systems.
+IEC 62380 can be understood as a reliability prediction model that decomposes failure-rate contribution into physical and environmental parts.
 
-For this article series, the main point is not to reproduce the full mathematical standard.
-
-The main point is to understand the engineering decomposition mindset.
-
-An IEC 62380-style calculation may consider contributions such as:
-
-```text
-die-related failure rate
-package-related failure rate
-electrical overstress contribution
-temperature and mission profile scaling
-operating and non-operating ratios
-```
-
-A simplified mental model is:
+A useful conceptual decomposition is:
 
 ```text
 Total FIT = Die FIT + Package FIT + EOS FIT
@@ -218,1203 +169,1211 @@ Total FIT = Die FIT + Package FIT + EOS FIT
 Where:
 
 ```text
-Die FIT
-    relates to silicon technology, transistor count, junction temperature, and operating profile.
-
-Package FIT
-    relates to package type, thermal cycling, mechanical stress, and mission profile.
-
-EOS FIT
-    relates to electrical overstress and interface/environment assumptions.
+Die FIT      -> contribution related to the silicon die and technology
+Package FIT  -> contribution related to package and thermo-mechanical stress
+EOS FIT      -> contribution related to electrical overstress and external interface environment
 ```
 
-This is why mission profile matters.
+This decomposition is important for chip safety analysis because different design and system decisions affect different portions of the failure rate.
 
-A chip used in a passenger compartment and a chip used in a high-temperature environment may have the same RTL, but different reliability assumptions.
+### 4.1 Die-Related Contribution
 
-The RTL did not change.
-
-The environment changed.
-
-The predicted FIT may change.
-
----
-
-## 6. SN 29500: Methodology Role and Data Dependency
-
-SN 29500 is another reliability prediction method commonly encountered in industrial and automotive contexts.
-
-A simplified way to understand it is:
+Die-related FIT can depend on items such as:
 
 ```text
-reference failure rate
-    -> adjusted by component category, temperature, operating condition, and stress factors
-```
-
-Key concepts include:
-
-```text
-reference failure rate
-component category
-temperature factor
-operating condition
-technology-dependent failure rate
-PiT or temperature-related scaling
-```
-
-The important point for D03 is:
-
-> Switching from IEC 62380 to SN 29500 is not a formatting change. It can change both the meaning and the source of the FIT value.
-
-However, a public demo should not assume that every local installation contains every optional reliability data file.
-
-Therefore, the stable D03 demo keeps SN 29500 as a **methodology concept** and treats any SN 29500 execution path as optional unless the required local data is available.
-
-This is not a weakness of the flow.
-
-It is exactly the lesson D03 is designed to teach:
-
-```text
-A FIT standard is not just a string.
-It depends on a supported data model and valid setup files.
-```
-
----
-
-## 7. Mission Profile: The Environment Behind the Number
-
-A mission profile describes how and where the device operates during its lifetime.
-
-It may include:
-
-```text
-temperature ranges
-time ratios at each temperature
-operating vs non-operating time
-thermal cycles
-application location
-environmental stress
-```
-
-In automotive usage, examples may include:
-
-```text
-PassengerCompartment
-EngineCompartment
-UnderHood
-MotorControl
-GenericReferenceProfile
-```
-
-A mission profile answers questions such as:
-
-```text
-How hot is the device expected to run?
-How long does it spend at each temperature?
-Is it mostly powered on or mostly dormant?
-Does it experience thermal cycling?
-What automotive location does the assumption represent?
-```
-
-D03 uses mission profile as a first-class run-identity field.
-
-The core method is:
-
-```text
-mission profile is explicit
-mission profile is versioned
-mission profile is linked to the FIT setup
-mission profile is propagated into the evidence index
-```
-
----
-
-## 8. Tac, Ton, and Why Mission Profile Names Are Not Arbitrary
-
-Mission profile names may look like labels, but they are not arbitrary labels.
-
-A mission profile type must be supported by the mission profile data file used by the analysis flow.
-
-Two common concepts are:
-
-```text
-Ton
-    Operating time or powered-on time in a mission profile segment.
-
-Tac
-    Accumulated time, active time, or temperature-cycle-related time depending on the reliability model and tool data format.
-```
-
-The exact interpretation is tool- and model-dependent, but the engineering principle is stable:
-
-> A mission profile type must map to complete time and temperature information.
-
-A bad configuration is:
-
-```text
-MissionProfileType SomeNewProfileName
-MissionProfileFile defaults/MissionProfile.txt
-```
-
-when `SomeNewProfileName` is not defined in that file.
-
-A better configuration is:
-
-```text
-MissionProfileType PassengerCompartment
-MissionProfileFile defaults/MissionProfile.txt
-```
-
-when `PassengerCompartment` is known to be supported by the selected mission profile file.
-
-D03 therefore separates two ideas:
-
-```text
-methodology variants
-    possible profiles and standards that a project may want to compare
-
-executable variants
-    profiles and standards supported by the local data files used by the demo
-```
-
-The default demo should prefer stable executable variants.
-
----
-
-## 9. TemperatureJA, Junction Temperature, and Thermal Assumptions
-
-Many FIT setup files include a temperature-related field, often something like:
-
-```text
-TemperatureJA 65
-```
-
-In a demo flow, this can be interpreted as a simplified temperature assumption.
-
-In a production flow, thermal modeling may be more precise:
-
-```text
-ambient temperature
+IC technology
+technology family
+transistor count
 junction temperature
-junction-to-ambient relationship
-board temperature
-thermal mission profile
-thermal cycling
+mission profile temperature phases
+operating time ratio
+non-operating time ratio
+year or technology maturity assumptions
 ```
 
-The key method is:
+From a tool-architecture perspective, this means the safety-analysis engine needs a bridge between:
 
 ```text
-Do not hide temperature assumptions in tool defaults.
+logical design structure
+technology mapping or design type
+transistor count or equivalent N value
+mission profile
+reliability model
 ```
 
-If the run uses a default value, record it.
+A register, a memory macro, a logic cone, or a standard-cell block is not only a functional object. In FIT analysis, it also becomes a contributor to a statistical failure-rate model.
 
-If the run uses an explicit value, record it.
+### 4.2 Package-Related Contribution
 
-If D03 compares two variants, make the changed assumption visible:
+Package-related FIT is usually tied less to RTL structure and more to thermo-mechanical conditions.
+
+Relevant concepts include:
+
+```text
+package type
+package material
+thermal expansion difference
+thermal cycles
+mission profile phases
+ambient temperature swing
+day/night or power-cycle behavior
+```
+
+This is why mission profile cannot be treated as a cosmetic label.
+
+A chip in a passenger compartment, a powertrain controller, an inverter, or a sensor module may experience different thermal ranges and different cycle counts. Those differences can affect package-related contribution even if the RTL is identical.
+
+### 4.3 EOS Contribution
+
+**EOS** means **Electrical Overstress**.
+
+It represents failure-rate contribution associated with electrical stress beyond normal intended operating conditions. At chip level, EOS is often relevant to interface circuits, external pins, board-level exposure, and system integration assumptions.
+
+In a Safe-IC evidence package, it is not enough to say:
+
+```text
+EOS was included.
+```
+
+A reviewable package should record:
+
+```text
+which interfaces are considered
+which assumptions are used
+which input file describes the package/interface model
+which report contains the calculated contribution
+whether EOS is included in the comparison table
+```
+
+---
+
+## 5. SN 29500: Reference Failure Rate and Conversion to Operating Conditions
+
+SN 29500 is often used as a basis for component failure-rate prediction. A useful way to understand it is:
+
+```text
+start from a reference failure rate
+classify the component correctly
+convert from reference conditions to operating conditions using stress factors
+```
+
+A simplified conceptual expression is:
+
+```text
+lambda_operating = lambda_reference × stress_factor_1 × stress_factor_2 × ...
+```
+
+The exact factors depend on the component class and the applicable part of the standard.
+
+Commonly discussed factors include:
+
+```text
+voltage dependence factor
+current dependence factor
+temperature dependence factor
+quality factor
+load dependence factor
+environment dependence factor
+switching rate factor
+failure criterion factor
+```
+
+For an integrated circuit, the tool or methodology must know which SN 29500 part and which model are being applied. For mixed hardware systems, a board-level reliability prediction may classify many component categories, such as ICs, discrete semiconductors, passive components, connectors, relays, switches, lamps, optical components, and electromechanical devices.
+
+At chip-level safety analysis, the relevant concern is usually narrower than a full board BOM, but the same principle remains:
+
+```text
+classification and conversion assumptions must be explicit.
+```
+
+A number is not enough. The calculation path matters.
+
+---
+
+## 6. Why Switching the FIT Standard Is Not Just Changing a Report Format
+
+It is tempting to treat the FIT standard as a report option:
+
+```text
+produce IEC style output
+produce SN style output
+```
+
+That is not safe engineering.
+
+Switching the FIT standard may change:
+
+```text
+input files required by the flow
+technology parameter interpretation
+mission profile interpretation
+package contribution handling
+summary report naming
+DCE-style artifact naming
+breakdown of lambda values
+FIT contribution ranking
+failure-mode prioritization
+FMEDA residual FIT interpretation
+downstream comparison baseline
+```
+
+A structural block that looks like the largest contributor under one model may not have the same relative priority under another model. This matters when D06 later performs safety exploration and D07 maps failure modes to safety mechanisms.
+
+Consider the following simplified scenario.
+
+```text
+Block A has many registers and logic gates.
+Block B has fewer gates but is attached to a safety-critical interface.
+Block C contains memory and state retention.
+```
+
+Depending on the reliability model and inputs:
+
+```text
+Block A may dominate because of logic/transistor count.
+Block B may dominate because of interface or EOS assumptions.
+Block C may dominate because of memory bit count or transient rate assumptions.
+```
+
+If the standard is implicit, engineers may debate the wrong problem. They may think they are discussing safety architecture, while they are actually mixing reliability model assumptions.
+
+D03 avoids that by making the standard selector visible in:
+
+```text
+configuration
+run identity
+output file naming
+comparison tables
+evidence index
+handoff file to D04
+```
+
+---
+
+## 7. Mission Profile: The Hidden Multiplier Behind FIT
+
+A **mission profile** describes how a product is used over its lifetime.
+
+For FIT analysis, a mission profile may include:
+
+```text
+application type
+operating temperature phases
+junction temperature assumptions
+ambient temperature assumptions
+powered-on ratio
+powered-off or storage ratio
+thermal cycle counts
+duration ratios per temperature bucket
+package stress assumptions
+```
+
+A simple mission profile table may look like this:
 
 ```csv
-variant_id,fit_standard,mission_profile_type,temperature_ja,mfg_year
-iec62380_passenger_65c,iec_62380,PassengerCompartment,65,2026
-iec62380_passenger_85c,iec_62380,PassengerCompartment,85,2026
+profile,phase,ambient_c,junction_delta_c,time_ratio,powered_state
+passenger_compartment,low,25,12,0.55,on
+passenger_compartment,high,45,12,0.20,on
+passenger_compartment,storage,30,0,0.25,off
+motor_control,low,40,18,0.35,on
+motor_control,high,85,18,0.40,on
+motor_control,storage,45,0,0.25,off
 ```
 
-This makes sensitivity analysis reviewable.
+The example is not a real product profile. It is a schema showing what kind of information D03 needs to preserve.
+
+The key point is:
+
+```text
+same design + different mission profile = different FIT result
+```
+
+A mission profile is not only an input to a formula. It is also a safety-assumption artifact.
+
+Later, in FMEDA review, an auditor or customer may ask:
+
+```text
+Which mission profile was used?
+Why is that profile appropriate for this item?
+Was the same profile used in all relevant calculations?
+Which result table proves it?
+```
+
+D03 prepares the answer.
 
 ---
 
-## 10. MFG_YEAR: Why Manufacturing Year Appears in FIT Setup
+## 8. Run Identity: The Evidence Protocol of D03
 
-Manufacturing year may look strange to engineers who come from pure RTL verification.
-
-Reliability prediction may include technology maturity, process maturity, or date-dependent assumptions.
-
-A FIT setup may contain:
+The word **protocol** here does not refer to a communication protocol such as CAN, LIN, SPI, AXI, AHB, or APB. In this article, protocol means:
 
 ```text
-MFG_YEAR 2026
+a stable engineering agreement for how data moves from one stage to the next
 ```
 
-D03 does not ask readers to treat this field as an RTL property.
+D03 introduces a **FIT standard evidence protocol**.
 
-It asks readers to treat it as part of the reliability assumption set.
-
-A manufacturing-year variant may look like:
-
-```csv
-variant_id,fit_standard,mission_profile_type,temperature_ja,mfg_year
-iec62380_passenger_65c,iec_62380,PassengerCompartment,65,2026
-iec62380_passenger_mfg2020,iec_62380,PassengerCompartment,65,2020
-```
-
-This demonstrates an important method:
+Every run should record at least:
 
 ```text
-If a field can affect the reliability model, it belongs in run identity.
-```
-
----
-
-## 11. Lambda Data: What a Lambda File Represents
-
-In reliability analysis, **lambda** is commonly used to represent a failure rate.
-
-A lambda data file may provide reference failure-rate parameters for different technology categories.
-
-Example technology categories may include:
-
-```text
-MOS.ASIC.STDCELL
-MOS.ASIC.FCUSTOM
-MOS.ASIC.GA
-MOS.STD.SRAM
-MOS.STD.ROM
-```
-
-A simplified mental model is:
-
-```text
-technology type -> reference lambda parameters -> scaled FIT contribution
-```
-
-A FIT setup may include:
-
-```text
-LambdaFile /path/to/defaults/Lambda_ISO26262.txt
-```
-
-or another supported lambda file.
-
-The important lesson is:
-
-> A lambda file is part of the reliability evidence chain.
-
-Do not treat it as a hidden default.
-
-Record which lambda file was used, and make it visible in the run identity or evidence index.
-
----
-
-## 12. PiT / Technology Scaling Data
-
-Some reliability models use technology scaling factors.
-
-A setup may include a file such as:
-
-```text
-PitFile /path/to/defaults/Tech_PiT.txt
-```
-
-The exact meaning of PiT depends on the reliability method and tool implementation, but in an engineering flow it can be treated as:
-
-```text
-a technology or temperature scaling data source used by the FIT model
-```
-
-D03 does not need to derive the full PiT equation.
-
-It needs to track the input.
-
-A proper evidence index should capture:
-
-```text
-variant_id
+run_id
+demo_id
+design_name
+top_module
+input_package_id
+base_fit_source
 fit_standard
-lambda_file
-pit_file
-mission_profile_file
-diagnostic_coverage_file
-transistor_count_file
+mission_profile
+technology_setup
+package_setup
+memory_setup
+clock_definition
+analysis_config
+output_database_session
+report_directory
+dce_directory
+created_artifacts
+handoff_target
 ```
 
-This prevents silent changes in default data from changing FIT results without traceability.
+This protocol avoids silent mixing.
 
----
-
-## 13. TransistorCountFile and Design Size Modeling
-
-A FIT model often needs some estimate of design size or device count.
-
-For RTL-level analysis, tools may estimate or map design objects into a technology model.
-
-A file such as:
-
-```text
-TransistorCountFile /path/to/defaults/Lib.tc
-```
-
-can provide technology-level transistor-count information.
-
-A simplified view:
-
-```text
-design structure
-    -> mapped to technology categories
-    -> scaled by transistor count or design size data
-    -> contributes to FIT
-```
-
-D03 treats the transistor count file as part of the run identity because it can affect the scaling of the predicted failure rate.
-
----
-
-## 14. DiagnosticCoverageFile in a Baseline FIT Run
-
-A baseline run may still read a diagnostic coverage file.
-
-This can confuse new users.
-
-The reason is that a safety analysis engine may use default diagnostic coverage data structures even when no safety mechanism is credited.
-
-For D03, the key distinction is:
-
-```text
-DiagnosticCoverageFile
-    input file that defines available coverage assumptions or default mechanism data
-
-DiagCoveragePerm / DiagCoverageTran
-    actual coverage values credited in a specific result
-```
-
-In a pure baseline run, diagnostic coverage may still be zero:
-
-```text
-DiagCoveragePerm = 0
-DiagCoverageTran = 0
-```
-
-This is not necessarily a failure.
-
-It means:
-
-```text
-the run is calculating baseline random hardware failure exposure
-not yet crediting safety mechanisms
-```
-
-Safety mechanism mapping and fault campaign evidence come later in the flow.
-
----
-
-## 15. Two Different Configuration Protocols
-
-D03 continues a key lesson from D01.
-
-There are two different configuration protocols.
-
-### 15.1 Analysis Initialization File Protocol
-
-The analysis initialization file uses an option style such as:
-
-```ini
-mode = analysis
-top = toy_counter
-filelist = inputs/filelist/filelist.f
-clkdef = inputs/clock/toy_counter.clk
-fit_setup = outputs/variant_fit_setups/FIT_iec62380_passenger_65c.txt
-fit_standard = iec_62380
-write_fusa_db = true
-fusa_db_name = outputs/db/toy_counter_iec62380_passenger_65c.fdb::D03_IEC62380_PASSENGER_65C
-```
-
-This is a **key equals value** protocol.
-
-### 15.2 FIT Setup File Protocol
-
-The FIT setup file uses a simpler record style:
-
-```text
-MissionProfileType PassengerCompartment
-TemperatureJA 65
-MFG_YEAR 2026
-Process MOS.ASIC.STDCELL
-LambdaFile /path/to/defaults/Lambda_ISO26262.txt
-PitFile /path/to/defaults/Tech_PiT.txt
-MissionProfileFile /path/to/defaults/MissionProfile.txt
-DiagnosticCoverageFile /path/to/defaults/DC.txt
-TransistorCountFile /path/to/defaults/Lib.tc
-```
-
-This is a **key value** protocol.
-
-D03 explicitly documents this because many engineering failures come from mixing file protocols.
-
-A single wrong delimiter can change the value parsed by the tool.
-
----
-
-## 16. Run Identity: The Core Methodology of D03
-
-D03 introduces the idea of a **run identity**.
-
-A run identity is the minimum set of fields needed to uniquely explain a result.
-
-For Base FIT comparison, a run identity should include:
-
-```text
-variant_id
-top module
-FIT standard
-mission profile type
-temperature assumption
-manufacturing year
-process
-lambda file
-PiT file
-mission profile file
-diagnostic coverage file
-transistor count file
-FIT setup file
-analysis config file
-native output directory
-managed output directory
-database file
-database session
-source D01/D02 evidence
-tool log
-```
-
-Example:
+A weak record would be:
 
 ```csv
-variant_id,fit_standard,mission_profile_type,temperature_ja,mfg_year,database_session
-iec62380_passenger_65c,iec_62380,PassengerCompartment,65,2026,D03_IEC62380_PASSENGER_65C
-iec62380_passenger_85c,iec_62380,PassengerCompartment,85,2026,D03_IEC62380_PASSENGER_85C
-iec62380_passenger_mfg2020,iec_62380,PassengerCompartment,65,2020,D03_IEC62380_PASSENGER_MFG2020
+run_id,total_fit
+run_001,18.2
 ```
 
-The principle is:
+A stronger record would be:
 
-> If two runs can produce different FIT results, then the difference must be represented in run identity.
+```csv
+run_id,design,top,fit_standard,mission_profile,total_fit,report,database_session
+D03_IEC_PC,toy_counter,toy_counter,IEC_62380,passenger_compartment,<computed>,outputs/reports/...,safeicdb::D03_IEC_PC
+D03_SN_PC,toy_counter,toy_counter,SN_29500,passenger_compartment,<computed>,outputs/reports/...,safeicdb::D03_SN_PC
+```
+
+D03 does not need to prove final diagnostic coverage. It needs to prove that the standard and mission-profile assumptions are explicit and traceable.
 
 ---
 
-## 17. D03 in the Full Safe-IC Flow
+## 9. D03 Demo Goal
 
-D03 sits between Base FIT extraction and deeper structural safety modeling.
-
-```mermaid
-flowchart TD
-    A[D01 Analysis Input Package] --> B[D02 Base FIT Rate]
-    B --> C[D03 FIT Standard and Mission Profile]
-    C --> D[D04 Structural Safety Model]
-    D --> E[D05 Common FuSa Database]
-    E --> F[D06 Safety Mechanism Mapping]
-    F --> G[D07 Diagnostic Coverage Preparation]
-    G --> H[D08 Fault List Generation]
-    H --> I[D09 Simulation Safety Context]
-    I --> J[D10 Alarm and Observe Point Definition]
-    J --> K[D11 Fault Campaign Setup]
-    K --> L[D12 Fault Injection Execution]
-    L --> M[D13 Fault Outcome Classification]
-    M --> N[D14 Final Metric Validation]
-    N --> O[D15 FMEDA Evidence Package]
-```
-
-D03 is not a fault injection demo.
-
-It is a reliability assumption control demo.
-
-It ensures that later safety metrics do not float without context.
-
----
-
-## 18. D03 Tool Architecture
-
-D03 is implemented as a small evidence-processing and variant-management layer.
-
-It should not hard-code a concrete commercial tool command.
-
-Instead, it relies on generic environment variables and generated command scripts.
-
-A recommended architecture:
+The demo is named:
 
 ```text
-D03_fit_standard_and_mission_profile/
+D03_fit_standards_iec62380_vs_sn29500
+```
+
+It demonstrates how a Safe-IC flow should compare or select FIT standards without losing evidence traceability.
+
+D03 consumes D01 and D02 style artifacts:
+
+```text
+D01 input package
+D02 base FIT summaries
+D02 FIT contribution tables
+D02 evidence index
+```
+
+D03 produces:
+
+```text
+standard comparison matrix
+mission profile index
+run identity table
+standard-specific output expectation table
+standard-specific evidence index
+handoff file to D04 structural model
+```
+
+The central idea is:
+
+```text
+D03 does not only ask “what is the FIT?”
+D03 asks “what exactly did this FIT mean under a selected standard and mission profile?”
+```
+
+---
+
+## 10. Recommended D03 Repository Layout
+
+A practical D03 demo layout can be:
+
+```text
+D03_fit_standards_iec62380_vs_sn29500/
 ├── README.md
 ├── manifest.yaml
 │
-├── configs/
-│   ├── variant_matrix.csv
-│   ├── fit_setups/
-│   │   ├── FIT_iec62380_passenger_65c.txt
-│   │   ├── FIT_iec62380_passenger_85c.txt
-│   │   └── FIT_iec62380_passenger_mfg2020.txt
-│   └── analysis_templates/
-│       └── analysis_variant.template.fusaini
-│
 ├── inputs/
-│   ├── filelist/
-│   ├── clock/
-│   └── rtl/
+│   ├── from_d01/
+│   │   ├── manifest.yaml
+│   │   ├── filelist.f
+│   │   ├── clock_definition.clk
+│   │   └── analysis_config.ini
+│   │
+│   ├── from_d02/
+│   │   ├── bfr_summary.csv
+│   │   ├── fit_contribution.csv
+│   │   └── base_fit_evidence_index.csv
+│   │
+│   ├── standards/
+│   │   └── fit_standard_matrix.yaml
+│   │
+│   ├── mission_profiles/
+│   │   ├── passenger_compartment.yaml
+│   │   └── motor_control.yaml
+│   │
+│   └── fit/
+│       ├── fit_inputs_iec62380.txt
+│       └── fit_inputs_sn29500.txt
 │
 ├── scripts/
 │   ├── run_demo.csh
 │   ├── run_demo.sh
-│   └── setup_source.local.csh      # local-only, not committed
+│   └── setup_toolchain.template.csh
 │
 ├── tools/
-│   └── run_d03_demo.py
-│
-├── Outputs/
-│   └── ... native analysis engine outputs ...
+│   ├── validate_d03_inputs.py
+│   ├── build_standard_matrix.py
+│   ├── build_run_identity.py
+│   ├── compare_fit_standards.py
+│   └── build_d04_handoff.py
 │
 ├── outputs/
-│   ├── design_input_sync.csv
-│   ├── run_identity_matrix.csv
-│   ├── variant_matrix_expanded.csv
-│   ├── variant_expected_outputs.csv
-│   ├── evidence_index.csv
-│   ├── variant_analysis_configs/
-│   ├── variant_fit_setups/
-│   ├── variant_commands/
-│   ├── variant_tool_outputs/
-│   ├── db/
-│   └── demo_summary.md
+│   ├── d03_standard_matrix.csv
+│   ├── d03_mission_profile_index.csv
+│   ├── d03_run_identity.csv
+│   ├── d03_fit_standard_comparison.csv
+│   ├── d03_evidence_index.csv
+│   ├── d03_handoff_to_d04.csv
+│   └── d03_quality_gate.csv
 │
 └── logs/
-    ├── run_demo.log
-    └── run_<variant_id>.log
+    └── README.md
 ```
 
-This structure separates:
+The directory design follows a simple rule:
 
 ```text
-variant definition
-FIT setup files
-analysis configs
-design input snapshot
-native tool outputs
-managed evidence outputs
-logs
+inputs/    -> assumptions and upstream evidence
+scripts/   -> reproducible execution wrappers
+tools/     -> small reviewable helpers
+outputs/   -> normalized evidence generated by this demo
+logs/      -> execution records, not article content
 ```
+
+The demo does not require publishing real engineering logs. It should publish the evidence schema and normalized tables.
 
 ---
 
-## 19. Design Input Sync Protocol
+## 11. Neutral Command Interface
 
-D03 may need to execute new reliability variants using the same design analyzed in D01.
+D03 uses a neutral analysis-engine interface.
 
-Therefore, it should not only generate FIT setup files.
+A typical command shape is:
 
-It must also make sure the design inputs are available.
+```csh
+setenv SAFEIC_ANALYSIS_ENGINE /path/to/local/analysis_engine
+setenv SAFEIC_PYTHON python3.8
 
-D03 uses a design input sync protocol:
-
-```text
-D01 input filelist     -> D03 inputs/filelist/
-D01 clock definition   -> D03 inputs/clock/
-D01 RTL files          -> D03 inputs/rtl/
+$SAFEIC_PYTHON tools/validate_d03_inputs.py
+$SAFEIC_PYTHON tools/build_standard_matrix.py
+$SAFEIC_PYTHON tools/build_run_identity.py
 ```
 
-This gives each D03 run package a self-contained design input snapshot.
+If a real local analysis engine is available, the command template can be:
 
-The benefit is:
-
-```text
-variant configs can use local paths
-variant commands do not depend on fragile external relative paths
-the evidence package is easier to archive
+```csh
+$SAFEIC_ANALYSIS_ENGINE run-base-fit \
+  --input-package inputs/from_d01/manifest.yaml \
+  --fit-standard IEC_62380 \
+  --mission-profile inputs/mission_profiles/passenger_compartment.yaml \
+  --fit-setup inputs/fit/fit_inputs_iec62380.txt \
+  --output-db outputs/db/safeicdb.sqlite::D03_IEC_62380_PC \
+  --out-dir outputs/native/iec62380_pc
 ```
 
-D03 records this in:
+And for SN 29500:
 
-```text
-outputs/design_input_sync.csv
+```csh
+$SAFEIC_ANALYSIS_ENGINE run-base-fit \
+  --input-package inputs/from_d01/manifest.yaml \
+  --fit-standard SN_29500 \
+  --mission-profile inputs/mission_profiles/passenger_compartment.yaml \
+  --fit-setup inputs/fit/fit_inputs_sn29500.txt \
+  --output-db outputs/db/safeicdb.sqlite::D03_SN_29500_PC \
+  --out-dir outputs/native/sn29500_pc
 ```
 
-This file is part of the evidence chain.
+These command names are intentionally generic. The methodology is not tied to a public-facing commercial command line. A local project can map the neutral interface to its actual toolchain through environment variables and templates.
+
+The important engineering property is not the executable name. The important property is that the selected FIT standard is explicitly carried in the run.
 
 ---
 
-## 20. D03 Variant Matrix Protocol
+## 12. Standard Matrix
 
-The variant matrix is the main input protocol of D03.
+The first D03 output is a standard matrix.
+
+Example schema:
+
+```csv
+standard_id,display_name,primary_model_focus,requires_mission_profile,requires_package_model,requires_component_classification,expected_report_suffix,expected_dce_suffix
+IEC_62380,IEC 62380,die/package/EOS decomposition,yes,yes,partial,_IEC_62380,_IEC_62380
+SN_29500,SN 29500,reference failure rate and conversion factors,yes,project-dependent,yes,_SN_29500,_SN_29500
+```
+
+This table is not just documentation. It becomes a machine-readable index for later checks.
+
+For example, D04 can reject a DCE-style artifact if:
+
+```text
+artifact_standard != run_identity_standard
+```
+
+D05 can prevent database session mixing if:
+
+```text
+same session contains rows from different fit_standard values without explicit grouping
+```
+
+D15 can generate an FMEDA data table only after confirming:
+
+```text
+part/sub-part residual FIT values all reference a known standard_id
+```
+
+This is how D03 becomes useful beyond the article.
+
+---
+
+## 13. Mission Profile Index
+
+The second D03 output is the mission profile index.
+
+Example schema:
+
+```csv
+mission_profile_id,application_context,temperature_source,contains_on_off_ratio,contains_thermal_cycles,used_by_standard,review_status
+passenger_compartment,interior ECU,example_profile,yes,yes,IEC_62380/SN_29500,review_required
+motor_control,powertrain or inverter-related context,example_profile,yes,yes,IEC_62380/SN_29500,review_required
+```
+
+The profile itself can be YAML:
+
+```yaml
+mission_profile_id: passenger_compartment
+application_context: interior_ecu
+phases:
+  - name: normal_operation_low
+    ambient_temperature_c: 27
+    junction_delta_c: 15
+    time_ratio: 0.006
+    powered_state: on
+  - name: normal_operation_mid
+    ambient_temperature_c: 30
+    junction_delta_c: 15
+    time_ratio: 0.046
+    powered_state: on
+  - name: high_temperature_operation
+    ambient_temperature_c: 85
+    junction_delta_c: 15
+    time_ratio: 0.006
+    powered_state: on
+  - name: dormant_or_storage
+    ambient_temperature_c: 30
+    junction_delta_c: 0
+    time_ratio: 0.942
+    powered_state: off
+```
+
+The numbers shown here are an example profile structure. In a real project, the values should come from system requirements, safety manuals, product use assumptions, customer guidance, or internal reliability engineering decisions.
+
+D03 should keep profile data in a file, not buried in Python code or shell scripts.
+
+---
+
+## 14. Standard-Specific Output Expectations
+
+D03 should maintain a table of expected artifacts by standard.
 
 Example:
 
 ```csv
-variant_id,description,fit_standard,mission_profile_type,temperature_ja,mfg_year,process,fit_setup_template,db_session
-iec62380_passenger_65c,IEC 62380 passenger compartment baseline,iec_62380,PassengerCompartment,65,2026,MOS.ASIC.STDCELL,FIT_iec62380_passenger_65c.txt,D03_IEC62380_PASSENGER_65C
-iec62380_passenger_85c,IEC 62380 passenger compartment higher temperature variant,iec_62380,PassengerCompartment,85,2026,MOS.ASIC.STDCELL,FIT_iec62380_passenger_85c.txt,D03_IEC62380_PASSENGER_85C
-iec62380_passenger_mfg2020,IEC 62380 passenger compartment manufacturing-year variant,iec_62380,PassengerCompartment,65,2020,MOS.ASIC.STDCELL,FIT_iec62380_passenger_mfg2020.txt,D03_IEC62380_PASSENGER_MFG2020
+standard_id,artifact_kind,expected_pattern,purpose,used_by
+IEC_62380,metric_summary,*IEC_62380*.summary*.rpt,summary metrics,D03/D05/D15
+IEC_62380,dce,*IEC_62380*.DCE,diagnostic coverage related artifact,D04/D05/D15
+SN_29500,metric_summary,*SN_29500*.summary*.rpt,summary metrics,D03/D05/D15
+SN_29500,dce,*SN_29500*.DCE,diagnostic coverage related artifact,D04/D05/D15
 ```
 
-This file turns comparison into a reproducible operation.
+This is especially important because many functional safety tools embed the standard identifier in output names. That naming behavior is useful only if the flow preserves it instead of renaming everything into ambiguous generic files.
 
-Without it, an engineer may say:
+A bad managed-output collection might do this:
 
 ```text
-I changed some setup and reran the tool.
+outputs/result.rpt
+outputs/result.dce
 ```
 
-With it, an engineer can say:
+A better collection keeps the standard identity:
 
 ```text
-I ran these named variants, each with a recorded FIT standard, mission profile, temperature assumption, manufacturing year, config file, and database session.
+outputs/reports/toy_counter.metric.summary_IEC_62380.rpt
+outputs/reports/toy_counter.metric.summary_SN_29500.rpt
+outputs/dce/toy_counter_IEC_62380.DCE
+outputs/dce/toy_counter_SN_29500.DCE
 ```
 
-That is the difference between experiment and evidence.
+If a demo uses synthetic or preflight-only data, it can still preserve the naming protocol.
 
 ---
 
-## 21. Native Outputs and Managed Outputs
+## 15. FIT Standard Comparison Is a Controlled Experiment
 
-D01 introduced the distinction between:
+A useful comparison must vary one major factor at a time.
 
-```text
-Outputs/    native analysis engine outputs
-outputs/    demo-managed outputs
-```
-
-D03 continues the same convention.
-
-### 21.1 Native Outputs
-
-The configured engine may generate reports into a native directory such as:
+Bad comparison:
 
 ```text
-Outputs/
+Run A: IEC 62380, passenger compartment, RTL version 1, old clock file
+Run B: SN 29500, motor control, RTL version 2, new clock file
 ```
 
-Typical files may include:
+No clear conclusion can be drawn from that.
+
+Better comparison:
 
 ```text
-*_DCE
-*_Coverage.rpt
-*_metric.summary.rpt
-*_Perm_PrimaryFault.list
-*_Trans_PrimaryFault.list
+Run A: IEC 62380, passenger compartment, same design, same top, same clock
+Run B: SN 29500, passenger compartment, same design, same top, same clock
 ```
 
-The exact naming depends on the configured tool and analysis mode.
-
-### 21.2 Managed Outputs
-
-D03 copies, indexes, parses, and normalizes evidence into:
+Then another comparison:
 
 ```text
-outputs/
+Run C: IEC 62380, motor control, same design, same top, same clock
+Run D: IEC 62380, passenger compartment, same design, same top, same clock
 ```
 
-Example managed outputs:
+This separates two questions:
 
 ```text
-outputs/run_identity_matrix.csv
-outputs/variant_matrix_expanded.csv
-outputs/variant_expected_outputs.csv
-outputs/evidence_index.csv
-outputs/demo_summary.md
+What changes when the FIT standard changes?
+What changes when the mission profile changes?
 ```
 
-For variant execution, the native outputs are snapshotted into per-variant folders:
+D03 should generate a comparison table that makes this distinction visible.
 
-```text
-outputs/variant_tool_outputs/<variant_id>/
-```
-
-The method is:
-
-```text
-Do not edit native tool outputs.
-Collect and index them.
-Generate managed summaries separately.
-```
-
-This preserves evidence integrity.
-
----
-
-## 22. Per-Variant Database Strategy
-
-D03 should avoid overwriting evidence from one variant with another.
-
-A simple robust strategy is:
-
-```text
-one variant
-    -> one database file
-    -> one named session
-```
-
-Example:
-
-```text
-outputs/db/toy_counter_iec62380_passenger_65c.fdb::D03_IEC62380_PASSENGER_65C
-outputs/db/toy_counter_iec62380_passenger_85c.fdb::D03_IEC62380_PASSENGER_85C
-outputs/db/toy_counter_iec62380_passenger_mfg2020.fdb::D03_IEC62380_PASSENGER_MFG2020
-```
-
-This is easier for a demo than sharing one database file across all variants.
-
-A larger project may choose a shared database with multiple sessions, but then it must strictly control overwrite behavior.
-
-The D03 principle is:
-
-```text
-variant evidence must not be ambiguous
-```
-
----
-
-## 23. Comparison Methodology
-
-D03 comparison should be conservative.
-
-It should not over-interpret a tiny toy design.
-
-The comparison logic should be:
-
-```text
-for each variant:
-    validate FIT setup protocol
-    validate analysis config protocol
-    validate design input snapshot
-    run or locate native outputs
-    parse Base FIT values
-    record run identity
-    index evidence sources
-
-compare:
-    permanent FIT
-    transient FIT
-    total FIT
-    ratio vs baseline
-    changed assumptions
-```
-
-A simple comparison table:
+Example schema:
 
 ```csv
-variant_id,fit_standard,mission_profile_type,temperature_ja,mfg_year,lambda_perm,lambda_tran,total_lambda,ratio_to_baseline
-iec62380_passenger_65c,iec_62380,PassengerCompartment,65,2026,...,...,...,1.0000
-iec62380_passenger_85c,iec_62380,PassengerCompartment,85,2026,...,...,...,...
-iec62380_passenger_mfg2020,iec_62380,PassengerCompartment,65,2020,...,...,...,...
+comparison_id,baseline_run,variant_run,changed_dimension,expected_interpretation
+cmp_standard_pc,D03_IEC_PC,D03_SN_PC,fit_standard,standard-model sensitivity
+cmp_profile_iec,D03_IEC_PC,D03_IEC_MC,mission_profile,mission-profile sensitivity
+cmp_profile_sn,D03_SN_PC,D03_SN_MC,mission_profile,mission-profile sensitivity
 ```
 
-This table should not be treated as production signoff.
-
-It is a methodology demonstration.
-
-The value of D03 is the reproducible comparison structure.
+A comparison without a changed-dimension field is weak evidence.
 
 ---
 
-## 24. Why Diagnostic Coverage May Still Be Zero in D03
+## 16. How D03 Connects to D04 Structural Building Blocks
 
-D02 explained why diagnostic coverage can be zero in a Base FIT run.
-
-D03 keeps the same interpretation.
-
-If no safety mechanism is mapped or credited, then:
+D04 will discuss structural safety artifacts such as:
 
 ```text
-DiagCoveragePerm = 0
-DiagCoverageTran = 0
+Endpoint
+Startpoint
+DCE-style artifact
+EP-to-SM map
 ```
 
-This is not necessarily a failure.
+D03 must hand off a clean standard-specific context to D04.
 
-It means:
-
-```text
-the run is calculating baseline random hardware failure exposure
-not yet crediting safety mechanisms
-```
-
-Diagnostic coverage becomes meaningful after:
-
-```text
-safety mechanism mapping
-fault list generation
-fault campaign execution
-fault outcome classification
-final metric validation
-```
-
-So D03 should not try to force DC closure.
-
-Its job is to stabilize the assumptions behind the baseline.
-
----
-
-## 25. DCE-Style Artifacts in D03
-
-DCE-style artifacts store diagnostic coverage or safety analysis information that can be reused in later stages.
-
-In D03, the key point is:
-
-```text
-DCE artifacts must be tied to the FIT standard and run identity.
-```
-
-A file named:
-
-```text
-toy_counter_IEC_62380.DCE
-```
-
-already suggests that the result is standard-specific.
-
-D03 makes that explicit in the evidence index:
+The handoff table can be:
 
 ```csv
-artifact,type,fit_standard,variant_id,source_path
-toy_counter_IEC_62380.DCE,dce,iec_62380,iec62380_passenger_65c,outputs/variant_tool_outputs/iec62380_passenger_65c/toy_counter_IEC_62380.DCE
+handoff_id,selected_run_id,fit_standard,mission_profile,dce_artifact,fit_contribution_artifact,next_demo
+D03_TO_D04_IEC_PC,D03_IEC_PC,IEC_62380,passenger_compartment,outputs/dce/toy_counter_IEC_62380.DCE,outputs/d03_fit_standard_comparison.csv,D04_structural_building_blocks
 ```
 
-This matters because later stages may import or compare DCE-style evidence.
+This table has a clear purpose:
 
-If the standard or variant identity is lost, the evidence becomes ambiguous.
+```text
+D04 should not have to guess which DCE artifact to read.
+D04 should not have to guess which standard produced it.
+D04 should not have to infer mission profile from a filename alone.
+```
+
+A later structural model will be much easier to debug if D03 already standardized the handoff.
 
 ---
 
-## 26. D03 Preflight Checks
+## 17. What the Demo Helper Tools Should Do
 
-D03 preflight should verify:
+D03 helper tools should stay small and reviewable.
 
-```text
-D01 root exists or fixture data is available
-D02 BFR summary exists if D03 references D02 baseline
-design filelist is synchronized
-clock definition is synchronized
-RTL entries are synchronized
-variant matrix exists
-each variant_id is unique
-each FIT standard is supported by the demo
-each FIT setup file exists
-each FIT setup uses key value protocol
-each analysis template exists
-each generated analysis config uses key = value protocol
-each config references the expected FIT setup
-each config references a unique database session
-managed output directories are writable
-optional analysis engine is configured or warning is issued
-```
+### 17.1 validate_d03_inputs.py
 
-Example:
-
-```csv
-check,status,details
-variant_matrix_exists,PASS,configs/variant_matrix.csv
-variant_id_unique,PASS,3 variants
-fit_setup_protocol_iec62380_passenger_65c,PASS,key value format
-analysis_template_exists,PASS,configs/analysis_templates/analysis_variant.template.fusaini
-database_session_unique,PASS,3 sessions
-design_input_sync,PASS,inputs/filelist, inputs/clock, inputs/rtl
-analysis_engine_configured,WARN,SAFEIC_ANALYSIS_ENGINE not set
-```
-
-Warnings are acceptable for preflight-only mode.
-
-Protocol errors should be failures.
-
----
-
-## 27. D03 Execution Modes
-
-D03 should support two modes.
-
-### 27.1 Evidence-Only Mode
-
-This mode does not call the analysis engine.
-
-It consumes existing outputs from D01/D02 or bundled fixtures.
-
-It is useful for:
+This tool checks:
 
 ```text
-GitHub readers
-CI checks
-documentation validation
-parser testing
-methodology review
+D01 manifest exists
+D02 BFR summary exists
+standard matrix exists
+mission profile files exist
+fit setup files exist
+standard identifiers are valid
+no required field is empty
 ```
 
-### 27.2 Variant Execution Mode
+It should not perform the reliability calculation itself. It validates the data contract.
 
-This mode runs each variant using the configured analysis engine.
+### 17.2 build_standard_matrix.py
 
-The exact executable is not hard-coded in the article.
-
-It is generated by the demo based on local configuration.
-
-Conceptually:
+This tool reads:
 
 ```text
-for each variant in variant_matrix.csv:
-    generate FIT setup
-    generate analysis config
-    generate command wrapper
-    run configured safety analysis engine
-    collect native Outputs/
-    write per-variant evidence snapshot
+inputs/standards/fit_standard_matrix.yaml
 ```
 
-The configured executable is selected through:
+And writes:
 
 ```text
-SAFEIC_ANALYSIS_ENGINE
+outputs/d03_standard_matrix.csv
 ```
 
-and local setup such as:
+It normalizes display names, identifiers, and output patterns.
+
+### 17.3 build_run_identity.py
+
+This tool builds:
 
 ```text
-scripts/setup_source.local.csh
+outputs/d03_run_identity.csv
 ```
 
-or a system-level shell environment.
-
-This keeps the public article tool-neutral while preserving real engineering usability.
-
----
-
-## 28. D03 Output Files
-
-D03 should generate:
+It should combine:
 
 ```text
-outputs/design_input_sync.csv
-outputs/run_identity_matrix.csv
-outputs/variant_matrix_expanded.csv
-outputs/variant_expected_outputs.csv
-outputs/evidence_index.csv
-outputs/methodology_notes.csv
-outputs/demo_summary.md
-outputs/variant_analysis_configs/
-outputs/variant_fit_setups/
-outputs/variant_commands/
-outputs/variant_tool_outputs/
-outputs/db/
-```
-
-Each file has a role.
-
-| Output | Purpose |
-|---|---|
-| `design_input_sync.csv` | Records synchronized D01 design inputs |
-| `run_identity_matrix.csv` | Connects variant, standard, profile, temperature, MFG year, config, and DB |
-| `variant_matrix_expanded.csv` | Adds generated paths and run IDs to each variant |
-| `variant_expected_outputs.csv` | Lists expected native and managed artifacts |
-| `evidence_index.csv` | Maps each metric and run identity back to evidence |
-| `methodology_notes.csv` | Explains key concepts used by the demo |
-| `demo_summary.md` | Human-readable summary |
-| `variant_analysis_configs/` | Generated analysis initialization files |
-| `variant_fit_setups/` | Generated FIT setup files |
-| `variant_commands/` | Generated command wrappers |
-| `variant_tool_outputs/` | Per-variant native output snapshots |
-| `db/` | Per-variant database files |
-
-This structure makes D03 useful even before large designs are introduced.
-
----
-
-## 29. Example Demo Summary
-
-A successful D03 summary may say:
-
-```md
-# D03 Demo Summary
-
-Demo: D03_fit_standard_and_mission_profile
-
-## Purpose
-
-D03 makes reliability assumptions explicit by generating a variant matrix and run identity table.
-
-## Variants
-
-- iec62380_passenger_65c
-- iec62380_passenger_85c
-- iec62380_passenger_mfg2020
-
-## Key Principle
-
-FIT values are not standalone properties of RTL. They are model-dependent metrics tied to reliability standards, mission profiles, temperature assumptions, manufacturing year, and FIT setup files.
-
-## Result
-
-Preflight passed. Variant configs, FIT setups, command wrappers, expected outputs, and evidence indexes were generated.
-
-## Next Step
-
-Use D04 to inspect structural safety elements and connect BFR evidence to endpoint/startpoint structure.
-```
-
----
-
-## 30. Common Mistakes
-
-### 30.1 Treating FIT as a Pure RTL Property
-
-FIT is not only RTL.
-
-It is RTL plus reliability assumptions.
-
-### 30.2 Comparing Two FIT Numbers Without Comparing Assumptions
-
-A comparison table without standard and mission profile fields is not reviewable.
-
-### 30.3 Mixing FIT Setup Protocol and Initialization Protocol
-
-The analysis initialization file may use:
-
-```text
-key = value
-```
-
-The FIT setup file may use:
-
-```text
-key value
-```
-
-Do not mix them.
-
-### 30.4 Using Unsupported Mission Profile Names
-
-A mission profile type must exist in the selected mission profile file.
-
-Do not assume that a descriptive name is executable.
-
-### 30.5 Assuming Optional Data Files Exist
-
-A reliability standard may require data files that are not present in every local installation.
-
-Demo defaults should use data files known to exist in the public or local setup, and optional variants should be clearly marked.
-
-### 30.6 Reusing One Database Session for Multiple Variants
-
-If variants overwrite the same session, evidence becomes ambiguous.
-
-### 30.7 Editing Native Tool Outputs
-
-Do not edit files in `Outputs/`.
-
-Copy and index them into `outputs/`.
-
-### 30.8 Over-Interpreting a Toy Design
-
-D03 demonstrates method.
-
-It does not claim production reliability signoff.
-
----
-
-## 31. Review Checklist
-
-A reviewer should be able to answer:
-
-```text
-Which variants are defined?
-Which FIT standard is used by each variant?
-Which mission profile is used by each variant?
-Which temperature assumption is used?
-Which manufacturing year is used?
-Which lambda file is used?
-Which PiT file is used?
-Which mission profile file is used?
-Which transistor count file is used?
-Which FIT setup file records the assumption?
-Which analysis config points to that setup?
-Which database file and session store each result?
-Which native output files are expected?
-Which managed output files summarize the result?
-Are the variant ids unique?
-Can the comparison be reproduced?
-Can each metric be traced back to raw evidence?
-```
-
-If these answers are unclear, D03 has not done its job.
-
----
-
-## 32. D03 Acceptance Criteria
-
-D03 is complete when:
-
-```text
-[ ] variant matrix exists
-[ ] each variant has explicit FIT standard
-[ ] each variant has explicit mission profile or documented default
-[ ] each variant has explicit temperature assumption or documented default
-[ ] each variant has explicit manufacturing year
-[ ] each variant has explicit lambda / PiT / mission-profile data files
-[ ] FIT setup files use correct key value protocol
-[ ] analysis configs use correct key = value protocol
-[ ] D01 design inputs are synchronized or clearly referenced
-[ ] database files and sessions are unique
-[ ] native outputs are not edited
-[ ] managed outputs are generated
-[ ] evidence index links metrics to raw files
-[ ] demo can run in evidence-only mode
-[ ] optional real execution is controlled by local configuration
-```
-
----
-
-## 33. How D03 Connects to D04
-
-D03 controls the reliability assumptions behind the BFR.
-
-D04 will inspect the design structure behind those numbers.
-
-In other words:
-
-```text
-D03 asks:
-    Which model and mission profile produced the FIT?
-
-D04 asks:
-    Which structural elements contributed to the safety model?
-```
-
-Together they form the bridge:
-
-```text
-reliability assumption
-    -> base failure rate
-    -> structural safety model
-    -> diagnostic coverage preparation
-    -> fault list
-    -> fault campaign
-    -> final FMEDA evidence
-```
-
----
-
-## 34. Summary
-
-D03 introduces a critical engineering discipline:
-
-> FIT values must be tied to explicit standards, mission profiles, data files, and run identities.
-
-A Base FIT Rate is not just a number.
-
-It is a model-dependent result that must carry:
-
-```text
-FIT standard
+input package identity
+D02 baseline identity
+fit standard
 mission profile
-temperature assumption
-manufacturing year
-process
-lambda file
-PiT file
-mission profile file
-transistor count file
-FIT setup file
-analysis config
-database session
-raw evidence files
-managed summaries
+expected database session
+expected output directory
 ```
 
-D03 turns this into a reproducible demo structure.
+### 17.4 compare_fit_standards.py
 
-It does not try to prove final safety compliance.
+This tool builds:
 
-It proves that reliability assumptions are visible, comparable, and traceable.
+```text
+outputs/d03_fit_standard_comparison.csv
+```
 
-That is the foundation needed before moving into structural safety modeling, diagnostic coverage, fault list generation, fault campaign execution, and FMEDA evidence packaging.
+If real metric reports are available, it can parse them. If not, it can build a schema-only comparison table with empty metric fields and explicit status.
+
+Important principle:
+
+```text
+missing metric values should be represented as missing values, not invented successful results.
+```
+
+### 17.5 build_d04_handoff.py
+
+This tool builds:
+
+```text
+outputs/d03_handoff_to_d04.csv
+```
+
+It selects the standard-specific artifact set that D04 should use.
+
+---
+
+## 18. Quality Gate for D03
+
+D03 should have a quality gate.
+
+Example output:
+
+```csv
+check_id,check_name,status,details
+QG_D03_001,d01_manifest_present,PASS,inputs/from_d01/manifest.yaml
+QG_D03_002,d02_bfr_summary_present,PASS,inputs/from_d02/bfr_summary.csv
+QG_D03_003,fit_standard_matrix_present,PASS,inputs/standards/fit_standard_matrix.yaml
+QG_D03_004,iec62380_profile_present,PASS,inputs/mission_profiles/passenger_compartment.yaml
+QG_D03_005,sn29500_setup_present,PASS,inputs/fit/fit_inputs_sn29500.txt
+QG_D03_006,standard_identity_exported,PASS,outputs/d03_run_identity.csv
+QG_D03_007,d04_handoff_created,PASS,outputs/d03_handoff_to_d04.csv
+```
+
+The quality gate is not a claim that a production chip meets an ASIL target. It is a claim that this D03 evidence package is internally consistent.
+
+A good D03 failure is also useful. For example:
+
+```csv
+check_id,check_name,status,details
+QG_D03_005,sn29500_setup_present,FAIL,missing inputs/fit/fit_inputs_sn29500.txt
+```
+
+That failure tells the engineer exactly what to fix.
+
+---
+
+## 19. Common Mistakes in FIT Standard Handling
+
+### 19.1 Relying on the Tool Default
+
+A default may be convenient, but it is weak evidence.
+
+Bad:
+
+```text
+The tool used its default FIT standard.
+```
+
+Good:
+
+```text
+The run identity explicitly records IEC_62380.
+```
+
+### 19.2 Comparing Standards While Changing Other Inputs
+
+If standard, mission profile, design revision, clock definition, and technology setup all change together, the comparison is not meaningful.
+
+D03 should isolate comparison dimensions.
+
+### 19.3 Removing the Standard Name from Collected Reports
+
+Renaming standard-specific outputs into generic names destroys useful evidence.
+
+Do not collapse:
+
+```text
+*_IEC_62380.*
+*_SN_29500.*
+```
+
+Into:
+
+```text
+result.*
+```
+
+### 19.4 Treating Mission Profile as a Comment
+
+Mission profile is a calculation input. It belongs in structured data and run identity.
+
+### 19.5 Mixing Database Sessions
+
+If a common database or evidence database is used, the standard and mission profile should be part of the session identity or table columns.
+
+Example:
+
+```text
+safeicdb.sqlite::D03_IEC_62380_PC
+safeicdb.sqlite::D03_SN_29500_PC
+```
+
+Or at minimum:
+
+```text
+session_name,fit_standard,mission_profile
+```
+
+### 19.6 Assuming FIT Ranking Equals Safety Priority
+
+FIT contribution ranking is important, but it is not the whole safety story.
+
+A high-FIT block is a likely candidate for safety mechanism planning, but the final decision also depends on:
+
+```text
+safety goal relevance
+failure mode
+controllability
+observability
+alarm path
+FTTI
+existing protection
+FMEDA allocation
+area/power/timing cost
+```
+
+D03 prepares the standard-aware baseline. D06 and later demos refine safety mechanism decisions.
+
+---
+
+## 20. How to Decide Which Standard to Use
+
+The selection depends on project context.
+
+Common decision inputs include:
+
+```text
+customer or OEM requirement
+safety plan
+IP vendor safety manual
+existing FMEDA basis
+company methodology
+available technology data
+available package data
+available mission profile data
+need for consistency with previous product lines
+audit expectations
+```
+
+A practical decision table can be:
+
+| Question | Effect on Standard Selection |
+|---|---|
+| Does the customer require one method? | Follow the customer safety plan unless a deviation is approved. |
+| Does existing FMEDA use one method? | Prefer consistency or document the migration. |
+| Is mission profile detail available? | IEC 62380-style decomposition may benefit from explicit thermal profile data. |
+| Is component classification data the main source? | SN 29500-style reference/conversion workflow may be more natural. |
+| Is the flow chip-level or board-level? | Chip-level and board-level evidence may need different granularity. |
+| Will DCE-style artifacts be reused hierarchically? | Preserve the standard in artifact identity and database session. |
+| Are transient and permanent contributions both tracked? | Check how each method and tool setup reports them. |
+
+No article or demo can replace a project safety plan. D03 provides a structure for making the decision explicit.
+
+---
+
+## 21. Why D03 Matters for FMEDA
+
+**FMEDA** means **Failure Modes, Effects, and Diagnostic Analysis**.
+
+At a simplified level, FMEDA connects:
+
+```text
+part or sub-part
+failure mode
+failure rate
+safety mechanism
+diagnostic coverage
+residual failure rate
+safety goal relevance
+evidence source
+```
+
+FIT standard selection affects the failure-rate side of this chain.
+
+A simplified FMEDA row may contain:
+
+```csv
+part,sub_part,failure_mode,fit_standard,base_fit,diagnostic_coverage,residual_fit,evidence
+```
+
+If `fit_standard` is missing, the row is incomplete.
+
+D03 therefore prepares FMEDA-friendly evidence even before D15 introduces the FMEDA data model.
+
+The long-term evidence chain looks like this:
+
+```mermaid
+flowchart TD
+    A[D03 Run Identity] --> B[D04 Structural Artifacts]
+    B --> C[D06 Safety Exploration]
+    C --> D[D08 Fault Lists]
+    D --> E[D12 Fault Campaign]
+    E --> F[D14 Final Metrics]
+    F --> G[D15 FMEDA Rows]
+    A --> G
+```
+
+**Figure 2. FIT standard identity must survive until FMEDA evidence is generated.**
+
+---
+
+## 22. Example D03 Output Set
+
+A clean D03 output directory may contain:
+
+```text
+outputs/d03_standard_matrix.csv
+outputs/d03_mission_profile_index.csv
+outputs/d03_run_identity.csv
+outputs/d03_fit_standard_comparison.csv
+outputs/d03_evidence_index.csv
+outputs/d03_quality_gate.csv
+outputs/d03_handoff_to_d04.csv
+```
+
+### 22.1 d03_standard_matrix.csv
+
+Purpose:
+
+```text
+List supported FIT standards and expected artifact naming conventions.
+```
+
+### 22.2 d03_mission_profile_index.csv
+
+Purpose:
+
+```text
+List mission profiles, application contexts, and review status.
+```
+
+### 22.3 d03_run_identity.csv
+
+Purpose:
+
+```text
+Bind design, top module, standard, mission profile, setup files, output directory, and database session.
+```
+
+### 22.4 d03_fit_standard_comparison.csv
+
+Purpose:
+
+```text
+Compare selected standard/profile combinations under controlled dimensions.
+```
+
+### 22.5 d03_evidence_index.csv
+
+Purpose:
+
+```text
+Track every D03 output artifact, its producer, its purpose, and its downstream consumer.
+```
+
+### 22.6 d03_quality_gate.csv
+
+Purpose:
+
+```text
+Provide a simple PASS/FAIL style consistency summary for the demo package.
+```
+
+### 22.7 d03_handoff_to_d04.csv
+
+Purpose:
+
+```text
+Tell D04 which standard-specific artifact set should be used for structural safety modeling.
+```
+
+---
+
+## 23. Bottom-Up Tool Architecture
+
+D03 can be implemented using a layered architecture.
+
+```mermaid
+flowchart TD
+    A[Input Package Layer] --> B[Standard Configuration Layer]
+    B --> C[Mission Profile Layer]
+    C --> D[Run Identity Layer]
+    D --> E[Analysis Execution Adapter]
+    E --> F[Artifact Collection Layer]
+    F --> G[Comparison and Evidence Layer]
+    G --> H[D04 Handoff Layer]
+```
+
+**Figure 3. D03 architecture separates assumptions, execution, artifacts, and handoff.**
+
+### 23.1 Input Package Layer
+
+This layer imports D01 outputs:
+
+```text
+manifest
+filelist
+clock definition
+analysis setup
+common database policy
+```
+
+### 23.2 Standard Configuration Layer
+
+This layer defines:
+
+```text
+IEC_62380
+SN_29500
+expected setup files
+expected report suffixes
+expected DCE suffixes
+supported comparison dimensions
+```
+
+### 23.3 Mission Profile Layer
+
+This layer holds profile data outside scripts.
+
+It should support multiple profiles without changing code:
+
+```text
+passenger_compartment.yaml
+motor_control.yaml
+future_profile.yaml
+```
+
+### 23.4 Run Identity Layer
+
+This layer creates a stable key for every run.
+
+A run ID should be human-readable and machine-parseable:
+
+```text
+D03_IEC_62380_PASSENGER_COMPARTMENT
+D03_SN_29500_PASSENGER_COMPARTMENT
+D03_IEC_62380_MOTOR_CONTROL
+D03_SN_29500_MOTOR_CONTROL
+```
+
+### 23.5 Analysis Execution Adapter
+
+This layer maps neutral commands to the local toolchain.
+
+It should keep all local paths in environment variables or local setup scripts.
+
+### 23.6 Artifact Collection Layer
+
+This layer collects outputs but preserves standard-specific naming.
+
+### 23.7 Comparison and Evidence Layer
+
+This layer produces normalized CSV/Markdown summaries.
+
+### 23.8 D04 Handoff Layer
+
+This layer selects which run becomes the structural analysis source for the next demo.
+
+---
+
+## 24. What D03 Should Not Claim
+
+D03 should stay focused.
+
+It should not claim:
+
+```text
+final ASIL compliance
+final PMHF compliance
+final diagnostic coverage closure
+fault campaign completion
+production-grade reliability numbers
+customer-approved mission profile
+safety mechanism effectiveness
+```
+
+Those claims belong to later stages and real project signoff.
+
+D03 should claim only:
+
+```text
+FIT standard selection is explicit.
+Mission profile identity is explicit.
+Comparison dimensions are controlled.
+Evidence artifacts preserve standard identity.
+The next structural-safety step receives a clean handoff.
+```
+
+That is already a meaningful engineering deliverable.
+
+---
+
+## 25. Summary
+
+D03 is about making FIT analysis reviewable.
+
+The main engineering lessons are:
+
+```text
+FIT values depend on reliability prediction standards.
+IEC 62380 and SN 29500 organize assumptions differently.
+Mission profile is a calculation input, not a label.
+The FIT standard is part of run identity.
+Standard-specific reports and DCE-style artifacts should keep their identity.
+Comparison requires controlled dimensions.
+FMEDA evidence needs the standard to remain traceable.
+```
+
+D01 made the input package reproducible.
+
+D02 explained the Base FIT Rate baseline.
+
+D03 turns the FIT standard and mission profile into explicit evidence.
+
+This is the correct bridge into D04, where the flow starts reading structural safety artifacts such as endpoints, startpoints, DCE-style outputs, and endpoint-to-safety-mechanism maps.
+
+A Safe-IC platform becomes credible when it can answer not only:
+
+```text
+What number did the tool calculate?
+```
+
+But also:
+
+```text
+Which standard produced it?
+Which mission profile shaped it?
+Which assumptions supported it?
+Which artifact carries it forward?
+Which later FMEDA row will cite it?
+```
+
+That is the real purpose of D03.
+
+---
+
+## 26. D03 Demo Deliverables
+
+The expected D03 deliverables are:
+
+```text
+[ ] README.md
+[ ] manifest.yaml
+
+[ ] inputs/from_d01/manifest.yaml
+[ ] inputs/from_d01/filelist.f
+[ ] inputs/from_d01/clock_definition.clk
+[ ] inputs/from_d01/analysis_config.ini
+
+[ ] inputs/from_d02/bfr_summary.csv
+[ ] inputs/from_d02/fit_contribution.csv
+[ ] inputs/from_d02/base_fit_evidence_index.csv
+
+[ ] inputs/standards/fit_standard_matrix.yaml
+[ ] inputs/mission_profiles/passenger_compartment.yaml
+[ ] inputs/mission_profiles/motor_control.yaml
+[ ] inputs/fit/fit_inputs_iec62380.txt
+[ ] inputs/fit/fit_inputs_sn29500.txt
+
+[ ] scripts/setup_toolchain.template.csh
+[ ] scripts/run_demo.csh
+[ ] scripts/run_demo.sh
+
+[ ] tools/validate_d03_inputs.py
+[ ] tools/build_standard_matrix.py
+[ ] tools/build_run_identity.py
+[ ] tools/compare_fit_standards.py
+[ ] tools/build_d04_handoff.py
+
+[ ] outputs/d03_standard_matrix.csv
+[ ] outputs/d03_mission_profile_index.csv
+[ ] outputs/d03_run_identity.csv
+[ ] outputs/d03_fit_standard_comparison.csv
+[ ] outputs/d03_evidence_index.csv
+[ ] outputs/d03_quality_gate.csv
+[ ] outputs/d03_handoff_to_d04.csv
+```
+
+D03 is complete when a reviewer can open the repository and immediately understand:
+
+```text
+which FIT standards are modeled
+which mission profiles are available
+which runs are comparable
+which assumptions are carried into evidence
+which artifact should be used by D04
+```
+
+That is the foundation for reliable structural safety modeling in the next step.
