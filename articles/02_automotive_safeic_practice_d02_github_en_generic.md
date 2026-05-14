@@ -1,1348 +1,1267 @@
-# [Automotive Safe-IC Practice 02] Base FIT Rate: Building the Random Hardware Failure Baseline
+# Automotive Safe-IC Practice 02: Base FIT Rate — From BFR to FIT Contribution Report
 
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D02_base_fit_rate  
-**Platform**: GitHub technical article + reproducible demo project  
-**Tags**: Automotive Chip, Functional Safety, ISO 26262, ASIL, FIT, Base FIT Rate, Diagnostic Coverage, Fault List, DCE, FMEDA, FuSa Database, Evidence Traceability
+Author: Darren H. Chen
+
+Direction: Automotive Chip Functional Safety / Safe-IC Verification Platform
+
+Demo: D02_base_fit_rate
+
+Tags: ISO 26262, Functional Safety, Safe-IC, FIT, BFR, Random Hardware Failure, Mission Profile, IEC 62380, SN 29500, FMEDA, Diagnostic Coverage
 
 ---
 
-## 1. Problem Context
+## 1. Why D02 Starts from Base FIT Rate
 
-The first article built a reproducible analysis input package.
-
-D01 answered questions such as:
+In a safety-oriented semiconductor workflow, the first engineering question after building a reproducible input package is not:
 
 ```text
-Which RTL is analyzed?
-Which top module is used?
-Which clock definition is active?
-Which FIT setup is used?
-Which FIT standard is selected?
-Which initialization file controls the run?
-Where are reports, fault lists, logs, and database sessions stored?
+Can the design pass a fault campaign?
 ```
 
-D02 starts using that input package to build the first quantitative safety baseline:
+The first question is:
+
+```text
+How much random hardware failure exposure does the design have before safety mechanisms are credited?
+```
+
+That question is the purpose of **Base FIT Rate**, usually abbreviated as **BFR**.
+
+D01 established the input context:
+
+```text
+RTL or netlist
+filelist
+top module
+clock definition
+FIT setup
+mission profile assumptions
+analysis initialization file
+common safety database location
+expected output index
+```
+
+D02 uses that context to compute and interpret the first safety analysis result:
 
 ```text
 Base FIT Rate
 ```
 
-Base FIT Rate, or BFR, is not the final functional safety result.
+BFR is the baseline failure-rate picture of a hardware function before the design team claims diagnostic coverage from safety mechanisms. It tells us which parts of the design contribute most to random hardware failure risk and where later safety work should focus.
 
-It is the starting point of the random hardware failure argument.
+This is why D02 is not a “run a command and print a number” demo. It is the first result interpretation stage of the evidence chain.
 
-Before we can discuss diagnostic coverage, residual FIT, safety mechanism effectiveness, fault campaign results, or FMEDA evidence, we must understand the unprotected random hardware failure exposure of the design.
-
-In other words, D02 asks:
-
-> Before any safety mechanism is credited, how much random hardware failure risk does this design structure contribute?
-
-The output of D02 is not only a number.
-
-The output of D02 is an evidence package that connects:
+A mature Safe-IC flow needs three layers around BFR:
 
 ```text
-D01 input context
-    -> real analysis run
-    -> FIT calculation standard
-    -> permanent and transient FIT values
-    -> DCE-style artifacts
-    -> summary reports
-    -> database session
-    -> machine-readable CSV/Markdown summary
+1. calculation layer      -> produce base FIT metrics
+2. interpretation layer   -> understand high-contribution structures
+3. evidence layer         -> preserve reports, assumptions, and summaries for later FMEDA work
 ```
 
-This article explains the bottom-level concepts, the tool architecture, the file protocol, and the methodology behind D02.
+D02 is about all three layers.
 
 ---
 
-## 2. What Is FIT?
+## 2. What FIT Means
 
-FIT means **Failure In Time**.
+**FIT** means **Failure In Time**.
 
-A common engineering interpretation is:
-
-```text
-1 FIT = 1 failure per 10^9 operating hours
-```
-
-Equivalently:
+The common definition is:
 
 ```text
-1 FIT = 10^-9 failures / hour
+1 FIT = 1 failure per 1,000,000,000 operating hours
 ```
 
-If a block has a failure rate of 10 FIT, the intuitive reading is:
+If the hardware failure rate is represented as lambda per hour:
 
 ```text
-10 expected failures per 10^9 operating hours
+FIT = lambda × 1,000,000,000
+lambda = FIT × 1e-9 failures/hour
 ```
 
-This does not mean a particular chip will fail exactly after a fixed number of hours.
+FIT is not a simulation coverage number. It is not a pass/fail verification result. It is a reliability-oriented failure-rate unit used to quantify the likelihood of random hardware faults over time.
 
-It means that, under the reliability model and operating assumptions used, the statistical failure rate is estimated as a normalized value.
-
-At chip level, FIT depends on many factors:
+In a semiconductor context, FIT can include several physical or technology-related contributors, such as:
 
 ```text
-design structure
-technology process
-cell type
-transistor count
-memory size
-package model
-junction / ambient temperature
-mission profile
-operating ratio
-manufacturing year
-reliability prediction standard
+die-related random defects
+package-related failures
+memory-related failures
+interface-related failures
+technology-dependent failure mechanisms
+temperature and mission profile effects
 ```
 
-That is why D01 treated the FIT setup file as a first-class safety artifact.
+Different reliability models may decompose these contributors differently. The practical engineering rule is simple:
 
-A FIT number without its input context is not reviewable.
+> A FIT value is meaningful only when the calculation standard, mission profile, technology assumptions, and design context are known.
+
+A number without context is not evidence.
 
 ---
 
-## 3. What Is Base FIT Rate?
+## 3. Random Hardware Faults vs. Systematic Faults
 
-Base FIT Rate is the initial FIT rate before safety mechanisms are credited.
+Functional safety analysis separates two broad fault categories.
 
-A useful mental model is:
+### 3.1 Systematic Faults
+
+A **systematic fault** is caused by a development, specification, implementation, verification, manufacturing, or process weakness.
+
+Examples include:
 
 ```text
-Base FIT Rate = unprotected random hardware failure exposure
+incorrect RTL implementation
+wrong reset behavior
+wrong requirement interpretation
+missing verification scenario
+incorrect integration assumption
+software bug
+incorrect safety manual assumption
 ```
+
+Systematic faults are mainly controlled by engineering process:
+
+```text
+requirements traceability
+review
+coding rules
+static checks
+simulation
+formal verification
+regression
+configuration management
+change management
+tool confidence
+```
+
+D02 does not attempt to quantify systematic fault probability with FIT.
+
+### 3.2 Random Hardware Faults
+
+A **random hardware fault** occurs during operation due to physical effects, aging, environmental conditions, radiation, or other probabilistic mechanisms.
+
+Examples include:
+
+```text
+stuck-at behavior
+transient bit flip
+memory cell upset
+sequential element upset
+package-related failure
+interface-related electrical stress
+```
+
+Random hardware faults are the primary scope of FIT calculation. BFR gives the baseline view before later steps introduce or validate safety mechanisms.
+
+### 3.3 Why This Distinction Matters
+
+A functional verification pass can show that the RTL behaves correctly under intended stimulus. It does not automatically prove that the design is robust against random hardware faults during operation.
+
+A BFR analysis asks a different question:
+
+```text
+If random hardware faults can occur in this design, how much failure-rate exposure exists and where is it concentrated?
+```
+
+That is the reason D02 belongs after D01 and before safety mechanism exploration.
+
+---
+
+## 4. What Base FIT Rate Is
+
+**Base FIT Rate** is the initial FIT calculation for a hardware function before diagnostic coverage from inserted or validated safety mechanisms is credited.
+
+A simplified conceptual model is:
+
+```text
+Base FIT = FIT_die + FIT_package + FIT_memory + FIT_interface + FIT_other
+```
+
+A more detailed implementation may break the result down by:
+
+```text
+module
+instance
+endpoint
+startpoint
+register group
+memory macro
+clock domain
+technology class
+failure mode
+```
+
+The important point is that BFR is a **baseline**.
 
 It answers:
 
 ```text
-How much random hardware failure contribution exists in the design before we claim that parity, ECC,
-lockstep, duplication, monitors, alarms, or software diagnostics can cover it?
+How exposed is the design before protection is credited?
+Which structures dominate the FIT contribution?
+Which structures are likely to need safety mechanisms?
+Which reports should feed the next safety exploration stage?
 ```
 
-Base FIT Rate is therefore the denominator of many later safety arguments.
-
-```mermaid
-flowchart LR
-    A[Design Structure] --> B[Base FIT Rate]
-    B --> C[Safety Mechanism Planning]
-    C --> D[Diagnostic Coverage]
-    D --> E[Residual FIT]
-    E --> F[FMEDA Evidence]
-```
-
-**Figure 1. Base FIT Rate is the risk baseline before diagnostic coverage is credited.**
-
-A diagnostic coverage value such as `90%` is not meaningful by itself.
-
-It must be connected to the failure-rate population it covers.
-
-For example:
+It does not answer:
 
 ```text
-Case A:
-Base FIT = 1 FIT
-Diagnostic Coverage = 90%
-Residual FIT = 0.1 FIT
-
-Case B:
-Base FIT = 100 FIT
-Diagnostic Coverage = 90%
-Residual FIT = 10 FIT
+Has the design reached ASIL-D?
+Are all safety mechanisms validated?
+Is diagnostic coverage proven by fault injection?
+Are final SPFM/LFM/PMHF metrics closed?
 ```
 
-The same coverage percentage leads to very different residual risk.
+Those questions belong to later stages.
 
-That is why BFR must be established early.
+D02 should therefore be read as the **baseline metrics article**, not the final safety sign-off article.
 
 ---
 
-## 4. Base FIT Rate in the Safe-IC Lifecycle
+## 5. Where D02 Sits in the 20-Demo Flow
 
-D02 is not an isolated calculation.
+This series uses a 20-demo engineering flow for a Safe-IC functional safety platform. D02 is the second step.
 
-It belongs to a larger lifecycle.
-
-```mermaid
-flowchart TD
-    D01[D01 Analysis Input Package] --> D02[D02 Base FIT Rate]
-    D02 --> D03[D03 FIT Standard and Mission Profile]
-    D03 --> D04[D04 Structural Safety Model]
-    D04 --> D05[D05 Common FuSa Database]
-    D05 --> D06[D06 Safety Exploration]
-    D06 --> D07[D07 Safety Mechanism Mapping]
-    D07 --> D08[D08 Fault List Generation]
-    D08 --> D09[D09 Simulation Safety Context]
-    D09 --> D11[D11 Fault Campaign Setup]
-    D11 --> D12[D12 Fault Injection Execution]
-    D12 --> D13[D13 Fault Outcome Classification]
-    D13 --> D14[D14 Final Metric Validation]
-    D14 --> D15[D15 FMEDA Evidence Package]
-```
-
-**Figure 2. D02 creates the quantitative baseline consumed by later safety exploration and FMEDA evidence.**
-
-A mature flow calculates FIT more than once:
+The immediate local sequence is:
 
 ```text
-early RTL stage:
-  calculate Base FIT Rate to understand the raw exposure
-
-after safety mechanisms are planned or inserted:
-  re-run analysis to estimate diagnostic coverage and residual risk
-
-after fault campaign:
-  validate safety mechanism behavior with injected faults
-
-near final signoff:
-  calculate final metrics on the final implementation representation
+D01 Analysis Input Package
+        ↓
+D02 Base FIT Rate
+        ↓
+D03 FIT Standards and Mission Profile
+        ↓
+D04 Structural Building Blocks
+        ↓
+D05 Common Safety Database
 ```
 
-D02 focuses only on the early baseline.
+D02 consumes the D01 input package and creates the first set of metric-oriented evidence.
 
-It should not claim final ASIL compliance.
+Later demos reuse D02 outputs:
+
+```text
+D06 Safety Exploration
+D07 Safety Mechanism Map
+D08 Fault List Generation
+D14 Fault Campaign Result Back-annotation
+D15 FMEDA Data Model
+D19 Evidence Traceability
+D20 End-to-End Mini Flow
+```
+
+D02 is therefore not an isolated report parser. It is the first bridge between raw design inputs and safety decision-making.
 
 ---
 
-## 5. Safety Analysis vs. Safety Verification
+## 6. D02 Input Contract
 
-D02 is still part of **Safety Analysis**.
+D02 should not guess where inputs are located. It should consume a deterministic package produced by D01.
 
-It is not yet a fault campaign.
-
-### 5.1 Safety Analysis
-
-Safety Analysis asks:
+A practical D02 input contract can look like this:
 
 ```text
-What is the random hardware failure exposure?
-Which design elements contribute to FIT?
-Which endpoints and startpoints are relevant?
-What diagnostic coverage can be estimated or credited?
-Which artifacts should be stored as DCE, reports, fault lists, and database sessions?
-```
-
-In this series, the executable is represented by a neutral environment variable:
-
-```text
-SAFEIC_ANALYSIS_ENGINE
-```
-
-The actual tool is mapped by local demo configuration.
-
-The public article does not need to hard-code a private tool command.
-
-### 5.2 Safety Verification
-
-Safety Verification asks:
-
-```text
-If a fault is injected under a real simulation context, does the safety mechanism detect it?
-Does an alarm fire?
-Does the fault propagate to an observe point?
-Does the system enter a safe or unsafe state?
-```
-
-That part will be introduced later through:
-
-```text
-fault list
-VCD / good machine context
-alarm list
-observe point list
-fault campaign configuration
-fault outcome classification
-```
-
-D02 only prepares the baseline and evidence model that later verification will consume.
-
----
-
-## 6. Key Terms Used in D02
-
-Before discussing the demo architecture, the following terms should be clear.
-
-### 6.1 Random Hardware Fault
-
-A random hardware fault is a fault that occurs during operation due to random physical effects.
-
-Examples:
-
-```text
-transient bit flip
-single event upset
-permanent stuck-at fault
-aging-related defect
-interconnect defect
-memory cell upset
-```
-
-D02 does not inject these faults.
-
-D02 estimates the baseline failure-rate exposure associated with design structures.
-
-### 6.2 Permanent Fault
-
-A permanent fault persists after it occurs.
-
-Examples:
-
-```text
-stuck-at-0
-stuck-at-1
-permanent open
-permanent short
-aging-induced permanent defect
-```
-
-A permanent fault may remain active until repair, reset, redundancy, or system replacement.
-
-### 6.3 Transient Fault
-
-A transient fault is temporary.
-
-Examples:
-
-```text
-soft error
-single-event upset
-temporary storage element corruption
-short-duration logic upset
-```
-
-It may disappear physically, but its effect can still be latched into the system state.
-
-### 6.4 Lambda
-
-`Lambda` is commonly used to represent failure rate.
-
-D02 reports may contain fields such as:
-
-```text
-LambdaPermanent
-LambdaTransient
-Total LambdaPerm
-Total LambdaTran
-```
-
-These values should be interpreted as FIT-related failure-rate contributions under the selected reliability model.
-
-### 6.5 Diagnostic Coverage
-
-Diagnostic Coverage, or DC, describes how much of the relevant failure population is detected, controlled, or made safe by safety mechanisms.
-
-A simplified model is:
-
-```text
-DC = covered fault contribution / total relevant fault contribution
-```
-
-In Base FIT Rate analysis, DC is often zero because no safety mechanism is credited yet.
-
-This is expected.
-
-### 6.6 Residual FIT
-
-Residual FIT is the risk left after diagnostic coverage is applied.
-
-A simple conceptual formula is:
-
-```text
-Residual FIT = Base FIT × (1 - Diagnostic Coverage)
-```
-
-This is useful for intuition.
-
-Real FMEDA calculations may split the result by failure mode, part, sub-part, safety mechanism, ASIL target, and classification policy.
-
-### 6.7 DCE
-
-DCE means Diagnostic Coverage Element.
-
-A DCE-style artifact stores safety metric information for a module or block.
-
-It enables hierarchical reuse:
-
-```text
-analyze IP block once
-store block-level DCE
-reuse DCE during subsystem or top-level analysis
-avoid re-analyzing the same block repeatedly
-```
-
-DCE files also carry standard identity.
-
-A DCE generated under one FIT standard should not be mixed with data generated under another standard.
-
-### 6.8 Common FuSa Database Session
-
-A Common FuSa Database is a structured evidence container.
-
-A session is a named partition inside that database.
-
-Example:
-
-```text
-outputs/db/toy_counter.fdb::D02_BFR
-```
-
-This should be read as:
-
-```text
-database file: outputs/db/toy_counter.fdb
-session name:  D02_BFR
-```
-
-The database session allows D02 evidence to be reused by later analysis, fault campaign, and FMEDA-oriented steps.
-
----
-
-## 7. D02 Input Contract
-
-D02 consumes the D01 input package and the D01 real-analysis artifacts.
-
-The minimum input contract is:
-
-```text
-D01_analysis_input_package/
+D02_base_fit_rate/
+  manifest.yaml
   inputs/
     rtl/
     filelist/
     clock/
     fit/
     analysis/
-  Outputs/
-    <top>_SF_SA.metric.summary.rpt
-    <top>_Coverage.rpt
-    <top>_IEC_62380.DCE
-    <top>.DCE
-    <top>_Perm_EquivFault.list
-    <top>_Perm_PrimaryFault.list
-    <top>_Trans_EquivFault.list
-    <top>_Trans_PrimaryFault.list
-    *_Alarms.list
   outputs/
     db/
-    manifest/
-    tool_outputs_index.csv
+    reports/
+    dce/
+    fault_lists/
   logs/
-    analysis_engine.log
 ```
 
-D02 should not depend on hidden interactive state.
+The key input artifacts are:
 
-It should be able to run from:
+| Artifact | Purpose |
+|---|---|
+| RTL or netlist filelist | Defines the design content under analysis |
+| top module | Defines the hardware function boundary |
+| clock definition | Defines sequential context and clock domains |
+| FIT setup | Defines reliability and mission-profile assumptions |
+| analysis initialization file | Defines the analysis mode and input references |
+| common safety database session | Preserves analysis state for later stages |
+| expected output index | Defines which reports should be collected and parsed |
 
-```text
-D01 outputs
-D01 logs
-D01 manifest
-D01 database session
-```
-
-If D01 has not been executed in real-analysis mode, D02 can still run in preflight mode, but it cannot claim that real BFR values were extracted.
+A BFR run is not reproducible unless these are explicit.
 
 ---
 
-## 8. Native Tool Outputs vs. Demo-Managed Outputs
+## 7. Why Clock Definition Affects Safety Analysis
 
-D01 established an important directory rule:
+Clock definition is often treated as a minor setup file in ordinary flows. In functional safety analysis, it is more important.
+
+A safety analysis engine needs to understand sequential structure:
 
 ```text
-Outputs/  = native output directory produced by the configured analysis engine
-outputs/  = demo-managed output directory used for indexing, normalized summaries, CSV, Markdown, and database paths
+which elements are registers
+which registers belong to which clock domain
+where fault propagation may be observed
+which cones are timing-related
+which state elements are meaningful for endpoint contribution
 ```
 
-D02 follows the same rule.
+If a clock is missing or incorrectly defined, the analysis may still parse RTL, but the structural safety interpretation can be wrong.
 
-The demo should not assume that the commercial-grade analysis engine will write directly into the repository-friendly directory layout.
+For example:
 
-Instead, the demo should collect and normalize native artifacts.
-
-```mermaid
-flowchart LR
-    A[Native Tool Output: Outputs/] --> B[Collector]
-    B --> C[Managed Reports: outputs/reports/]
-    B --> D[Managed DCE: outputs/dce/]
-    B --> E[Managed Fault Lists: outputs/fault_lists/]
-    B --> F[Evidence Index: outputs/evidence_index.csv]
-    B --> G[BFR Summary: outputs/bfr_summary.csv]
+```text
+same RTL + correct clock definition    -> meaningful sequential structure
+same RTL + missing clock definition    -> incomplete structural interpretation
+same RTL + wrong clock grouping        -> misleading contribution boundaries
 ```
 
-**Figure 3. D02 normalizes native analysis artifacts into demo-managed evidence files.**
-
-This separation is practical.
-
-It allows the demo to be readable on GitHub while preserving the real tool output convention.
+This is why D02 should always record the clock definition used for the BFR result.
 
 ---
 
-## 9. D02 Tool Architecture
+## 8. Mission Profile: The Hidden Multiplier Behind FIT
 
-D02 should be implemented as a small evidence extraction and reporting pipeline.
+A **mission profile** describes the assumed operating conditions of the product.
 
-Recommended structure:
+Typical factors include:
 
 ```text
-D02_base_fit_rate/
-├── README.md
-├── manifest.yaml
-│
-├── inputs/
-│   ├── from_d01/
-│   │   ├── analysis_engine.log
-│   │   ├── tool_outputs_index.csv
-│   │   ├── toy_counter_SF_SA.metric.summary.rpt
-│   │   ├── toy_counter_Coverage.rpt
-│   │   └── toy_counter_IEC_62380.DCE
-│   │
-│   └── analysis/
-│       └── d02_config.yaml
-│
-├── scripts/
-│   ├── run_demo.csh
-│   └── run_demo.sh
-│
-├── tools/
-│   ├── parse_bfr_report.py
-│   ├── parse_analysis_log.py
-│   ├── build_bfr_summary.py
-│   ├── build_fit_contribution.py
-│   └── build_evidence_index.py
-│
-├── outputs/
-│   ├── bfr_summary.csv
-│   ├── bfr_summary.md
-│   ├── fit_contribution.csv
-│   ├── bfr_evidence_index.csv
-│   ├── bfr_interpretation.md
-│   └── demo_summary.md
-│
-└── logs/
-    └── run_demo.log
+operating temperature
+junction temperature assumption
+on-time and off-time
+vehicle usage profile
+environment class
+technology process assumption
+package assumption
+voltage or stress condition
+lifetime distribution
 ```
 
-D02 does not need to rerun the analysis engine by default.
+The same design can produce different FIT values under different mission profiles.
 
-It should first parse and normalize the D01 results.
+A simplified way to think about mission profile is:
 
-A later variant can provide an optional rerun mode.
+```text
+intrinsic component reliability × operating stress model = mission-adjusted failure rate
+```
+
+The RTL structure tells the tool what exists in the design.
+
+The mission profile tells the tool under what operating assumptions the design is evaluated.
+
+Both are required.
 
 ---
 
-## 10. D02 Data Flow
+## 9. IEC 62380 and SN 29500 in D02
 
-The D02 data flow is:
+D03 will focus on reliability standards in more detail. D02 only needs the engineering interpretation.
+
+Two reliability standards often appear in automotive semiconductor safety analysis:
+
+```text
+IEC 62380
+SN 29500
+```
+
+At a practical level, both can be used to estimate failure rates, but they rely on different modeling assumptions, parameter tables, and mission-profile handling approaches.
+
+D02 should therefore never compare two FIT numbers unless the report records:
+
+```text
+which standard was used
+which mission profile was used
+which technology assumptions were used
+which input design was used
+which analysis configuration was used
+```
+
+A D02 summary should contain a field such as:
+
+```text
+fit_standard: iec_62380
+```
+
+or:
+
+```text
+fit_standard: sn_29500
+```
+
+The important engineering principle is:
+
+> The FIT standard is part of the metric identity. It is not a cosmetic option.
+
+---
+
+## 10. BFR and FIT Contribution
+
+A total FIT value is useful, but it is not enough.
+
+The real engineering value of D02 is the **FIT contribution report**.
+
+A FIT contribution report explains where the total FIT comes from.
+
+A simplified contribution table may look like this:
+
+```text
+structure,category,fit,contribution_percent,review_hint
+ctrl_fsm,sequential,example_value,example_percent,review state protection
+counter_reg,sequential,example_value,example_percent,review endpoint behavior
+status_logic,combinational,example_value,example_percent,review alarm propagation
+memory_if,interface,example_value,example_percent,review memory protection assumption
+```
+
+The numeric values above are placeholders. In a real flow, D02 should parse the actual vendor-native report and convert it into a stable public summary format.
+
+The engineering use of contribution data is:
+
+```text
+rank high-contribution structures
+identify candidates for safety mechanism exploration
+prioritize review of endpoint and startpoint usage
+connect structural risk to later FMEDA rows
+avoid spending time on low-impact protection first
+```
+
+This is the first moment where functional safety analysis becomes architectural guidance.
+
+---
+
+## 11. Endpoint, Startpoint, and Contribution: A Preview
+
+D04 will discuss structural building blocks in more detail. D02 only needs a preview because contribution reports often reference these ideas.
+
+### 11.1 Endpoint
+
+An **endpoint** is a structural observation or destination point in the design where fault propagation becomes relevant to safety analysis.
+
+Examples may include:
+
+```text
+state registers
+output registers
+control outputs
+alarm-related signals
+interface response signals
+```
+
+An endpoint is not necessarily a top-level port. It is a structural point used by the analysis model.
+
+### 11.2 Startpoint
+
+A **startpoint** is a structural source from which fault effects may propagate.
+
+Examples may include:
+
+```text
+register outputs
+combinational drivers
+memory outputs
+interface sources
+```
+
+### 11.3 Contribution
+
+A contribution report connects the analysis model to design structure:
+
+```text
+which startpoints feed which endpoints
+which endpoints dominate the FIT contribution
+which structures may benefit from safety mechanisms
+```
+
+D02 does not close diagnostic coverage. It creates the evidence needed to decide where coverage work should begin.
+
+---
+
+## 12. Diagnostic Coverage Is Not Yet Proven in D02
+
+**Diagnostic Coverage**, or **DC**, measures how effectively safety mechanisms detect or control faults.
+
+A simplified residual-risk model is:
+
+```text
+residual FIT = original FIT × (1 - diagnostic coverage)
+```
+
+For example, if a structure contributes FIT and a later safety mechanism detects a percentage of relevant faults, the remaining undetected portion becomes residual exposure.
+
+However, D02 does not prove DC.
+
+D02 only establishes the baseline:
+
+```text
+before safety mechanism credit
+before fault injection campaign
+before final fault classification
+```
+
+DC-related files may already appear as expected artifacts or DCE-style analysis outputs, but D02 should not claim final DC closure.
+
+The correct D02 statement is:
+
+```text
+BFR identifies the baseline failure-rate contribution that later diagnostic coverage work must reduce or justify.
+```
+
+---
+
+## 13. DCE-Style Output: Why It Matters Early
+
+A **DCE-style output** can be understood as a structured diagnostic coverage element artifact.
+
+Even when D02 focuses on BFR, a DCE-style file can become important later because it helps connect:
+
+```text
+structural elements
+failure assumptions
+safety mechanism mapping
+diagnostic coverage estimates
+fault list generation
+final metric calculation
+```
+
+D02 should treat DCE-style output as a handoff artifact.
+
+It is not the final proof of safety. It is part of the structured evidence chain.
+
+A useful D02 artifact index should record:
+
+```text
+artifact path
+artifact type
+producer stage
+consumer stage
+standard used
+design top
+session name
+checksum or timestamp
+```
+
+This prevents later demos from guessing which file belongs to which run.
+
+---
+
+## 14. Tool Architecture for D02
+
+A robust D02 demo should separate the workflow into five layers.
 
 ```mermaid
 flowchart TD
-    A[D01 Analysis Input Package] --> B[D01 Real Analysis Run]
-    B --> C[Native Reports in Outputs/]
-    B --> D[Common DB Session]
-    B --> E[Analysis Log]
-    C --> F[D02 Parser]
-    D --> F
-    E --> F
-    F --> G[bfr_summary.csv]
-    F --> H[fit_contribution.csv]
-    F --> I[bfr_summary.md]
-    F --> J[bfr_evidence_index.csv]
-    F --> K[demo_summary.md]
+    A[D01 Input Package] --> B[BFR Analysis Driver]
+    B --> C[Native Report Collector]
+    C --> D[Metric Parsers]
+    D --> E[Normalized Evidence Tables]
+    E --> F[Human-Readable Summary]
+    E --> G[Later Safety Exploration]
+    E --> H[FMEDA Evidence Model]
 ```
 
-**Figure 4. D02 turns native BFR evidence into normalized, reviewable GitHub artifacts.**
+### 14.1 Analysis Driver
 
-The important method is:
+The driver should not hard-code private tool paths.
+
+A neutral execution interface is enough:
+
+```csh
+if ( ! $?SAFEIC_ANALYSIS_ENGINE ) then
+  echo "[WARN] SAFEIC_ANALYSIS_ENGINE is not configured."
+  echo "[WARN] D02 will parse available reports only."
+else
+  $SAFEIC_ANALYSIS_ENGINE \
+    --config inputs/analysis/analysis_bfr.cfg \
+    --workdir .
+endif
+```
+
+This expresses the engineering protocol without exposing vendor-specific commands.
+
+### 14.2 Native Report Collector
+
+Commercial and internal tools often produce their own directory and naming conventions.
+
+D02 should collect native outputs into a managed evidence tree:
 
 ```text
-do not manually copy a number into the article
-extract the number from real generated evidence
-record the evidence source
-make the summary reproducible
+native_outputs/      -> tool-native files, not rewritten
+outputs/reports/     -> normalized report copies or summaries
+outputs/tables/      -> CSV / JSON extracted data
+outputs/evidence/    -> evidence index and manifest
 ```
 
-This turns BFR into an auditable artifact.
+The rule is:
+
+```text
+Never destroy native evidence.
+Always create normalized views beside it.
+```
+
+### 14.3 Metric Parsers
+
+Parsers should produce stable machine-readable outputs:
+
+```text
+outputs/tables/bfr_summary.csv
+outputs/tables/fit_contribution.csv
+outputs/tables/artifact_index.csv
+outputs/tables/run_assumptions.csv
+```
+
+The parser should not depend on exact log wording if a structured report exists. Logs are useful for troubleshooting, but reports are better evidence sources.
+
+### 14.4 Human-Readable Summary
+
+A reviewer should not need to inspect every raw report to understand the run.
+
+D02 should generate:
+
+```text
+outputs/demo_summary.md
+```
+
+It should answer:
+
+```text
+Which design was analyzed?
+Which top was used?
+Which FIT standard was selected?
+Which mission profile was referenced?
+Was the analysis run, parsed, or only prepared?
+What total BFR was extracted?
+Which structures dominate contribution?
+Which artifacts will D03/D04/D06 consume?
+```
 
 ---
 
-## 11. BFR Report Parsing Strategy
+## 15. Suggested D02 Repository Layout
 
-D02 should parse at least two types of evidence:
-
-```text
-metric summary report
-analysis log
-```
-
-The preferred source is the metric summary report.
-
-The log can be a fallback.
-
-### 11.1 Example Pattern
-
-A real BFR section may look conceptually like this:
+A GitHub-friendly D02 demo can use this layout:
 
 ```text
-Analysis Results for toy_counter for FIT standard IEC_62380
-----------------------------------------------------------------
-*ModuleName LibType LambdaPermanent LambdaTransient DiagCoveragePerm DiagCoverageTran Nval
-toy_counter MOS.ASIC.STDCELL 0.0000000779 0.0040250000 0.0000000000 0.0000000000 513
+D02_base_fit_rate/
+  README.md
+  manifest.yaml
 
-Total LambdaPerm = 0.0000000779
-Total LambdaTran = 0.0040250000
-Total DiagCoveragePerm = 0.0000000000
-Total DiagCoverageTran = 0.0000000000
-----------------------------------------------------------------
+  inputs/
+    analysis/
+      analysis_bfr.cfg
+    fit/
+      FIT_inputs.common.txt
+    references/
+      README.md
+
+  scripts/
+    run_demo.csh
+    run_demo.sh
+    setup_toolchain.template.csh
+
+  tools/
+    parse_bfr_summary.py
+    parse_fit_contribution.py
+    build_evidence_index.py
+    summarize_bfr.py
+
+  native_outputs/
+    .gitkeep
+
+  outputs/
+    tables/
+      bfr_summary.csv
+      fit_contribution.csv
+      run_assumptions.csv
+      artifact_index.csv
+    reports/
+      bfr_summary.md
+    evidence/
+      base_fit_evidence_index.csv
+    demo_summary.md
+
+  logs/
+    .gitkeep
+
+  docs/
+    bfr_methodology.md
 ```
 
-D02 should extract:
+The key design rule is that D02 must run in two modes:
 
 ```text
-top/module name
-FIT standard
-library / design type
-LambdaPermanent
-LambdaTransient
-DiagCoveragePerm
-DiagCoverageTran
-Nval
-Total LambdaPerm
-Total LambdaTran
-Total Diagnostic Coverage
-evidence file path
+report-available mode   -> parse real BFR artifacts if present
+preparation mode        -> validate configuration and explain expected artifacts
 ```
 
-### 11.2 Normalized CSV
-
-Example `outputs/bfr_summary.csv`:
-
-```csv
-top,fit_standard,lib_type,lambda_permanent,lambda_transient,total_lambda,dc_perm,dc_tran,nval,evidence_source
-toy_counter,iec_62380,MOS.ASIC.STDCELL,0.0000000779,0.0040250000,0.0040250779,0.0,0.0,513,inputs/from_d01/toy_counter_SF_SA.metric.summary.rpt
-```
-
-### 11.3 Markdown Summary
-
-Example `outputs/bfr_summary.md`:
-
-```md
-# Base FIT Rate Summary
-
-Top: toy_counter  
-FIT standard: iec_62380  
-Permanent FIT contribution: 0.0000000779  
-Transient FIT contribution: 0.0040250000  
-Total baseline FIT contribution: 0.0040250779  
-Diagnostic coverage credited in BFR: 0.0  
-
-## Interpretation
-
-This is an early baseline result. Diagnostic coverage is zero because D02 does not yet credit safety mechanisms.
-```
-
-The CSV is for automation.
-
-The Markdown is for review.
-
-Both should be generated from the same parser.
+This keeps the demo useful for public readers who do not have access to the private analysis engine.
 
 ---
 
-## 12. Why Diagnostic Coverage Is Zero in D02
+## 16. D02 Command Protocol
 
-A common misunderstanding is:
+The public command protocol should be stable and minimal.
 
-```text
-If diagnostic coverage is zero, the run failed.
+For csh-based EDA environments:
+
+```csh
+cd D02_base_fit_rate
+csh scripts/run_demo.csh
 ```
 
-This is wrong for BFR.
-
-In D02, zero diagnostic coverage usually means:
-
-```text
-no safety mechanism has been credited yet
-no safety mechanism map has been applied
-no fault campaign result has been validated
-the run is measuring baseline exposure
-```
-
-This is exactly the point of BFR.
-
-D02 should explicitly state:
-
-```text
-BFR is the baseline before safety mechanism credit.
-Zero DC in D02 is expected unless the design/configuration already includes credited safety mechanisms.
-```
-
-Later demos will introduce:
-
-```text
-safety mechanism mapping
-safety exploration
-fault list generation
-fault injection
-outcome classification
-final DC validation
-```
-
-Only then does diagnostic coverage become the central result.
-
----
-
-## 13. FIT Contribution Methodology
-
-D02 should not stop at a single total value.
-
-It should introduce the idea of FIT contribution.
-
-FIT contribution asks:
-
-```text
-Which module, block, library type, memory, register group, or design element contributes how much to the total baseline FIT?
-```
-
-At the toy demo scale, there may be only one module row.
-
-For a real SoC, the result may look like:
-
-```csv
-object,category,lambda_permanent,lambda_transient,total_lambda,percentage
-cpu_core,stdcell,12.5,0.8,13.3,26.6
-sram_0,memory,8.2,4.0,12.2,24.4
-bus_matrix,stdcell,5.1,0.2,5.3,10.6
-safety_ctrl,stdcell,2.7,0.1,2.8,5.6
-```
-
-This supports engineering decisions such as:
-
-```text
-Which block deserves safety mechanism investment first?
-Where is the FIT budget being consumed?
-Which memory or interface dominates the transient FIT?
-Which block needs better diagnostic coverage?
-Which DCE should be reused in top-level analysis?
-```
-
-D02 introduces this ranking logic.
-
-D06 and D07 will later decide which safety mechanisms to map.
-
----
-
-## 14. FIT Standard Identity
-
-D02 must preserve FIT standard identity.
-
-The same design analyzed under different standards or mission profiles may produce different values.
-
-A normalized BFR row should therefore never be:
-
-```csv
-top,total_lambda
-toy_counter,0.0040250779
-```
-
-It should be:
-
-```csv
-top,fit_standard,mission_profile,fit_setup,evidence_source,total_lambda
-toy_counter,iec_62380,PassengerCompartment,inputs/fit/FIT_inputs.common.txt,metric_summary.rpt,0.0040250779
-```
-
-The FIT standard is part of the run identity.
-
-So are:
-
-```text
-mission profile
-manufacturing year
-temperature assumptions
-technology process
-FIT setup file
-analysis initialization file
-database session
-tool version if available
-```
-
-D02 should carry this metadata forward.
-
----
-
-## 15. FIT Setup: Configuration Protocol
-
-D02 inherits a key distinction from D01:
-
-```text
-analysis initialization file:
-  key = value
-
-FIT setup file:
-  key value
-```
-
-The analysis initialization file controls the analysis run.
-
-The FIT setup file controls reliability assumptions.
-
-Example analysis initialization file:
-
-```ini
-mode = analysis
-top = toy_counter
-filelist = inputs/filelist/filelist.f
-clkdef = inputs/clock/toy_counter.clk
-fit_setup = inputs/fit/FIT_inputs.common.txt
-fit_standard = iec_62380
-
-write_fusa_db = true
-fusa_db_name = outputs/db/toy_counter.fdb::D02_BFR
-overwrite_session = true
-```
-
-Example FIT setup file:
-
-```text
-MissionProfileType PassengerCompartment
-TemperatureJA 65
-MFG_YEAR 2026
-Process MOS.ASIC.STDCELL
-```
-
-This distinction is not cosmetic.
-
-If a FIT setup parser expects `key value`, writing `key = value` can cause the value to be parsed incorrectly.
-
-D02 should document the configuration protocol because BFR credibility depends on correct reliability setup.
-
----
-
-## 16. Common Database Role in D02
-
-The Common FuSa Database should not be treated as an optional side effect.
-
-D02 should record:
-
-```text
-database file
-session name
-analysis mode
-FIT standard
-evidence source
-```
-
-Example evidence row:
-
-```csv
-artifact,type,path,session,used_by
-toy_counter.fdb,database,outputs/db/toy_counter.fdb,D02_BFR,D05/D14/D15
-```
-
-The database supports later cross-tool flow:
-
-```text
-D05: database session organization
-D08: fault list storage
-D12: fault campaign result storage
-D14: final metric validation
-D15: FMEDA evidence export
-```
-
-The CSV and Markdown outputs help humans.
-
-The database session helps the tool flow.
-
-Both are needed.
-
----
-
-## 17. DCE Role in D02
-
-D02 should also index DCE artifacts.
-
-Example:
-
-```text
-Outputs/toy_counter.DCE
-Outputs/toy_counter_IEC_62380.DCE
-```
-
-A standard-specific DCE is especially important.
-
-It tells later stages:
-
-```text
-this diagnostic coverage / FIT evidence was produced under IEC 62380
-```
-
-A D02 evidence index should include:
-
-```csv
-artifact,type,fit_standard,source_path,managed_path,used_by
-toy_counter_IEC_62380.DCE,dce,iec_62380,Outputs/toy_counter_IEC_62380.DCE,outputs/dce/toy_counter_IEC_62380.DCE,D04/D05/D15
-```
-
-This makes hierarchical reuse explicit.
-
----
-
-## 18. Fault List Outputs in D02
-
-Even though D02 is about BFR, the real analysis run may already produce fault-list files.
-
-Examples:
-
-```text
-<top>_Perm_EquivFault.list
-<top>_Perm_PrimaryFault.list
-<top>_Trans_EquivFault.list
-<top>_Trans_PrimaryFault.list
-```
-
-D02 should index them, but not over-interpret them.
-
-A small toy design may produce empty or near-empty fault lists.
-
-That does not invalidate BFR.
-
-D02 should state:
-
-```text
-Fault list files may exist in D02 because the analysis engine emits them as standard artifacts.
-D02 indexes them as evidence, but detailed fault list methodology is handled in D08.
-```
-
-This prevents a common confusion:
-
-```text
-BFR result exists
-fault list is empty
-therefore the run failed
-```
-
-No.
-
-BFR and fault campaign readiness are different milestones.
-
----
-
-## 19. D02 Evidence Index
-
-D02 should generate a unified index.
-
-Example `outputs/bfr_evidence_index.csv`:
-
-```csv
-artifact,type,purpose,source_path,managed_path,used_by_later_demo
-toy_counter_SF_SA.metric.summary.rpt,report,base FIT summary,Outputs/toy_counter_SF_SA.metric.summary.rpt,outputs/reports/toy_counter_SF_SA.metric.summary.rpt,D02/D03/D05
-toy_counter_Coverage.rpt,report,coverage and endpoint information,Outputs/toy_counter_Coverage.rpt,outputs/reports/toy_counter_Coverage.rpt,D04/D07
-toy_counter_IEC_62380.DCE,dce,standard-specific diagnostic coverage element,Outputs/toy_counter_IEC_62380.DCE,outputs/dce/toy_counter_IEC_62380.DCE,D04/D05/D15
-toy_counter.fdb,database,Common FuSa database session,outputs/db/toy_counter.fdb,outputs/db/toy_counter.fdb,D05/D14/D15
-analysis_engine.log,log,real analysis execution log,logs/analysis_engine.log,outputs/logs/analysis_engine.log,D19
-```
-
-This index becomes the bridge to D19 Evidence Traceability.
-
----
-
-## 20. D02 Acceptance Criteria
-
-D02 is complete when the demo can prove:
-
-```text
-[ ] D01 input package is available.
-[ ] D01 real-analysis artifacts are available or preflight reports why they are missing.
-[ ] BFR metric summary can be parsed.
-[ ] FIT standard is explicitly recorded.
-[ ] Permanent and transient lambda values are extracted.
-[ ] Diagnostic coverage values are extracted and interpreted.
-[ ] DCE files are indexed.
-[ ] Common database session is indexed.
-[ ] Native Outputs/ artifacts are collected into demo-managed outputs/.
-[ ] bfr_summary.csv is generated.
-[ ] bfr_summary.md is generated.
-[ ] fit_contribution.csv is generated.
-[ ] bfr_evidence_index.csv is generated.
-[ ] demo_summary.md explains whether the run is preflight-only or real-data mode.
-```
-
-The core quality rule is:
-
-> Every BFR value must point back to the file and run context that produced it.
-
----
-
-## 21. Common Pitfalls
-
-### 21.1 Treating BFR as Final Safety Result
-
-BFR is only the baseline.
-
-It does not prove ASIL compliance.
-
-### 21.2 Ignoring the FIT Standard
-
-The same number without the standard identity is not a stable safety metric.
-
-### 21.3 Mixing Native and Managed Outputs
-
-Keep:
-
-```text
-Outputs/ = native tool output
-outputs/ = demo-managed output
-```
-
-Do not confuse the two.
-
-### 21.4 Assuming Zero DC Means Failure
-
-Zero DC is expected for a baseline run without credited safety mechanisms.
-
-### 21.5 Parsing Logs Only
-
-Prefer structured report files when available.
-
-Use logs as fallback and trace evidence.
-
-### 21.6 Losing Evidence Paths
-
-A CSV number without an `evidence_source` column is not reviewable.
-
-### 21.7 Over-Interpreting Toy Design Results
-
-The toy design proves the flow.
-
-It does not represent a production SoC.
-
----
-
-## 22. Suggested D02 Demo Commands
-
-The public demo can be run in two modes.
-
-### 22.1 Preflight / Parse-Only Mode
+For bash-based public environments:
 
 ```bash
 cd D02_base_fit_rate
 bash scripts/run_demo.sh
 ```
 
-or:
+The csh entry point should follow this principle:
 
 ```csh
-cd D02_base_fit_rate
-csh scripts/run_demo.csh
+if ( ! $?SAFEIC_PYTHON ) then
+  setenv SAFEIC_PYTHON python3.8
+endif
+
+$SAFEIC_PYTHON tools/parse_bfr_summary.py \
+  --manifest manifest.yaml \
+  --output outputs/tables/bfr_summary.csv
 ```
 
-This mode checks whether D01 artifacts are available and attempts to parse them.
+The execution command is intentionally small because the workflow logic belongs in tools and configuration files, not in a fragile shell script.
 
-### 22.2 Real Data Mode
-
-Real data mode is enabled by pointing D02 to a completed D01 run:
-
-```text
-D01_ROOT=/path/to/D01_analysis_input_package
-```
-
-Example csh-style setup:
+The real analysis engine, when available, should be injected by environment variable:
 
 ```csh
-setenv D01_ROOT /root/demos/D01_analysis_input_package
-csh scripts/run_demo.csh
+setenv SAFEIC_ANALYSIS_ENGINE /path/to/local/analysis_engine
 ```
 
-D02 should then copy or reference:
-
-```text
-$D01_ROOT/Outputs/
-$D01_ROOT/outputs/db/
-$D01_ROOT/logs/analysis_engine.log
-$D01_ROOT/outputs/tool_outputs_index.csv
-```
-
-The actual analysis engine remains configured by D01.
-
-D02 does not hard-code it.
+This allows the public repository to remain portable.
 
 ---
 
-## 23. Example D02 Summary
+## 17. What the BFR Summary Should Contain
 
-A successful D02 run may produce:
+A normalized BFR summary should contain at least:
 
-```md
-# D02 Demo Summary
-
-Demo: D02_base_fit_rate  
-Source: ../D01_analysis_input_package  
-Top: toy_counter  
-FIT standard: iec_62380  
-Mode: real-data parse  
-
-## Extracted BFR
-
-Permanent FIT contribution: 0.0000000779  
-Transient FIT contribution: 0.0040250000  
-Total FIT contribution: 0.0040250779  
-Diagnostic coverage credited: 0.0  
-
-## Evidence
-
-- Metric summary report: outputs/reports/toy_counter_SF_SA.metric.summary.rpt
-- Coverage report: outputs/reports/toy_counter_Coverage.rpt
-- DCE: outputs/dce/toy_counter_IEC_62380.DCE
-- Database: outputs/db/toy_counter.fdb::D02_BFR
-
-## Interpretation
-
-This is a baseline run. Diagnostic coverage is not credited yet.
+```text
+design_name
+top_module
+analysis_stage
+fit_standard
+mission_profile
+technology_assumption
+package_assumption
+base_fit_total
+report_path
+dce_path
+database_session
+status
 ```
 
-This summary is not manually edited.
+A CSV schema can be:
 
-It is generated from evidence files.
+```csv
+field,value
+analysis_stage,base_fit_rate
+design_name,toy_counter
+top_module,toy_counter
+fit_standard,iec_62380
+mission_profile,passenger_compartment_example
+technology_assumption,example_technology
+base_fit_total,PARSED_FROM_NATIVE_REPORT
+metric_report,outputs/reports/metric_summary.rpt
+dce_artifact,outputs/dce/design_standard.dce
+database_session,outputs/db/design.fdb::D02_BFR
+status,parsed_or_prepared
+```
+
+The value `PARSED_FROM_NATIVE_REPORT` is not a real result. It indicates where the parser should place the actual value when the native report is available.
 
 ---
 
-## 24. Methodology: Why D02 Is More Than a Parser
+## 18. What the FIT Contribution Table Should Contain
 
-It is tempting to view D02 as a small parsing demo.
+A normalized contribution table should allow later ranking and review.
 
-That would miss the point.
+A practical schema is:
 
-D02 is the first time the series converts raw tool output into normalized safety evidence.
-
-The methodology is:
-
-```text
-1. Use a reproducible input package.
-2. Run or consume a real analysis result.
-3. Extract BFR values from generated evidence.
-4. Preserve FIT standard and reliability setup identity.
-5. Normalize results into CSV and Markdown.
-6. Index DCE, reports, fault lists, database, and logs.
-7. Prepare the evidence for later safety exploration and FMEDA.
+```csv
+rank,structure_path,structure_type,fit,contribution_percent,clock_domain,review_hint,next_stage
+1,PARSED_PATH,endpoint_or_instance,PARSED_FIT,PARSED_PERCENT,PARSED_CLOCK,review high contributor,D04/D06
 ```
 
-This is an engineering pattern that will repeat later:
+The most important fields are:
 
-```text
-D08: parse and normalize fault lists
-D13: parse and normalize fault outcomes
-D14: parse and normalize final metrics
-D19: unify all evidence into traceability index
-```
+| Field | Meaning |
+|---|---|
+| rank | Contribution order, usually descending |
+| structure_path | Module, instance, endpoint, or structural path |
+| structure_type | Register, memory, endpoint, combinational cone, instance, etc. |
+| fit | Failure-rate contribution of this structure |
+| contribution_percent | Share of total BFR |
+| clock_domain | Sequential context if available |
+| review_hint | Human-readable next action |
+| next_stage | Which later demo consumes this row |
 
-D02 is where that evidence discipline begins.
+This table is the bridge from analysis result to engineering action.
 
 ---
 
-## 25. How D02 Connects to D03
+## 19. Reading FIT Contribution as an Architect
 
-D03 will focus on:
-
-```text
-FIT Standards and Mission Profiles
-```
-
-D02 extracts one BFR result under one standard.
-
-D03 will explain why that standard matters.
-
-It will compare or at least structure the flow for:
+The wrong way to read a FIT contribution report is:
 
 ```text
-iec_62380
-sn_29500
-mission profile assumptions
-temperature assumptions
-manufacturing year
-technology process
-standard-specific DCE files
+Find the biggest number and blindly duplicate that logic.
 ```
 
-D02 therefore must preserve the metadata needed by D03.
+The better way is to ask a sequence of architectural questions.
 
-Do not collapse the result into a single unlabeled number.
+### 19.1 Is the Contributor Safety-Relevant?
+
+A high FIT contribution may belong to logic that does not affect a safety goal. It still matters, but the safety relevance must be established.
+
+Ask:
+
+```text
+Can this structure influence a hazardous output?
+Can it corrupt a control decision?
+Can it suppress an alarm?
+Can it cause a latent unsafe state?
+```
+
+### 19.2 Is It Already Protected?
+
+A high-contribution structure may already be protected by:
+
+```text
+lockstep
+parity
+ECC
+redundant computation
+range checking
+watchdog
+protocol checker
+software monitor
+```
+
+If so, D02 should not claim closure. It should mark the structure for later DC validation.
+
+### 19.3 Is the Protection Assumption Creditable?
+
+A protection mechanism is only useful if it can be justified.
+
+Questions include:
+
+```text
+Does the safety mechanism detect the relevant fault model?
+Does the alarm arrive within the required time?
+Is the checker independent enough?
+Can the fault escape through a shared common-cause path?
+Is the reaction safe-state behavior defined?
+```
+
+These questions are outside D02’s final scope but should guide the review hints.
+
+### 19.4 Is the Structure Better Handled by Architecture or Verification?
+
+Some contributors are best addressed by design changes.
+
+Others are best addressed by better stimulus or observation in a later fault campaign.
+
+D02 should classify follow-up direction:
+
+```text
+architecture review
+safety mechanism exploration
+fault list generation
+simulation context improvement
+FMEDA row preparation
+```
 
 ---
 
-## 26. How D02 Connects to D04-D08
+## 20. BFR Is a Baseline, Not a Verdict
 
-D04 will use structural safety concepts:
+BFR can create false confidence if misunderstood.
 
-```text
-endpoint
-startpoint
-DCE
-diagnostic coverage element
-hierarchical reuse
-```
+A low total FIT does not automatically mean the design is safe.
 
-D05 will organize Common FuSa Database sessions.
+A high total FIT does not automatically mean the design is unacceptable.
 
-D06 and D07 will plan safety mechanisms.
-
-D08 will focus on fault lists.
-
-D02 prepares these by producing:
+The safety case depends on:
 
 ```text
-DCE index
-coverage report index
-FIT contribution ranking
-database session record
-fault list artifact index
-```
-
----
-
-## 27. How D02 Connects to FMEDA
-
-FMEDA needs failure-rate contribution and diagnostic coverage evidence.
-
-A simplified FMEDA row may include:
-
-```text
-part
-sub-part
-failure mode
-base FIT
-safety mechanism
+safety goals
+ASIL target
+failure mode mapping
+fault tolerance time interval
 diagnostic coverage
-residual FIT
-evidence source
+safe-state reaction
+fault campaign evidence
+FMEDA consistency
+system-level assumptions
 ```
 
-D02 only fills the early part:
+D02 therefore uses careful language:
 
 ```text
-part / block
-base FIT
-FIT standard
-evidence source
+BFR establishes baseline exposure.
+FIT contribution identifies structural priorities.
+DCE-style artifacts support later diagnostic coverage modeling.
+Final safety claims require later evidence.
 ```
-
-Later demos will add:
-
-```text
-failure mode
-safety mechanism map
-fault campaign result
-final DC
-residual FIT
-review status
-```
-
-D02 is therefore the first quantitative input to the FMEDA data model.
 
 ---
 
-## 28. Review Checklist
+## 21. Relationship Between BFR and FMEDA
 
-A reviewer should be able to answer:
+FMEDA means **Failure Modes, Effects, and Diagnostic Analysis**.
+
+A simplified FMEDA row contains:
 
 ```text
-What D01 run did D02 consume?
-Which top module was analyzed?
-Which FIT standard was used?
-Which FIT setup file was used?
-Which report produced the BFR value?
-What are LambdaPermanent and LambdaTransient?
-Is diagnostic coverage expected to be zero?
-Which DCE files were generated?
-Which database session stores the evidence?
-Are native Outputs/ artifacts indexed into outputs/?
-Can the BFR summary be regenerated?
-Which later demos consume the BFR evidence?
+item or part
+failure mode
+effect
+diagnostic mechanism
+diagnostic coverage
+failure-rate contribution
+residual failure rate
+safety goal impact
 ```
 
-If any of these answers are missing, D02 is not reviewable.
+D02 does not build the full FMEDA model. That belongs to later demos.
+
+But D02 creates the first quantitative input:
+
+```text
+failure-rate contribution
+```
+
+A later FMEDA stage can transform D02 output into rows such as:
+
+```text
+structure_path -> part/sub-part
+contribution -> base failure rate
+diagnostic mechanism -> safety mechanism map
+DC -> estimated or proven coverage
+residual FIT -> base FIT × uncovered portion
+```
+
+Without D02, FMEDA becomes a manually filled spreadsheet disconnected from design evidence.
+
+With D02, FMEDA can become evidence-driven.
+
+---
+
+## 22. Relationship Between BFR and Fault Campaign
+
+A fault campaign injects faults and classifies outcomes.
+
+Typical outcome classes include:
+
+```text
+detected
+safe
+unsafe
+unresolved
+unobserved
+```
+
+D02 does not run the fault campaign.
+
+However, BFR helps decide where fault campaign effort should focus.
+
+A later fault campaign can use D02 data to:
+
+```text
+select high-contribution areas
+prioritize permanent vs transient fault models
+connect faults to endpoints
+connect endpoints to alarms and observe points
+interpret unresolved faults by contribution weight
+```
+
+This is why the BFR result must not be stored only as a PDF or log. It must be normalized into tables that later scripts can consume.
+
+---
+
+## 23. Permanent and Transient Faults
+
+D02 may encounter references to permanent and transient fault lists even though it is not yet a fault injection demo.
+
+### 23.1 Permanent Fault
+
+A **permanent fault** persists after it occurs.
+
+Examples:
+
+```text
+stuck-at-0
+stuck-at-1
+permanent bridge-like behavior
+permanent memory bit failure
+```
+
+Permanent faults are often modeled structurally.
+
+### 23.2 Transient Fault
+
+A **transient fault** appears temporarily.
+
+Examples:
+
+```text
+single event upset
+temporary register bit flip
+temporary combinational glitch
+temporary memory upset
+```
+
+Transient faults are especially important for advanced automotive electronics because they may occur during operation and then disappear physically while leaving corrupted state.
+
+### 23.3 Why D02 Records Fault-List-Style Artifacts
+
+Some analysis flows can generate fault-list-style files during or around BFR-related analysis.
+
+D02 should index them but not overclaim them.
+
+Correct interpretation:
+
+```text
+The artifact exists and is available for later fault campaign setup.
+```
+
+Incorrect interpretation:
+
+```text
+The fault campaign is complete.
+```
+
+---
+
+## 24. Evidence Index: The Most Important D02 Output
+
+A D02 demo should not only generate `bfr_summary.csv`.
+
+It should generate an evidence index.
+
+Example schema:
+
+```csv
+artifact_id,artifact_type,path,producer_stage,consumer_stage,required,status
+metric_summary,bfr_report,outputs/reports/metric_summary.rpt,D02,D02/D15,yes,available_or_expected
+fit_contribution,contribution_table,outputs/tables/fit_contribution.csv,D02,D04/D06/D15,yes,available_or_expected
+dce,dce_artifact,outputs/dce/design_standard.dce,D02,D04/D06/D14,optional,available_or_expected
+db_session,common_database,outputs/db/design.fdb::D02_BFR,D02,D05/D14/D19,yes,available_or_expected
+```
+
+This evidence index turns D02 into a reusable node in the full flow.
+
+It also supports review:
+
+```text
+Which artifact proves the BFR value?
+Which artifact ranks contributors?
+Which artifact will feed structural analysis?
+Which artifact will feed FMEDA?
+Which artifact is missing?
+```
+
+---
+
+## 25. A Methodology for Reviewing D02 Results
+
+A practical D02 review should follow this sequence.
+
+### Step 1: Confirm Input Identity
+
+```text
+same design
+same top
+same filelist
+same clock definition
+same FIT setup
+same mission profile
+same standard
+same analysis configuration
+```
+
+If any item changes, the result is a different metric identity.
+
+### Step 2: Confirm BFR Extraction
+
+Check whether the total Base FIT value was extracted from a structured report, not guessed from a log.
+
+### Step 3: Confirm Contribution Ranking
+
+Sort contributors by contribution percentage.
+
+Review the top contributors first.
+
+### Step 4: Classify Follow-Up Action
+
+Each high contributor should be assigned one of:
+
+```text
+no safety relevance identified yet
+requires structural review
+requires safety mechanism exploration
+requires existing mechanism validation
+requires fault campaign priority
+requires FMEDA mapping
+```
+
+### Step 5: Preserve Evidence
+
+The result should be archived with:
+
+```text
+raw report
+normalized CSV
+summary markdown
+evidence index
+configuration manifest
+```
+
+If only a screenshot or console output exists, the evidence chain is weak.
+
+---
+
+## 26. Common Mistakes in Base FIT Work
+
+### 26.1 Treating BFR as a Final Safety Metric
+
+BFR is a baseline, not final safety closure.
+
+### 26.2 Comparing FIT Values Without Matching Assumptions
+
+Different standards or mission profiles can change interpretation.
+
+### 26.3 Ignoring the Contribution Report
+
+The total FIT value tells how large the problem is. The contribution report tells where the problem is.
+
+### 26.4 Mixing BFR and Safety Mechanism Credit Too Early
+
+If a mechanism has not been mapped, justified, or validated, its coverage should not be silently credited.
+
+### 26.5 Depending on Tool-Native Names Only
+
+Vendor-native report names may change or differ across tool versions. A normalized evidence layer protects the demo.
+
+### 26.6 Parsing Logs Instead of Reports
+
+Logs are not ideal metric sources. Prefer structured reports when available.
+
+### 26.7 Losing the Database Session
+
+If the common safety database session is not recorded, later stages cannot reliably connect BFR, DCE, fault lists, and final metrics.
+
+---
+
+## 27. D02 Demo Acceptance Criteria
+
+D02 is complete when a reviewer can answer:
+
+```text
+Which D01 package was used?
+Which design and top were analyzed?
+Which FIT standard was used?
+Which mission profile was used?
+Where is the native metric report?
+Where is the normalized BFR summary?
+Where is the contribution table?
+Where is the evidence index?
+Which artifacts are expected but not yet available?
+Which later demos consume the D02 outputs?
+```
+
+A practical checklist is:
+
+```text
+[ ] D02 can run without private tool access in preparation mode.
+[ ] D02 can use SAFEIC_ANALYSIS_ENGINE when configured.
+[ ] D02 uses a stable Python interpreter through SAFEIC_PYTHON.
+[ ] D02 distinguishes native outputs from managed outputs.
+[ ] BFR summary schema is stable.
+[ ] FIT contribution schema is stable.
+[ ] Evidence index is generated.
+[ ] Demo summary is generated.
+[ ] No final ASIL compliance claim is made.
+[ ] No real private run log is published.
+```
+
+---
+
+## 28. D02 Deliverables
+
+The D02 demo should produce:
+
+```text
+outputs/tables/bfr_summary.csv
+outputs/tables/fit_contribution.csv
+outputs/tables/run_assumptions.csv
+outputs/tables/artifact_index.csv
+outputs/reports/bfr_summary.md
+outputs/evidence/base_fit_evidence_index.csv
+outputs/demo_summary.md
+```
+
+The human-readable summary should include:
+
+```text
+D02 stage name
+input package source
+design name
+top module
+FIT standard
+mission profile
+BFR status
+contribution status
+evidence index status
+next recommended stage
+```
+
+The recommended next stage is:
+
+```text
+D03 FIT Standards and Mission Profile
+```
+
+D03 explains why selecting IEC 62380 or SN 29500 is not just a command option but a modeling decision.
 
 ---
 
 ## 29. Summary
 
-D02 introduces the first quantitative artifact in the Safe-IC practice flow:
+D02 is the first metric interpretation step in the Safe-IC evidence chain.
+
+It turns the D01 input package into a baseline random-hardware-failure view:
 
 ```text
-Base FIT Rate
+D01: prepare the safety analysis context
+D02: calculate and interpret Base FIT Rate
 ```
 
-The goal is not to claim final safety.
-
-The goal is to build a reproducible, reviewable random hardware failure baseline.
-
-D02 turns real analysis output into:
+The central idea is:
 
 ```text
-bfr_summary.csv
-bfr_summary.md
-fit_contribution.csv
-bfr_evidence_index.csv
-demo_summary.md
+BFR is not the final safety result.
+BFR is the baseline that tells the engineering team where safety work should start.
 ```
 
-The main lesson is:
-
-> A Base FIT Rate value is only useful when it is tied to design scope, FIT standard, reliability setup, analysis initialization, DCE artifacts, database session, reports, and logs.
-
-D01 created the input context.
-
-D02 creates the baseline metric evidence.
-
-Together, they form the first stable segment of the automotive Safe-IC analysis flow:
+A good D02 flow does four things:
 
 ```text
-input package
-    -> base FIT baseline
-    -> evidence index
-    -> safety mechanism planning
-    -> fault campaign
-    -> FMEDA
+1. preserves the assumptions behind the FIT number
+2. extracts the total Base FIT Rate
+3. ranks structural FIT contributors
+4. creates evidence artifacts for later structural analysis, safety exploration, fault campaigns, and FMEDA
 ```
 
----
+If D01 is the root of the evidence chain, D02 is the first quantitative branch.
 
-## 30. D02 Demo Deliverables
-
-Expected D02 deliverables:
-
-```text
-[ ] README.md
-[ ] manifest.yaml
-
-[ ] inputs/from_d01/analysis_engine.log
-[ ] inputs/from_d01/tool_outputs_index.csv
-[ ] inputs/from_d01/<top>_SF_SA.metric.summary.rpt
-[ ] inputs/from_d01/<top>_Coverage.rpt
-[ ] inputs/from_d01/<top>_IEC_62380.DCE
-
-[ ] scripts/run_demo.csh
-[ ] scripts/run_demo.sh
-
-[ ] tools/parse_bfr_report.py
-[ ] tools/parse_analysis_log.py
-[ ] tools/build_bfr_summary.py
-[ ] tools/build_fit_contribution.py
-[ ] tools/build_evidence_index.py
-
-[ ] outputs/bfr_summary.csv
-[ ] outputs/bfr_summary.md
-[ ] outputs/fit_contribution.csv
-[ ] outputs/bfr_evidence_index.csv
-[ ] outputs/bfr_interpretation.md
-[ ] outputs/demo_summary.md
-
-[ ] logs/run_demo.log
-```
-
-A successful D02 run should clearly answer:
-
-> What is the baseline random hardware failure exposure of the design, under which FIT standard and reliability assumptions, and where is the evidence that produced it?
+From here, the workflow can move from baseline metrics to standard selection, mission-profile sensitivity, structural safety modeling, diagnostic coverage planning, and eventually fault campaign evidence.
