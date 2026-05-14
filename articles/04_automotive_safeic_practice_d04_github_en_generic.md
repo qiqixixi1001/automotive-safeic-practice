@@ -1,1314 +1,1282 @@
-# [Automotive Safe-IC Practice 04] IEC 62380 and SN 29500: How FIT Models Become Engineering Inputs
+# Automotive Safe-IC Practice 04: Structural Building Blocks — Endpoint, Startpoint, DCE, and EP-to-SM Map
 
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D04_fit_standard_models  
-**Tags**: Automotive Chip, Functional Safety, FIT, IEC 62380, SN 29500, Mission Profile, Reliability Prediction, Base FIT Rate, FMEDA, Safety Metrics
-
----
-
-## 1. Why This Article Matters
-
-In the previous article, we introduced the Base FIT Rate, or BFR.
-
-BFR answers:
-
-```text
-How much random hardware failure exposure exists before protection is considered?
-```
-
-However, a new question immediately appears:
-
-> Where does the FIT number come from?
-
-A useful BFR workflow cannot simply invent numbers. It needs a reliability model. In automotive electronics, public discussions often reference reliability prediction methods such as:
-
-```text
-IEC 62380
-SN 29500
-```
-
-In a real project, the exact model, coefficients, component categories, operating assumptions, mission profile, and supplier-provided reliability data must be reviewed by reliability and functional safety experts.
-
-The fourth demo in this repository is:
-
-```text
-D04_fit_standard_models
-```
-
-The generic tool introduced in this article is:
-
-```text
-safeic-fitmodel
-```
-
-The goal of `safeic-fitmodel` is not to reproduce any copyrighted standard in full. The goal is to build a clean engineering abstraction for FIT model inputs, so that BFR calculation becomes:
-
-```text
-explicit
-reviewable
-versioned
-traceable
-comparable
-```
-
-The central idea is:
-
-> A FIT standard model should not be hidden inside a spreadsheet or script. It should be transformed into explicit engineering inputs that can be reviewed, versioned, and connected to design statistics and FMEDA.
+Author: Darren H. Chen  
+Direction: Automotive chip functional safety analysis and fault injection  
+Demo: D04_structural_building_blocks  
+Tags: Safe-IC, ISO 26262, Functional Safety, FIT, Diagnostic Coverage, Endpoint, Startpoint, DCE, Safety Mechanism, FMEDA, Fault Injection, Automotive Semiconductor
 
 ---
 
-## 2. FIT Model vs FIT Calculation
+## 1. Why D04 Starts from Structure Instead of Fault Injection
 
-A **FIT model** defines how failure rate should be estimated.
+After the first three practices, the flow has already established a reproducible safety-analysis context.
 
-A **FIT calculation** applies that model to a specific design under specific assumptions.
+D01 defines the input package: RTL boundary, filelist, clock definition, FIT setup, analysis configuration, output identity, and evidence directory structure.
 
-They are not the same.
+D02 calculates the Base FIT Rate and builds the first quantitative baseline: which parts of the design contribute to random hardware failure exposure before safety mechanisms are considered.
+
+D03 compares the two supported FIT standards used by the analysis flow, namely IEC 62380 and SN 29500, under the same design boundary and the same upstream evidence chain. It also makes one important engineering distinction clear:
+
+```text
+fit_standard = iec_62380 | sn_29500
+variant_id   = fit_standard + mission profile + parameter set
+```
+
+D04 now moves from **numbers** to **structure**.
+
+This is an important transition. Functional safety analysis is not only about asking, “What is the total FIT value?” It is also about asking:
+
+```text
+Where can a fault start?
+Where can the effect of that fault be observed?
+Which sequential or output element becomes a safety-relevant endpoint?
+Which upstream logic cone contributes to that endpoint?
+Which safety mechanism is expected to detect or control faults in that cone?
+Which structural evidence can be reused later in FMEDA and fault campaign planning?
+```
+
+If D02 is the FIT baseline and D03 is the standard-selection baseline, D04 is the **structural baseline**.
+
+In a real automotive semiconductor project, structural analysis is the bridge between design implementation and safety reasoning. Without this bridge, a FIT number is difficult to review, a fault list is difficult to justify, and an FMEDA table becomes disconnected from the actual RTL or netlist.
+
+D04 therefore focuses on four building blocks:
+
+```text
+Endpoint
+Startpoint
+DCE
+EP-to-SM Map
+```
+
+These four terms are simple on the surface, but they form the backbone of many safety-analysis, safety-exploration, fault-list, and FMEDA workflows.
+
+---
+
+## 2. The D04 Position in the 20-Part Practice Flow
+
+D04 is named:
+
+```text
+Structural Building Blocks: Endpoint, Startpoint, DCE, EP-to-SM Map
+```
+
+It belongs to the safety-analysis part of the flow. It is not a fault campaign yet. It does not require a VCD, a good-machine simulation, alarm timing, observe points, or fault outcome classification. Those belong to later practices.
+
+The position of D04 is:
+
+```text
+D01  Analysis Input Package
+D02  Base FIT Rate
+D03  FIT Standards: IEC 62380 vs SN 29500
+D04  Structural Building Blocks: Endpoint, Startpoint, DCE, EP-to-SM Map
+D05  FuSa Common Database as Evidence Center
+D06  Safety Exploration
+D07  Safety Mechanism Map
+D08  Fault List Generation
+...
+D20  End-to-End Mini Flow
+```
+
+The key purpose of D04 is to prepare the structural information that later practices will use.
+
+A simplified dependency view is:
+
+```mermaid
+flowchart TD
+    D01[D01 Input Package] --> D02[D02 Base FIT Rate]
+    D02 --> D03[D03 FIT Standard Comparison]
+    D03 --> D04[D04 Structural Building Blocks]
+    D04 --> D05[D05 Common Database Evidence]
+    D04 --> D06[D06 Safety Exploration]
+    D04 --> D07[D07 EP-to-SM Mapping]
+    D04 --> D08[D08 Fault List Generation]
+    D04 --> D15[D15 FMEDA Data Model]
+```
+
+D04 therefore does not try to prove final safety metrics. It prepares the objects that make later safety metrics explainable.
+
+---
+
+## 3. The Core Problem: FIT Is Quantitative, but Safety Review Is Structural
+
+A total FIT number is useful, but it is not enough for engineering review.
+
+A reviewer will eventually ask:
+
+```text
+Which endpoints dominate the FIT contribution?
+Which startpoints feed those endpoints?
+Which logic cones are safety-critical?
+Which endpoints already have a protection mechanism?
+Which endpoints still need exploration?
+Which DCE files represent reusable safety evidence?
+Which structural units map naturally to FMEDA parts and sub-parts?
+```
+
+The underlying issue is that hardware safety is not only measured at the chip level. It is reasoned about through **structure**:
+
+```text
+registers
+latches
+output ports
+state machines
+bus response signals
+alarm signals
+memory interfaces
+control cones
+data cones
+protocol-visible outputs
+sub-block boundaries
+```
+
+D04 introduces a structure-first way of reading safety-analysis output.
+
+---
+
+## 4. Endpoint: Where a Fault Effect Becomes Visible
+
+An **endpoint** is a structural location where the effect of a fault can be observed or accumulated.
+
+In digital design terms, common endpoints include:
+
+```text
+registers
+latches
+output ports
+state-holding elements
+interface-visible status signals
+alarm-like outputs
+```
+
+The exact endpoint definition depends on the analysis engine and its structural model. For practical safety reasoning, an endpoint is the place where the design state or interface state can diverge from the expected behavior.
+
+Consider a small counter:
+
+```verilog
+module toy_counter (
+    input  wire       clk,
+    input  wire       rst_n,
+    input  wire       en,
+    output reg  [3:0] count,
+    output wire       alarm
+);
+
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        count <= 4'd0;
+    end else if (en) begin
+        count <= count + 4'd1;
+    end
+end
+
+assign alarm = (count == 4'hF);
+
+endmodule
+```
+
+Possible endpoints include:
+
+```text
+count[0]
+count[1]
+count[2]
+count[3]
+alarm
+```
+
+But the safety meaning of these endpoints is not identical.
+
+`count[0]` is a state bit. A fault there may affect future state evolution.
+
+`alarm` is an output derived from the counter state. A fault there may be directly visible to a monitor or to downstream logic.
+
+A useful mental model is:
+
+```text
+Endpoint = where fault effect can be measured, accumulated, or exported
+```
+
+Endpoint analysis matters because many safety mechanisms are endpoint-oriented. Parity, duplication, comparison, ECC, lockstep, and alarm-generation logic all ultimately need some endpoint where detection or control can be credited.
+
+---
+
+## 5. Startpoint: Where the Fault Influence Begins
+
+A **startpoint** is a structural source that can influence an endpoint through combinational or sequential logic.
+
+Common startpoints include:
+
+```text
+primary inputs
+register outputs
+memory outputs
+black-box outputs
+constant-driving structures
+interface request signals
+configuration signals
+control state bits
+```
+
+A startpoint is not necessarily a fault site in the final fault campaign. It is a structural origin used to build a dependency relationship.
+
+A simplified relationship is:
+
+```text
+startpoint --> logic cone --> endpoint
+```
+
+For example:
 
 ```mermaid
 flowchart LR
-    A[FIT Model] --> B[Model Parameters]
-    C[Design Statistics] --> D[FIT Calculation]
-    B --> D
-    E[Mission Profile] --> D
-    F[Package / Technology Assumptions] --> D
-    D --> G[Base FIT Result]
+    A[en input] --> C[Counter next-state logic]
+    B[count register output] --> C
+    C --> D[count register input]
+    D --> E[count register endpoint]
+    E --> F[alarm combinational logic]
+    F --> G[alarm endpoint]
 ```
 
-**Figure 1. A FIT model provides the rules and parameters; a FIT calculation applies them to a specific design context.**
-
-A FIT model may require:
+In this graph:
 
 ```text
-component category
-technology type
-reference failure rate
-temperature profile
-operating ratio
-voltage or stress factor
-package assumptions
-environment assumptions
-mission profile
+en input                = startpoint-like source
+count register output   = startpoint-like source
+next-state logic         = cone
+count register endpoint = endpoint
+alarm output            = endpoint
 ```
 
-A FIT calculation requires:
+Startpoint analysis helps answer:
 
 ```text
-which model is selected
-which component categories exist in the design
-how design statistics map to model categories
-which mission profile is used
-which assumptions are defaulted or user-provided
+Which upstream sources feed a safety-relevant endpoint?
+How wide is the cone feeding that endpoint?
+How many endpoints share the same startpoint?
+Which startpoints are high fanout and therefore important for safety exploration?
 ```
 
-This separation is important because the same design can produce different BFR values under different model assumptions.
+A startpoint with high fanout can influence many endpoints. In safety analysis, such a startpoint may deserve special attention because a fault there can propagate broadly.
 
 ---
 
-## 3. Why FIT Models Are Needed in Functional Safety
+## 6. Logic Cone: The Structural Path Between Startpoint and Endpoint
 
-Functional safety metrics need failure-rate information.
+The word **cone** is used heavily in safety and EDA analysis.
 
-For a simplified FMEDA row:
+A cone is the set of logic that connects a group of sources to a target.
+
+There are two common views:
+
+```text
+fanin cone  = logic feeding into a target endpoint
+fanout cone = logic affected by a source startpoint
+```
+
+For D04, the fanin view is especially useful:
+
+```text
+Endpoint fanin cone = the upstream logic that can affect the endpoint value
+```
+
+The cone is where many structural safety mechanisms operate.
+
+Examples:
+
+```text
+Endpoint parity       -> protects endpoint-related data/state
+Endpoint duplication  -> duplicates endpoint cone logic and compares results
+Startpoint duplication -> duplicates logic from selected startpoints to endpoint
+TMR                   -> triplicates a structure and votes
+ECC                   -> protects encoded storage or memory-like data
+```
+
+A cone is not just an implementation detail. It affects:
+
+```text
+area cost
+power cost
+fault propagation behavior
+diagnostic coverage estimation
+fault list size
+safety mechanism selection
+FMEDA residual FIT allocation
+```
+
+A small cone may be protected with a localized checker. A large shared cone may require architectural change, partitioning, or redundancy at a higher level.
+
+---
+
+## 7. Endpoint Contribution: Why Some Endpoints Matter More Than Others
+
+Endpoint contribution is the structural explanation behind FIT distribution.
+
+A design can have many endpoints, but not all endpoints contribute equally.
+
+An endpoint may have high contribution because:
+
+```text
+its cone is large
+it collects logic from many startpoints
+it belongs to a safety-critical control path
+it drives visible system behavior
+it is replicated across many similar structures
+it uses technology elements with higher failure-rate assumptions
+it sits near an interface where malfunction is directly observable
+```
+
+D04 does not simply list endpoints. It turns endpoint information into reviewable evidence.
+
+A useful endpoint index contains fields like:
+
+```csv
+endpoint_id,endpoint_path,endpoint_type,clock_domain,bit_width,cone_size,startpoint_count,fit_contribution_rank,safety_relevance_hint
+EP0001,toy_counter.count[0],register,clk,1,small,3,medium,state_bit
+EP0002,toy_counter.count[3],register,clk,1,small,3,medium,state_bit
+EP0003,toy_counter.alarm,output,clk,1,small,4,high,alarm_like_output
+```
+
+The values above are illustrative. The point is not the exact number. The point is the schema.
+
+A good structural index lets later demos ask:
+
+```text
+Which endpoints should be mapped to safety mechanisms first?
+Which endpoints are purely internal and which are externally visible?
+Which endpoints should be included in fault-list generation?
+Which endpoints need alarm or observe-point treatment later?
+```
+
+---
+
+## 8. Startpoint Usage: Finding Shared Sources and High-Impact Logic
+
+Startpoint usage complements endpoint contribution.
+
+Endpoint contribution asks:
+
+```text
+Which endpoints are important?
+```
+
+Startpoint usage asks:
+
+```text
+Which sources influence many endpoints?
+```
+
+A startpoint with broad usage may represent:
+
+```text
+a shared control signal
+a state-machine bit
+a mode/configuration register
+a bus-valid or bus-ready signal
+a reset or enable path
+a memory read-data path
+a high-fanout internal condition
+```
+
+For safety analysis, these sources are important because a fault in a shared source can create correlated effects.
+
+A practical startpoint index may look like:
+
+```csv
+startpoint_id,startpoint_path,startpoint_type,clock_domain,fanout_endpoint_count,dominant_endpoint_group,review_priority
+SP0001,toy_counter.en,input,clk,4,counter_state,medium
+SP0002,toy_counter.count[2],register_output,clk,2,alarm_and_state,high
+SP0003,toy_counter.rst_n,input,async_reset,4,all_state,high
+```
+
+Again, the point is not to invent final metrics here. The point is to expose the structural dependency graph that later safety exploration needs.
+
+---
+
+## 9. DCE: Diagnostic Coverage Element as Reusable Evidence
+
+A **Diagnostic Coverage Element**, or DCE, is a reusable safety-analysis artifact.
+
+In practice, a DCE-style artifact stores safety metric information for a module or analysis boundary. It is especially important for hierarchical analysis.
+
+The basic idea is:
+
+```text
+Analyze a lower-level block once.
+Store its safety-analysis evidence in a DCE-style artifact.
+Reuse that artifact when analyzing a higher-level subsystem or chip.
+```
+
+This prevents repeated analysis of the same sub-block and allows a top-level flow to roll up block-level evidence.
+
+A hierarchical DCE flow can be viewed as:
+
+```mermaid
+flowchart TD
+    B1[Block 1 structural analysis] --> D1[Block 1 DCE]
+    B2[Block 2 structural analysis] --> D2[Block 2 DCE]
+    B3[Block 3 structural analysis] --> D3[Block 3 DCE]
+
+    D1 --> S1[Subsystem analysis]
+    D2 --> S1
+    B4[Remaining subsystem logic] --> S1
+    S1 --> DS[Subsystem DCE]
+
+    DS --> TOP[Top-level analysis]
+    D3 --> TOP
+    TOP --> FMEDA[FMEDA evidence roll-up]
+```
+
+For an automotive SoC, this is not optional. A full chip may contain CPUs, accelerators, bus fabrics, memories, peripheral controllers, safety islands, clock/reset blocks, and monitoring logic. Re-analyzing everything from scratch at every level is inefficient and often impractical.
+
+DCE also creates a stronger evidence story:
+
+```text
+block-level analysis evidence
+    -> subsystem evidence
+        -> chip-level evidence
+            -> FMEDA evidence
+```
+
+D04 treats DCE as a first-class object, not as a side file.
+
+---
+
+## 10. DCE and FIT Standard Consistency
+
+D03 established that FIT analysis can be performed using IEC 62380 or SN 29500.
+
+D04 must preserve that distinction.
+
+A DCE-style artifact is not just a structural file. It is tied to the assumptions used when it was created.
+
+Those assumptions may include:
+
+```text
+FIT standard
+mission profile
+temperature assumptions
+manufacturing year or reference conditions
+process/library assumptions
+memory and package assumptions
+analysis boundary
+clock definition
+```
+
+The important rule is:
+
+```text
+Do not mix DCE evidence created under different FIT standards or incompatible mission-profile assumptions.
+```
+
+A practical DCE index should therefore include:
+
+```csv
+dce_id,module_name,fit_standard,mission_profile,variant_id,source_run,artifact_path,usable_for_d04,usable_for_fmeda
+DCE001,toy_counter,iec_62380,passenger_65c,iec62380_passenger_65c,D03,outputs/dce/toy_counter_IEC_62380.DCE,yes,yes
+DCE002,toy_counter,sn_29500,reference_65c,sn29500_reference_65c,D03,outputs/dce/toy_counter_SN_29500.DCE,yes,yes
+```
+
+This kind of indexing prevents a common review failure:
+
+```text
+A report says one standard was used, but a reused block artifact came from another standard.
+```
+
+D04 should catch that mismatch before it reaches FMEDA.
+
+---
+
+## 11. EP-to-SM Map: Connecting Structure to Safety Mechanism Intent
+
+An **EP-to-SM Map** maps an endpoint to one or more safety mechanisms.
+
+The map answers:
+
+```text
+For this endpoint, which safety mechanism is expected to detect, control, or reduce the effect of a fault?
+```
+
+A simplified map may look like:
+
+```csv
+endpoint_path,safety_mechanism,mechanism_role,coverage_source,review_status
+server_core.status_error,parity_check,primary_detection,estimated,pending_exploration
+server_core.ctrl_state,lockstep_compare,primary_detection,estimated,pending_exploration
+memory_subsystem.data_out,ecc,correction_and_detection,architectural,pending_validation
+bus_bridge.response_valid,protocol_checker,detection,estimated,pending_exploration
+```
+
+D04 does not claim that the map is final. It builds the initial structural relationship.
+
+Later practices will refine it:
+
+```text
+D06 Safety Exploration estimates what-if DC impact.
+D07 Safety Mechanism Map formalizes failure-mode-to-SM mapping.
+D08 Fault List Generation uses structural targets.
+D11-D13 Fault Campaign validates detection behavior.
+D14 Final Metrics uses fault classification results.
+D15 FMEDA Data Model connects part/sub-part/failure-mode/SM/residual FIT.
+```
+
+The EP-to-SM map is therefore a bridge:
+
+```text
+Endpoint structure --> safety mechanism intent --> diagnostic coverage evidence
+```
+
+---
+
+## 12. What Is a Safety Mechanism?
+
+A **Safety Mechanism**, or SM, is a technical mechanism that detects, controls, corrects, or mitigates the effect of faults.
+
+Common hardware safety mechanisms include:
+
+```text
+parity
+ECC
+duplication with comparison
+lockstep
+triple modular redundancy
+watchdog timer
+range checker
+protocol checker
+BIST
+CRC
+end-to-end data protection
+alarm generation
+```
+
+Different safety mechanisms have different cost and coverage properties.
+
+For example:
+
+| Safety Mechanism | Typical Role | Cost Pattern | Common Scope |
+|---|---|---|---|
+| Parity | Detects odd-bit corruption | Low to medium | Registers, buses, encoded data |
+| ECC | Detects and may correct errors | Medium | Memories, data arrays, cache-like structures |
+| Duplication + compare | Detects mismatch | High | Control logic, endpoints, datapath blocks |
+| Lockstep | Detects divergence between redundant channels | High | CPUs, controllers, safety-critical state machines |
+| TMR | Masks and votes | Very high | Extreme safety or availability cases |
+| Protocol checker | Detects illegal handshakes or transactions | Low to medium | Bus and interface logic |
+| Watchdog | Detects timing or progress failure | Low to medium | Software/hardware control paths |
+
+D04 does not select the final mechanism. It prepares the structure that makes selection rational.
+
+---
+
+## 13. Protocols in Structural Safety Analysis
+
+The word **protocol** can mean different things depending on context.
+
+In D04, a protocol means a set of rules that define valid signal behavior across an interface.
+
+Examples:
+
+```text
+valid/ready handshake
+request/acknowledge handshake
+read/write transaction protocol
+interrupt protocol
+alarm protocol
+memory access protocol
+clock/reset sequencing protocol
+bus response protocol
+```
+
+A protocol-visible endpoint is important because its failure can be seen outside a local logic cone.
+
+For example:
+
+```text
+bus_resp_valid
+bus_resp_error
+alarm_out
+irq
+watchdog_expired
+fsm_illegal_state
+```
+
+These endpoints are not just ordinary wires. They participate in a contract with another block.
+
+A protocol checker may verify properties like:
+
+```text
+valid must remain stable until ready
+response must follow request within a bounded time
+error response must be raised for illegal address
+alarm must remain asserted until acknowledged
+reset release must follow clock-stability conditions
+```
+
+In a safety context, protocol endpoints are candidates for:
+
+```text
+observe points
+alarm list entries
+safety mechanism mapping
+fault campaign classification boundaries
+FMEDA failure-mode mapping
+```
+
+D04 introduces protocol awareness early so that later fault-injection demos do not treat every endpoint as equally meaningful.
+
+---
+
+## 14. Endpoint vs Alarm vs Observe Point
+
+It is useful to distinguish three terms early:
+
+```text
+Endpoint
+Alarm
+Observe Point
+```
+
+They are related but not identical.
+
+| Term | Meaning | Used Mainly In |
+|---|---|---|
+| Endpoint | Structural location where fault effect can be observed or accumulated | Structural analysis, DC estimation |
+| Alarm | Signal indicating that a safety mechanism detected a fault or abnormal condition | Fault campaign setup and classification |
+| Observe Point | Signal or state used to compare golden and faulty behavior | Fault simulation and outcome classification |
+
+An alarm can be an endpoint. An observe point can be an endpoint. But not every endpoint is an alarm, and not every endpoint should become an observe point.
+
+D04 focuses on endpoints. D09 and D10 will later focus on simulation safety context, alarm lists, and observe points.
+
+This separation avoids a common mistake:
+
+```text
+Mistake: Treat every endpoint as an alarm.
+Better: Classify endpoints first, then decide which endpoints are alarms, observe points, or structural-only evidence.
+```
+
+---
+
+## 15. D04 Input Model
+
+D04 should not create a new isolated design input.
+
+It should consume the evidence chain from D01-D03.
+
+A practical D04 input model is:
+
+```text
+D01 input package
+    RTL / filelist / top / clock definition / analysis configuration
+
+D02 Base FIT evidence
+    BFR summary / FIT contribution / endpoint contribution / evidence index
+
+D03 FIT standard evidence
+    fit_standard variant matrix / standard-specific output directories / DCE index / run identity
+
+D04 structural configuration
+    endpoint extraction policy / startpoint usage policy / DCE selection policy / EP-to-SM seed map
+```
+
+The D04 demo should therefore take upstream roots explicitly:
+
+```csh
+setenv D01_ROOT /path/to/D01_analysis_input_package
+setenv D02_ROOT /path/to/D02_base_fit_rate
+setenv D03_ROOT /path/to/D03_fit_standards_real_engine
+```
+
+Then D04 can build its local snapshot:
+
+```text
+inputs/from_D01/
+inputs/from_D02/
+inputs/from_D03/
+```
+
+This keeps the demo reproducible while preserving upstream provenance.
+
+---
+
+## 16. D04 Output Model
+
+D04 should produce structural evidence, not final safety conclusions.
+
+Recommended outputs:
+
+```text
+outputs/endpoint_index.csv
+outputs/startpoint_usage.csv
+outputs/cone_summary.csv
+outputs/dce_inventory.csv
+outputs/dce_standard_consistency.csv
+outputs/ep_to_sm_seed_map.csv
+outputs/structural_review.md
+outputs/d04_handoff_to_d05.csv
+outputs/d04_handoff_to_d06.csv
+outputs/d04_handoff_to_d08.csv
+outputs/evidence_index.csv
+outputs/demo_summary.md
+```
+
+Each file has a specific purpose.
+
+| Output | Purpose |
+|---|---|
+| `endpoint_index.csv` | Canonical endpoint list with type, path, clock, and relevance hints |
+| `startpoint_usage.csv` | Startpoint fanout and endpoint-dependency summary |
+| `cone_summary.csv` | Cone-level relationship between startpoints and endpoints |
+| `dce_inventory.csv` | DCE-style artifacts available from upstream analysis |
+| `dce_standard_consistency.csv` | Checks whether DCE artifacts match standard and variant assumptions |
+| `ep_to_sm_seed_map.csv` | Initial endpoint-to-safety-mechanism mapping candidates |
+| `structural_review.md` | Human-readable review of structural findings |
+| `d04_handoff_to_d05.csv` | Evidence handoff to common database practice |
+| `d04_handoff_to_d06.csv` | Structural handoff to safety exploration |
+| `d04_handoff_to_d08.csv` | Structural handoff to fault-list generation |
+| `evidence_index.csv` | Index of all input and output evidence used by D04 |
+
+This output model makes D04 useful even before final diagnostic coverage is proven.
+
+---
+
+## 17. Structural Evidence as a Graph
+
+A strong way to think about D04 is to model the design as a graph.
+
+```text
+Nodes:
+  startpoints
+  logic cones
+  endpoints
+  safety mechanisms
+  DCE artifacts
+  FMEDA parts/sub-parts
+
+Edges:
+  startpoint feeds endpoint
+  endpoint belongs to DCE
+  endpoint is covered by safety mechanism
+  DCE maps to sub-part
+  sub-part belongs to part
+```
+
+The graph view is:
+
+```mermaid
+flowchart LR
+    SP1[Startpoint A] --> C1[Logic Cone 1]
+    SP2[Startpoint B] --> C1
+    C1 --> EP1[Endpoint X]
+    EP1 --> SM1[Safety Mechanism Candidate]
+    EP1 --> DCE1[DCE Artifact]
+    DCE1 --> SUB1[FMEDA Sub-part]
+    SUB1 --> PART1[FMEDA Part]
+```
+
+This graph mindset is useful because it prevents safety analysis from becoming a collection of unrelated CSV files.
+
+Every evidence file in D04 should help answer one graph question:
+
+```text
+What is connected to what, under which assumptions, and for what safety purpose?
+```
+
+---
+
+## 18. Methodology: How to Build a Structural Index
+
+A practical D04 structural-indexing method has five stages.
+
+### Stage 1: Load Upstream Run Identity
+
+D04 first loads upstream identity:
+
+```text
+design_name
+top_module
+fit_standard
+variant_id
+clock_definition
+source filelist
+DCE files
+summary reports
+coverage reports
+FIT contribution reports
+```
+
+This prevents D04 from accidentally mixing evidence from different runs.
+
+### Stage 2: Normalize Paths
+
+Structural reports often contain hierarchical paths in different styles.
+
+Examples:
+
+```text
+top.u_core.u_fsm.state[2]
+top/u_core/u_fsm/state[2]
+top.u_bus.resp_valid
+top/u_bus/resp_valid
+```
+
+D04 should normalize path strings so that downstream joins are reliable.
+
+A normalized schema may include:
+
+```text
+raw_path
+normalized_path
+instance_path
+signal_name
+bit_index
+module_name
+```
+
+### Stage 3: Classify Endpoints and Startpoints
+
+The structural index should classify objects instead of leaving them as raw strings.
+
+Endpoint classes:
+
+```text
+register
+latch
+output_port
+alarm_like_output
+protocol_output
+memory_related
+unknown
+```
+
+Startpoint classes:
+
+```text
+primary_input
+register_output
+memory_output
+blackbox_output
+constant_source
+configuration_source
+unknown
+```
+
+Classification does not have to be perfect in D04. It should be reviewable and correctable.
+
+### Stage 4: Build Relationship Tables
+
+The core structural relationship is:
+
+```text
+startpoint -> endpoint
+endpoint -> DCE
+endpoint -> safety mechanism candidate
+```
+
+This should be represented with stable IDs:
+
+```csv
+relation_id,startpoint_id,endpoint_id,relation_type,source_artifact,confidence
+REL0001,SP0001,EP0003,feeds,coverage_report,high
+REL0002,EP0003,DCE001,belongs_to,dce_inventory,high
+REL0003,EP0003,SM_CAND_001,candidate_map,seed_rule,medium
+```
+
+Stable IDs are important because later practices can refer to the same objects.
+
+### Stage 5: Generate Review Artifacts
+
+CSV is useful for machines, but reviewers need a narrative.
+
+D04 should generate a review note:
+
+```text
+largest endpoint cones
+highest fanout startpoints
+DCE standard mismatch risks
+unmapped endpoints
+protocol-visible endpoints
+candidate safety mechanisms
+handoff risks
+```
+
+This becomes the starting point for safety exploration.
+
+---
+
+## 19. EP-to-SM Seed Rules
+
+D04 can generate a seed map using simple rules.
+
+These are not final safety decisions. They are review candidates.
+
+Example rule set:
+
+| Endpoint Pattern | Suggested SM Candidate | Reason |
+|---|---|---|
+| State register in control FSM | duplication or lockstep comparison | Control corruption can cause unsafe sequence |
+| Counter or timer state | range checker or duplicated counter | Timing and watchdog paths often need detection |
+| Alarm output | parity/protocol stability check | Alarm corruption affects detection path |
+| Bus response error signal | protocol checker | Protocol-visible safety behavior |
+| Memory data output | ECC or parity | Storage and data integrity |
+| Configuration register | parity or readback check | Persistent mode/configuration corruption |
+
+An illustrative seed map:
+
+```csv
+endpoint_id,endpoint_path,endpoint_class,suggested_sm,reason,review_status
+EP0001,toy_counter.count[0],state_register,parity_or_duplication,state_storage,pending
+EP0002,toy_counter.count[3],state_register,parity_or_duplication,state_storage,pending
+EP0003,toy_counter.alarm,alarm_like_output,protocol_or_alarm_check,detection_visibility,pending
+```
+
+The rule-based seed map helps D06 and D07 begin with structured candidates instead of blank tables.
+
+---
+
+## 20. What D04 Should Not Claim
+
+D04 is not a final safety signoff.
+
+It should not claim:
+
+```text
+ASIL target achieved
+final SPFM/LFM achieved
+fault campaign completed
+diagnostic coverage validated by injection
+all endpoints are protected
+all warnings are fatal
+all warnings are harmless
+FMEDA is complete
+```
+
+D04 should claim only:
+
+```text
+structural objects are indexed
+endpoint/startpoint relationships are reviewable
+DCE artifacts are inventoried
+standard consistency is checked
+candidate EP-to-SM mapping is initialized
+handoff files are ready for D05/D06/D08
+```
+
+This boundary is important because premature safety claims weaken credibility.
+
+---
+
+## 21. DCE-to-FMEDA Relationship
+
+FMEDA organizes safety evidence around:
 
 ```text
 part
 sub-part
 failure mode
-base failure rate
 safety mechanism
 diagnostic coverage
-residual failure rate
+residual FIT
 ```
 
-The base failure rate comes from a reliability prediction process.
+DCE artifacts provide a way to connect implementation-level analysis to FMEDA-level organization.
 
-Without a defined FIT model, the failure-rate column becomes arbitrary.
+A DCE can be mapped to a part or sub-part so that block-level safety metrics roll up into a higher-level FMEDA structure.
+
+Conceptually:
 
 ```mermaid
 flowchart TD
-    A[Design Element] --> B[Model Category]
-    B --> C[Reference Failure Rate]
-    C --> D[Mission / Stress Adjustment]
-    D --> E[Base FIT Contribution]
-    E --> F[FMEDA Failure Rate Column]
+    EP[Endpoint Evidence] --> DCE[DCE Artifact]
+    DCE --> SUB[FMEDA Sub-part]
+    SUB --> FM[Failure Mode]
+    FM --> SM[Safety Mechanism]
+    SM --> DC[Diagnostic Coverage]
+    DC --> RF[Residual FIT]
 ```
 
-**Figure 2. FIT model abstraction connects design elements to FMEDA failure-rate inputs.**
-
-A safety flow must therefore record:
-
-```text
-which model was used
-which model version was used
-which input categories were mapped
-which mission profile was applied
-which assumptions were reviewed
-which values were defaulted
-```
-
-If those details are not explicit, the BFR number is difficult to review.
+D04 prepares this relationship, while D15 will build the fuller FMEDA data model.
 
 ---
 
-## 4. IEC 62380 and SN 29500 as Engineering References
+## 22. D04 Demo Architecture
 
-In automotive electronics, reliability prediction often references model families such as:
+The D04 demo should remain small but realistic.
 
-```text
-IEC 62380
-SN 29500
-```
-
-For this practice repository, we should treat them as engineering references, not as copied formulas.
-
-The demo should capture the workflow shape:
+A practical directory structure:
 
 ```text
-model selection
-component categorization
-reference rate selection
-mission profile input
-temperature or operating condition adjustment
-failure rate aggregation
-reporting
-```
-
-The actual coefficients and detailed equations should come from authorized standards, supplier data, or reviewed internal reliability data in real projects.
-
-This article therefore focuses on the abstraction:
-
-```text
-How do we represent a FIT model cleanly?
-How do we map design statistics to model categories?
-How do we expose assumptions?
-How do we compare model results?
-How do we generate reviewable artifacts?
-```
-
----
-
-## 5. The Model Abstraction Layer
-
-The key design choice is to create a model abstraction layer.
-
-Instead of hardcoding a formula into a script, we represent the selected model in structured files.
-
-```mermaid
-flowchart TD
-    A[Model Library] --> B[safeic-fitmodel]
-    C[Design Statistics] --> B
-    D[Mission Profile] --> B
-    E[Mapping Rules] --> B
-    B --> F[Normalized FIT Inputs]
-    F --> G[safeic-bfr]
-```
-
-**Figure 3. `safeic-fitmodel` normalizes model-specific assumptions into a BFR-ready input package.**
-
-This layer allows the workflow to support:
-
-```text
-simplified demo model
-IEC-like model abstraction
-SN-like model abstraction
-supplier-provided FIT override
-black-box IP FIT input
-what-if comparison
-```
-
-The output of `safeic-fitmodel` should not be an opaque number. It should be a normalized input package that `safeic-bfr` can consume.
-
----
-
-## 6. Why Not Put Everything into `safeic-bfr`?
-
-It is tempting to put all model logic directly into the BFR calculator.
-
-That would make the first version faster to implement, but it creates long-term problems.
-
-A better separation is:
-
-```text
-safeic-fitmodel:
-  normalize model assumptions and category mapping
-
-safeic-bfr:
-  calculate base FIT from normalized inputs and design statistics
-```
-
-This separation gives several benefits:
-
-| Separation | Benefit |
-|---|---|
-| Model normalization separated from calculation | Easier to review assumptions |
-| Multiple models supported | Easier comparison |
-| Supplier FIT override supported | Better black-box handling |
-| BFR engine stays simple | Easier testing |
-| Reports become clearer | Easier audit and debugging |
-
-The engineering principle is:
-
-> Keep reliability model interpretation separate from base FIT arithmetic.
-
----
-
-## 7. Input Domain of `safeic-fitmodel`
-
-The demo tool consumes five categories of input:
-
-```text
-model library
-design statistics
-mapping rules
-mission profile
-override data
-```
-
-```mermaid
-flowchart LR
-    A[fit_model_library.yaml] --> T[safeic-fitmodel]
-    B[design_stats.yaml] --> T
-    C[category_mapping.yaml] --> T
-    D[mission_profile.yaml] --> T
-    E[fit_overrides.csv] --> T
-
-    T --> F[normalized_fit_inputs.yaml]
-    T --> G[fit_model_report.md]
-    T --> H[fit_model_compare.csv]
-    T --> I[assumption_trace.csv]
-```
-
-**Figure 4. D04 input and output artifacts for FIT model normalization.**
-
-Suggested input directory:
-
-```text
-D04_fit_standard_models/
-  inputs/
-    fit_model_library.yaml
-    design_stats.yaml
-    category_mapping.yaml
-    mission_profile.yaml
-    fit_overrides.csv
-```
-
-Suggested output directory:
-
-```text
-D04_fit_standard_models/
-  outputs/
-    normalized_fit_inputs.yaml
-    fit_model_report.md
-    fit_model_compare.csv
-    assumption_trace.csv
-```
-
----
-
-## 8. Model Library
-
-A model library describes available model profiles.
-
-For the demo, the library can include:
-
-```text
-simplified_demo
-iec62380_like_demo
-sn29500_like_demo
-supplier_override
-```
-
-Important: the demo names `iec62380_like_demo` and `sn29500_like_demo` represent simplified educational abstractions. They should not claim to implement full official standards.
-
-Example:
-
-```yaml
-models:
-  simplified_demo:
-    description: Simplified educational model for toy designs.
-    type: demo
-    supports:
-      - logic
-      - flip_flop
-      - memory_bit
-      - package
-
-  iec62380_like_demo:
-    description: Educational abstraction inspired by IEC-style reliability prediction workflows.
-    type: standard_abstraction
-    supports:
-      - integrated_circuit
-      - package
-      - memory
-      - discrete_component
-    requires:
-      - mission_profile
-      - temperature_profile
-      - operating_ratio
-
-  sn29500_like_demo:
-    description: Educational abstraction inspired by SN-style reference-rate workflows.
-    type: standard_abstraction
-    supports:
-      - integrated_circuit
-      - semiconductor
-      - passive_component
-      - connector
-    requires:
-      - reference_condition
-      - conversion_factor
-      - operating_condition
-
-  supplier_override:
-    description: Direct supplier-provided FIT data.
-    type: override
-    supports:
-      - black_box_ip
-      - analog_block
-      - memory_macro
-```
-
-The model library should answer:
-
-```text
-Which models exist?
-What design categories do they support?
-What assumptions are required?
-What outputs can they produce?
-Which model is allowed for which block type?
-```
-
----
-
-## 9. Category Mapping
-
-Design statistics rarely match reliability model categories directly.
-
-For example, the design may say:
-
-```text
-logic_gate
-flip_flop
-ram_bit
-black_box
-```
-
-But the reliability model may require:
-
-```text
-integrated_circuit_logic
-sequential_element
-memory_array
-supplier_ip
-package
-```
-
-The category mapping file bridges this gap.
-
-Example:
-
-```yaml
-category_mapping:
-  logic_gate:
-    model_category: integrated_circuit_logic
-    count_field: logic_gates
-    default_model: simplified_demo
-
-  flip_flop:
-    model_category: sequential_element
-    count_field: flip_flops
-    default_model: simplified_demo
-
-  ram_bit:
-    model_category: memory_array
-    count_field: ram_bits
-    default_model: simplified_demo
-
-  black_box:
-    model_category: supplier_ip
-    count_field: black_boxes
-    default_model: supplier_override
-```
-
-This mapping is important because a mismatch here can completely change the FIT result.
-
-The input checker should report:
-
-```text
-unmapped design type
-unsupported model category
-missing count field
-missing supplier override for black-box category
-```
-
----
-
-## 10. Mission Profile
-
-The mission profile describes the product operating context.
-
-A simplified mission profile:
-
-```yaml
-mission_profile:
-  name: demo_automotive_profile
-  description: Simplified automotive-like profile for educational use.
-
-  operating_ratio: 0.65
-  dormant_ratio: 0.35
-
-  temperature_profile:
-    - temp_c: 40
-      ratio: 0.50
-    - temp_c: 85
-      ratio: 0.40
-    - temp_c: 125
-      ratio: 0.10
-
-  environment:
-    location: passenger_compartment_demo
-    vibration: low
-    humidity: normal
-```
-
-A mission profile should be explicit even in a toy demo.
-
-Why?
-
-Because FIT values are not purely structural. They depend on operating assumptions.
-
-```mermaid
-flowchart TD
-    A[Design Statistics] --> D[FIT Result]
-    B[Model Category] --> D
-    C[Mission Profile] --> D
-```
-
-**Figure 5. FIT depends on design statistics, model category, and mission profile.**
-
-If the mission profile is hidden, the FIT result is not reviewable.
-
----
-
-## 11. Reference Rates and Conversion Factors
-
-A reliability model often contains reference failure rates and conversion factors.
-
-A simplified abstraction:
-
-```text
-reference_failure_rate
-× operating_condition_factor
-× temperature_factor
-× mission_profile_factor
-= adjusted_failure_rate
-```
-
-For demo purposes, we can express this as:
-
-```yaml
-reference_rates:
-  integrated_circuit_logic:
-    reference_fit_per_unit: 2.0e-4
-    unit: gate
-  sequential_element:
-    reference_fit_per_unit: 3.0e-3
-    unit: flip_flop
-  memory_array:
-    reference_fit_per_unit: 1.0e-6
-    unit: bit
-
-conversion_factors:
-  default_temperature_factor: 1.0
-  default_operating_factor: 1.0
-  default_mission_factor: 1.0
-```
-
-A more advanced demo can allow:
-
-```yaml
-conversion_factors:
-  temperature:
-    "40": 0.7
-    "85": 1.0
-    "125": 2.5
-  operating:
-    operating: 1.0
-    dormant: 0.2
-```
-
-Then the mission-weighted factor can be computed.
-
-For D04, the goal is not formula accuracy. The goal is to make the idea visible:
-
-```text
-reference condition
-actual condition
-conversion factor
-adjusted rate
-```
-
----
-
-## 12. Normalized FIT Input
-
-The main output of `safeic-fitmodel` is:
-
-```text
-normalized_fit_inputs.yaml
-```
-
-This file should be simple enough for `safeic-bfr` to consume.
-
-Example:
-
-```yaml
-normalized_fit_inputs:
-  model_profile: sn29500_like_demo
-  mission_profile: demo_automotive_profile
-  generated_by: safeic-fitmodel
-  schema_version: 0.1
-
-  rates:
-    permanent:
-      logic_gate_fit: 2.0e-4
-      flip_flop_fit: 3.0e-3
-      ram_bit_fit: 1.0e-6
-      package_fit: 1.0e-2
-
-    transient:
-      logic_gate_fit: 1.0e-6
-      flip_flop_fit: 1.0e-3
-      ram_bit_fit: 1.0e-6
-
-  assumptions:
-    temperature_factor: 1.0
-    mission_factor: 1.0
-    package_model: demo_package
-    blackbox_policy: require_override
-```
-
-This normalized format is deliberately model-independent.
-
-It allows `safeic-bfr` to stay stable even if the model library evolves.
-
----
-
-## 13. Assumption Traceability
-
-Every normalized value should be traceable.
-
-A useful output is:
-
-```text
-assumption_trace.csv
-```
-
-Example:
-
-```csv
-field,value,source,model,comment
-rates.permanent.logic_gate_fit,2.0e-4,fit_model_library.yaml,simplified_demo,demo educational value
-rates.permanent.flip_flop_fit,3.0e-3,fit_model_library.yaml,simplified_demo,demo educational value
-mission_profile.name,demo_automotive_profile,mission_profile.yaml,all,user supplied
-assumptions.temperature_factor,1.0,default,simplified_demo,no temperature scaling in stage 1
-assumptions.blackbox_policy,require_override,category_mapping.yaml,all,black boxes require explicit FIT
-```
-
-Why is this important?
-
-Because a safety result must answer:
-
-```text
-Where did this number come from?
-Was it defaulted?
-Was it user-supplied?
-Was it derived?
-Was it overridden?
-Was it reviewed?
-```
-
-```mermaid
-flowchart LR
-    A[Normalized FIT Value] --> B[Source File]
-    A --> C[Model Profile]
-    A --> D[Default / User / Derived]
-    A --> E[Review Comment]
-```
-
-**Figure 6. Each normalized FIT value should have traceability to source, model, and assumption status.**
-
-This is one of the most important differences between a safety engineering flow and an ad-hoc spreadsheet.
-
----
-
-## 14. Comparing Model Profiles
-
-D04 should support model comparison.
-
-For the same design statistics and mission profile, we may run:
-
-```text
-simplified_demo
-iec62380_like_demo
-sn29500_like_demo
-supplier_override
-```
-
-The output:
-
-```text
-fit_model_compare.csv
-```
-
-Example:
-
-```csv
-model,total_fit,logic_fit,ff_fit,memory_fit,package_fit,blackbox_fit,notes
-simplified_demo,0.09812,0.02412,0.06400,0.00000,0.01000,0.00000,baseline demo
-iec62380_like_demo,0.11240,0.03000,0.07000,0.00000,0.01240,0.00000,educational abstraction
-sn29500_like_demo,0.08790,0.02000,0.05790,0.00000,0.01000,0.00000,educational abstraction
-```
-
-The comparison should not be presented as which standard is “better.” Different models may have different assumptions, categories, and intended use.
-
-The useful question is:
-
-```text
-How sensitive is our BFR result to reliability model assumptions?
-```
-
-```mermaid
-flowchart TD
-    A[Same Design Stats] --> B[Model A]
-    A --> C[Model B]
-    A --> D[Model C]
-    B --> E[Result A]
-    C --> F[Result B]
-    D --> G[Result C]
-    E --> H[Model Sensitivity Review]
-    F --> H
-    G --> H
-```
-
-**Figure 7. Model comparison helps review sensitivity to reliability assumptions.**
-
----
-
-## 15. Supplier FIT Override
-
-Not all design blocks can be analyzed from internal structure.
-
-Examples:
-
-```text
-third-party IP
-analog block
-memory macro
-hard macro
-PHY
-PLL
-sensor interface
-black-box safety island
-```
-
-For these blocks, FIT values may come from supplier documentation, safety manual, or reviewed assumptions.
-
-D04 should support an override file:
-
-```csv
-instance,block_type,fit_permanent,fit_transient,source,review_status,comment
-top.u_pll,analog_block,0.12,0.00,supplier_doc,draft,placeholder until official data
-top.u_sram,memory_macro,0.05,0.20,supplier_doc,reviewed,macro-level FIT
-top.u_crypto,black_box_ip,0.08,0.03,internal_assumption,draft,needs supplier confirmation
-```
-
-Override policy should be explicit:
-
-```yaml
-blackbox_policy:
-  require_override: true
-  allow_zero_fit_without_review: false
-  require_review_status: true
-```
-
-A safe workflow should never silently ignore black boxes.
-
-If a block is not analyzable and no override exists, the tool should produce an error or at least a strong warning.
-
----
-
-## 16. Package FIT and Non-Logic Contributions
-
-A chip-level BFR may include contributions beyond RTL logic.
-
-Examples:
-
-```text
-package contribution
-electrical connection contribution
-I/O contribution
-analog block contribution
-hard macro contribution
-memory macro contribution
-```
-
-In early RTL demos, it is easy to focus only on logic and flip-flops.
-
-That is acceptable for a toy flow, but the input schema should still allow non-logic contributions.
-
-Example:
-
-```yaml
-non_logic_contributions:
-  package:
-    enabled: true
-    fit_per_device: 0.01
-    source: demo_assumption
-
-  io_ring:
-    enabled: false
-    reason: not modeled in D04
-
-  analog_blocks:
-    enabled: true
-    source: fit_overrides.csv
-```
-
-The report should clearly state:
-
-```text
-included
-excluded
-not modeled
-requires override
-```
-
-This avoids accidental under-reporting.
-
----
-
-## 17. Output Report Structure
-
-The human-readable report should include:
-
-```text
-1. Selected model profile
-2. Design statistics summary
-3. Category mapping summary
-4. Mission profile summary
-5. Reference rates and conversion assumptions
-6. Override summary
-7. Normalized FIT input summary
-8. Model comparison table
-9. Warnings and review items
-```
-
-Example section:
-
-```md
-## Selected Model
-
-Model profile: sn29500_like_demo  
-Purpose: Educational abstraction for reference-rate-style FIT normalization.
-
-## Mission Profile
-
-Name: demo_automotive_profile  
-Operating ratio: 0.65  
-Dormant ratio: 0.35
-
-## Warnings
-
-- Black-box count is zero.
-- Temperature scaling is disabled in this stage.
-- This model profile is an educational abstraction and not a full standard implementation.
-```
-
-The report should make it impossible to confuse a demo abstraction with an official standard implementation.
-
----
-
-## 18. D04 Directory Structure
-
-Suggested directory:
-
-```text
-D04_fit_standard_models/
+D04_structural_building_blocks/
   README.md
-  run_demo.sh
-  run_demo.csh
   manifest.yaml
 
   inputs/
-    fit_model_library.yaml
-    design_stats.yaml
-    category_mapping.yaml
-    mission_profile.yaml
-    fit_overrides.csv
+    from_D01/
+    from_D02/
+    from_D03/
+    structural/
+      endpoint_class_rules.csv
+      startpoint_class_rules.csv
+      ep_to_sm_seed_rules.csv
+      dce_selection_policy.csv
+
+  scripts/
+    run_demo.csh
+    run_demo.sh
+
+  tools/
+    collect_upstream_evidence.py
+    normalize_structural_paths.py
+    build_endpoint_index.py
+    build_startpoint_usage.py
+    build_dce_inventory.py
+    build_ep_to_sm_seed_map.py
+    build_d04_handoff.py
 
   outputs/
-    normalized_fit_inputs.yaml
-    fit_model_report.md
-    fit_model_compare.csv
-    assumption_trace.csv
-
-  schemas/
-    fit_model_library_schema.yaml
-    category_mapping_schema.yaml
-    mission_profile_schema.yaml
-    fit_overrides_schema.yaml
+    endpoint_index.csv
+    startpoint_usage.csv
+    cone_summary.csv
+    dce_inventory.csv
+    dce_standard_consistency.csv
+    ep_to_sm_seed_map.csv
+    structural_review.md
+    d04_handoff_to_d05.csv
+    d04_handoff_to_d06.csv
+    d04_handoff_to_d08.csv
+    evidence_index.csv
+    demo_summary.md
 ```
 
-This structure keeps model definition, design statistics, mapping, mission profile, and overrides separate.
-
-That separation matters because each of these files is reviewed by different stakeholders.
+The demo should be able to run even if the upstream analysis output is small. If the minimal design produces only a few endpoints, that is acceptable. The purpose is to show the method, schema, and evidence chain.
 
 ---
 
-## 19. D04 Manifest
+## 23. Neutral Execution Model
 
-Example `manifest.yaml`:
+The execution model can use environment-based tool mapping and local scripts.
 
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D04_fit_standard_models
-  top_module: toy_counter
-
-fit_model:
-  selected_model: sn29500_like_demo
-  model_library: inputs/fit_model_library.yaml
-  category_mapping: inputs/category_mapping.yaml
-  mission_profile: inputs/mission_profile.yaml
-  design_stats: inputs/design_stats.yaml
-  overrides: inputs/fit_overrides.csv
-
-comparison:
-  enabled: true
-  models:
-    - simplified_demo
-    - iec62380_like_demo
-    - sn29500_like_demo
-
-outputs:
-  normalized_fit_inputs: outputs/normalized_fit_inputs.yaml
-  model_report: outputs/fit_model_report.md
-  model_compare: outputs/fit_model_compare.csv
-  assumption_trace: outputs/assumption_trace.csv
-```
-
-The manifest should make the selected model explicit.
-
-Do not hide the model selection in a command-line option that disappears from the report.
-
----
-
-## 20. D04 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load Model Library]
-    B --> C[Load Design Statistics]
-    C --> D[Load Category Mapping]
-    D --> E[Load Mission Profile]
-    E --> F[Load Overrides]
-    F --> G[Validate Model Requirements]
-    G --> H[Normalize FIT Inputs]
-    H --> I[Generate Assumption Trace]
-    H --> J[Run Model Comparison]
-    I --> K[Generate Report]
-    J --> K
-```
-
-**Figure 8. D04 execution flow: normalize model assumptions before BFR calculation.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-fitmodel \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
+Example:
 
 ```csh
-#!/bin/csh -f
+setenv D01_ROOT /path/to/D01_analysis_input_package
+setenv D02_ROOT /path/to/D02_base_fit_rate
+setenv D03_ROOT /path/to/D03_fit_standards_real_engine
 
-set DEMO = D04_fit_standard_models
-echo "Running $DEMO"
-
-safeic-fitmodel \
-  --manifest manifest.yaml \
-  --output-dir outputs
+csh scripts/run_demo.csh
 ```
 
-Expected outputs:
+The script should not hard-code a commercial installation path.
+
+A neutral internal command sequence may be:
 
 ```text
-outputs/normalized_fit_inputs.yaml
-outputs/fit_model_report.md
-outputs/fit_model_compare.csv
-outputs/assumption_trace.csv
+collect upstream evidence
+normalize structural paths
+build endpoint index
+build startpoint usage
+build DCE inventory
+check DCE standard consistency
+build EP-to-SM seed map
+build handoff files
+build demo summary
 ```
+
+This keeps the public demo portable while allowing a private environment to bind the actual analysis engine through local setup.
 
 ---
 
-## 21. Validation Rules
+## 24. Quality Gates for D04
 
-`safeic-fitmodel` should validate both file-level and engineering-level consistency.
+D04 quality gates should focus on structural correctness.
 
-### 21.1 File and Schema Checks
-
-```text
-model library exists
-selected model exists
-design stats exist
-category mapping exists
-mission profile exists
-override file exists if required
-YAML files parse successfully
-CSV override has required columns
-```
-
-### 21.2 Model Requirement Checks
+Recommended checks:
 
 ```text
-selected model supports all mapped categories
-required mission profile fields exist
-temperature profile exists if model requires it
-operating ratio exists if model requires it
-reference rates exist for all required categories
-conversion factors exist or are explicitly disabled
+D01/D02/D03 roots exist
+D03 variant identity is available
+at least one DCE-style artifact or DCE placeholder is indexed
+fit_standard is explicitly recorded for every DCE record
+endpoint index is generated
+startpoint usage table is generated
+EP-to-SM seed map is generated
+no DCE standard mismatch is silently ignored
+handoff files are generated
 ```
 
-### 21.3 Cross-Reference Checks
+A quality gate file might look like:
 
-```text
-design type in design_stats has mapping
-mapping refers to known model category
-model category has reference rate
-black-box category has override
-override instance exists or is explicitly external
-review status is present for supplier overrides
+```csv
+check_id,check_name,status,details
+QG001,upstream_roots_present,PASS,D01/D02/D03 roots detected
+QG002,fit_standard_recorded,PASS,all DCE records include fit_standard
+QG003,endpoint_index_available,PASS,endpoint_index.csv generated
+QG004,dce_standard_consistency,REVIEW,manual review required for cross-standard reuse
+QG005,ep_to_sm_seed_map_available,PASS,seed map generated
 ```
 
-### 21.4 Assumption Safety Checks
-
-```text
-zero FIT values require explicit justification
-black-box FIT cannot be silently zero
-package FIT cannot be silently omitted
-demo model must be labeled as demo
-standard-like abstraction must not claim official completeness
-```
-
-Example report messages:
-
-```text
-[PASS] selected model sn29500_like_demo exists
-[PASS] design type logic_gate mapped to integrated_circuit_logic
-[WARN] temperature scaling disabled for selected model profile
-[WARN] model is educational abstraction, not official standard implementation
-[ERROR] black_box count > 0 but fit_overrides.csv has no matching entry
-```
+A `REVIEW` status is not necessarily a failure. It means engineering judgment is required.
 
 ---
 
-## 22. Engineering Methodology
+## 25. How D04 Helps D06 Safety Exploration
 
-D04 introduces an important methodology:
-
-```text
-Separate model selection from BFR calculation.
-Separate design statistics from reliability assumptions.
-Separate standard-like model abstraction from supplier overrides.
-Separate normalized machine inputs from human-readable reports.
-```
-
-This allows a workflow to be:
+D06 will ask:
 
 ```text
-reviewable
-auditable
-debuggable
-model-comparable
-portable
-extensible
+If we add a safety mechanism here, how much diagnostic coverage might improve?
 ```
 
-A practical review checklist:
+D04 provides the inputs needed to ask that question rationally:
 
 ```text
-Which model profile was selected?
-Is it a demo abstraction or reviewed project model?
-Which mission profile was used?
-Which design categories were mapped?
-Which reference rates were applied?
-Which conversion factors were applied?
-Which values were overridden?
-Which assumptions are still draft?
-Which black boxes require supplier confirmation?
-Can the normalized FIT inputs feed BFR calculation?
+which endpoints exist
+which endpoints have high contribution
+which startpoints feed many endpoints
+which cones may be expensive to protect
+which endpoints have candidate safety mechanisms
+which DCE artifacts represent reusable analysis boundaries
 ```
 
-The goal is not to make FIT modeling look simple. The goal is to make assumptions explicit.
+Without D04, safety exploration becomes a trial-and-error exercise.
+
+With D04, exploration becomes a structured what-if process.
 
 ---
 
-## 23. Common Mistakes
+## 26. How D04 Helps D08 Fault List Generation
 
-### 23.1 Treating Standard Names as Magic Words
+Fault list generation should not be detached from structure.
 
-Writing:
-
-```text
-model = IEC62380
-```
-
-or
+D08 will need to know:
 
 ```text
-model = SN29500
+which endpoints are safety-relevant
+which cones should be targeted
+which faults are permanent vs transient candidates
+which endpoints are related to alarms or observe points later
+which DCE boundaries are reused
 ```
 
-is not enough.
+D04 does not generate the final fault campaign setup. It provides the structural inventory that makes D08 explainable.
 
-A model name must be accompanied by:
+A useful D04-to-D08 handoff might include:
 
-```text
-model version
-component category mapping
-mission profile
-reference conditions
-conversion assumptions
-data source
-review status
+```csv
+endpoint_id,endpoint_path,endpoint_class,safety_relevance_hint,sm_candidate,include_in_fault_planning
+EP0001,toy_counter.count[0],state_register,state_storage,parity_or_duplication,yes
+EP0003,toy_counter.alarm,alarm_like_output,detection_visibility,protocol_or_alarm_check,yes
 ```
 
-### 23.2 Hardcoding FIT Coefficients in Scripts
-
-Hardcoded constants are difficult to review.
-
-Bad:
-
-```python
-ff_fit = ff_count * 0.003
-```
-
-Better:
-
-```yaml
-flip_flop_fit: 3.0e-3
-source: fit_model_library.yaml
-review_status: draft
-```
-
-The calculation should be separated from the data.
-
-### 23.3 Ignoring Model Sensitivity
-
-If two reasonable model profiles produce significantly different BFR values, this should be reviewed.
-
-The goal is not to hide the difference. The goal is to understand it.
-
-### 23.4 Ignoring Supplier FIT Data
-
-Hard macros and black boxes may dominate safety analysis.
-
-If supplier data is unavailable, the gap should be documented as a review item, not silently replaced with zero.
-
-### 23.5 Confusing Demo Abstraction with Official Standard Implementation
-
-This repository should clearly distinguish:
-
-```text
-educational abstraction
-project-specific reviewed model
-official standard implementation
-supplier-provided data
-```
-
-The D04 demo uses educational abstractions only.
+This keeps fault planning connected to safety intent.
 
 ---
 
-## 24. How D04 Connects to the Closed Loop
+## 27. How D04 Helps D15 FMEDA
 
-D04 feeds D03 and later safety stages.
+FMEDA needs traceability from failure modes to safety mechanisms and residual FIT.
 
-```mermaid
-flowchart LR
-    A[D04 FIT Model Normalization] --> B[D03 BFR Calculation]
-    B --> C[Endpoint Contribution]
-    B --> D[Diagnostic Coverage]
-    B --> E[FMEDA]
-    B --> F[Fault List Prioritization]
-```
-
-**Figure 9. D04 normalizes model assumptions so D03 and later stages can use reviewed FIT inputs.**
-
-D04 answers:
+D04 contributes three important links:
 
 ```text
-Which FIT model profile are we using?
-How are design categories mapped to model categories?
-Which mission profile is applied?
-Which supplier overrides are used?
-Which assumptions are defaulted or reviewed?
+endpoint -> structural block
+DCE -> part/sub-part
+endpoint -> safety mechanism candidate
 ```
 
-D03 then answers:
+Later, D15 can extend this into:
 
 ```text
-What is the resulting Base FIT Rate?
+part/sub-part -> failure mode -> safety mechanism -> diagnostic coverage -> residual FIT
 ```
 
-The two demos should remain separate.
+This is why D04 should not be treated as a small parsing exercise. It is a foundation for later audit evidence.
 
 ---
 
-## 25. Recommended Implementation Stages
+## 28. Common Mistakes in Structural Safety Analysis
 
-D04 can be implemented in stages.
+### Mistake 1: Treating FIT Summary as the Whole Story
 
-### Stage 1: Demo Model Normalization
+A summary report gives the top-level metric, but it does not explain the structure behind the metric.
 
-Support only:
+D04 fixes this by indexing endpoints, startpoints, cones, DCE artifacts, and EP-to-SM relationships.
 
-```text
-simplified_demo
-basic category mapping
-basic mission profile
-no real temperature scaling
-```
+### Mistake 2: Mixing DCE Files Across FIT Standards
 
-### Stage 2: Standard-Like Profiles
+A DCE artifact created under IEC 62380 assumptions should not be silently reused under SN 29500 assumptions.
 
-Add educational abstraction profiles:
+D04 must record standard identity for every DCE record.
 
-```text
-iec62380_like_demo
-sn29500_like_demo
-```
+### Mistake 3: Treating Every Endpoint as Equally Safety-Relevant
 
-These should still be labeled clearly as demo abstractions.
+Some endpoints are internal state bits. Some are protocol-visible outputs. Some are alarm-like outputs.
 
-### Stage 3: Override Handling
+Classification matters.
 
-Add:
+### Mistake 4: Mapping SMs Before Understanding Cones
 
-```text
-fit_overrides.csv
-black-box policy
-review status
-supplier source tracking
-```
+A safety mechanism is not selected in isolation. Its cost and effectiveness depend on the cone it protects.
 
-### Stage 4: Model Comparison
+### Mistake 5: Ignoring Protocol Meaning
 
-Add:
+A bus response signal or alarm output may have stronger safety significance than an internal temporary wire.
 
-```text
-fit_model_compare.csv
-model sensitivity report
-```
+### Mistake 6: Losing Path Identity
 
-### Stage 5: Integration with BFR
+If hierarchical paths are not normalized, later joins between reports, DCE artifacts, and FMEDA tables become fragile.
 
-Generate:
+### Mistake 7: Making Final Safety Claims Too Early
 
-```text
-normalized_fit_inputs.yaml
-```
-
-and feed it into:
-
-```text
-safeic-bfr
-```
-
-This staged approach makes the demo implementable without overclaiming.
+D04 is structural preparation, not final diagnostic coverage validation.
 
 ---
 
-## 26. Summary
+## 29. Review Checklist
 
-BFR needs reliable input assumptions.
-
-Reliability prediction models such as IEC 62380 and SN 29500 are often used as references in automotive electronics, but an engineering flow must not hide model assumptions inside scripts or spreadsheets.
-
-The D04 demo:
+A reviewer should be able to answer the following after opening the D04 outputs:
 
 ```text
-D04_fit_standard_models
+What design boundary is D04 analyzing?
+Which D01/D02/D03 evidence was used?
+Which FIT standard and variant identity is associated with each DCE artifact?
+What endpoints were indexed?
+What startpoints feed major endpoint groups?
+Which endpoints are protocol-visible or alarm-like?
+Which endpoints have candidate safety mechanisms?
+Which DCE artifacts can be handed to FMEDA?
+Which structural assumptions require manual review?
+Which files are handed to D05, D06, and D08?
 ```
 
-introduces a generic tool:
-
-```text
-safeic-fitmodel
-```
-
-Its purpose is to normalize FIT model assumptions into reviewable artifacts:
-
-```text
-normalized_fit_inputs.yaml
-fit_model_report.md
-fit_model_compare.csv
-assumption_trace.csv
-```
-
-The central lesson is:
-
-> A FIT model is not just a formula. It is a set of categorized assumptions, mission profiles, reference conditions, conversion choices, supplier overrides, and review decisions.
-
-Once those assumptions are explicit, BFR calculation becomes traceable and reusable.
+If these questions can be answered, D04 has done its job.
 
 ---
 
-## 27. D04 Demo Checklist
+## 30. Summary
 
-For `D04_fit_standard_models`, the expected deliverables are:
+D04 is the structural turning point of the Safe-IC practice flow.
 
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
+D01 creates the analysis input package.
 
-[ ] inputs/fit_model_library.yaml
-[ ] inputs/design_stats.yaml
-[ ] inputs/category_mapping.yaml
-[ ] inputs/mission_profile.yaml
-[ ] inputs/fit_overrides.csv
+D02 calculates the Base FIT baseline.
 
-[ ] outputs/normalized_fit_inputs.yaml
-[ ] outputs/fit_model_report.md
-[ ] outputs/fit_model_compare.csv
-[ ] outputs/assumption_trace.csv
+D03 establishes standard-aware comparison between IEC 62380 and SN 29500.
 
-[ ] schemas/fit_model_library_schema.yaml
-[ ] schemas/category_mapping_schema.yaml
-[ ] schemas/mission_profile_schema.yaml
-[ ] schemas/fit_overrides_schema.yaml
-```
-
-A successful D04 run should answer:
+D04 explains the structural objects behind the metrics:
 
 ```text
-Which model profile was selected?
-Is the model a demo abstraction or reviewed project model?
-How are design statistics mapped to reliability categories?
-Which mission profile is used?
-Which values are defaulted, derived, or overridden?
-Are black boxes handled explicitly?
-Are package and non-logic contributions included or intentionally excluded?
-Can the normalized output feed BFR calculation?
+Endpoint
+Startpoint
+Logic cone
+DCE
+EP-to-SM Map
 ```
+
+These objects allow the flow to move from numerical FIT analysis into explainable safety engineering.
+
+A mature automotive chip safety workflow cannot rely only on final reports. It must preserve the structure that connects RTL or netlist implementation to safety mechanisms, diagnostic coverage, fault lists, fault campaign setup, and FMEDA evidence.
+
+That is the role of D04.
+
+It does not close the safety case.
+
+It builds the structural language needed to close the safety case later.
