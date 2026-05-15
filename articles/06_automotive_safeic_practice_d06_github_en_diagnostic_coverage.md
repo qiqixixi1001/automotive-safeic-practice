@@ -1,1469 +1,1328 @@
-# [Automotive Safe-IC Practice 06] Diagnostic Coverage Is Not Just a Percentage: Computing DC from Structure, Scope, and Safety Mechanisms
+# Automotive Safe-IC Practice 06: Safety Exploration — What-if Safety Mechanism Evaluation and Diagnostic Coverage Estimation
+Author: Darren H. Chen
+Direction: Automotive Safe-IC Functional Safety Analysis and Fault-Injection Practice
+Demo: D06_safety_exploration_what_if_sm_dc_estimation
+Tags: ISO 26262, Functional Safety, Safe-IC, Safety Exploration, Diagnostic Coverage, Safety Mechanism, FMEDA, FIT, SPFM, LFM, PMHF
 
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D06_diagnostic_coverage  
-**Tags**: Automotive Chip, Functional Safety, Diagnostic Coverage, DC, Safety Mechanism, FIT, FMEDA, Startpoint, Endpoint, Cone, Fault Injection, Residual FIT
+## 1. From Evidence Center to Design Decision
 
----
+By D05, the flow has already moved beyond isolated CSV reports. The project now has a structured evidence center: design boundary, FIT-standard identity, Base FIT results, structural endpoints, startpoints, logic cones, DCE-style artifacts, and session-oriented evidence records.
 
-## 1. Why This Article Matters
+D06 is the first point where the flow starts to answer a design question rather than merely organizing data:
 
-Diagnostic Coverage, usually abbreviated as **DC**, is one of the most frequently mentioned concepts in automotive chip functional safety.
+> Which safety mechanisms should be considered, and how much diagnostic coverage could they contribute before the design is modified?
 
-It is also one of the easiest concepts to misuse.
+This is the purpose of **Safety Exploration**.
 
-A common but dangerous statement is:
+Safety Exploration is not final signoff. It is an engineering decision stage. It evaluates proposed safety mechanisms in a controlled “what-if” mode, estimates their effect on diagnostic coverage, and turns structural analysis data into a ranked set of implementation candidates.
 
-```text
-This block has 90% diagnostic coverage.
-```
-
-This statement is incomplete.
-
-A better engineering question is:
+A useful mental model is:
 
 ```text
-90% coverage of what?
-Which fault type?
-Which structure?
-Which endpoint?
-Which cone?
-Which safety mechanism?
-Which failure mode?
-Under which assumption?
-Was it estimated or measured?
+D02 Base FIT Rate
+    tells us where random hardware failure exposure exists.
+
+D04 Structural Building Blocks
+    tells us which endpoints, startpoints, cones, and DCEs carry that exposure.
+
+D05 Common Evidence Center
+    keeps those objects traceable across sessions.
+
+D06 Safety Exploration
+    asks: what if we protect selected objects with candidate safety mechanisms?
 ```
 
-The sixth demo in this repository is:
+The output of D06 should not be “we are safe now.”
+
+The output should be:
 
 ```text
-D06_diagnostic_coverage
+candidate safety mechanisms
+estimated diagnostic coverage
+residual FIT trend
+PPA and complexity trade-off notes
+review decisions
+handoff data for D07, D08, and later fault campaigns
 ```
 
-The generic tool introduced in this article is:
+## 2. What Safety Exploration Means
+
+Safety Exploration is the process of estimating the metric impact of potential or already inserted safety mechanisms.
+
+The core question is:
 
 ```text
-safeic-dc
+If endpoint EP_A is protected by mechanism M,
+what diagnostic coverage can be credited,
+and how much residual FIT may remain?
 ```
 
-The purpose of `safeic-dc` is to compute a reviewable diagnostic coverage estimate from:
+A simplified formula is:
 
 ```text
-structural safety model
-safety mechanism library
-endpoint-to-safety-mechanism map
-failure mode mapping
-BFR / FIT contribution data
-coverage assumptions
+Residual FIT ≈ Base FIT × (1 - Diagnostic Coverage)
 ```
 
-The central idea is:
-
-> Diagnostic Coverage is not a standalone percentage. It is a structured claim that a specific safety mechanism covers a specific fault effect over a specific design scope.
-
----
-
-## 2. Why DC Comes After Structural Modeling
-
-In the previous article, we built the structural safety model:
+In real functional safety work, the calculation is more structured. It may be separated by:
 
 ```text
-startpoints
-endpoints
-cones
-startpoint usage
-part/sub-part mapping
-endpoint-to-safety-mechanism mapping
-```
-
-This structure is necessary because diagnostic coverage has a scope.
-
-A safety mechanism may cover:
-
-```text
-only an endpoint
-a logic cone
-a memory array
-a transaction path
-a duplicated compute path
-a protocol sequence
-an alarm path
-```
-
-Without structure, we cannot know what the mechanism actually covers.
-
-```mermaid
-flowchart LR
-    A[Startpoints] --> B[Logic Cone]
-    B --> C[Endpoint]
-    C --> D[Failure Mode]
-    C --> E[Safety Mechanism]
-    E --> F[Coverage Scope]
-    F --> G[Diagnostic Coverage]
-```
-
-**Figure 1. Diagnostic coverage depends on the structural scope protected by the safety mechanism.**
-
-This is why D06 consumes D05 outputs.
-
-D05 tells us:
-
-```text
-where faults can propagate
-```
-
-D06 estimates:
-
-```text
-how much of that propagation is detected, corrected, masked, or controlled
-```
-
----
-
-## 3. A Minimal Definition of Diagnostic Coverage
-
-A simplified engineering definition is:
-
-```text
-DC = covered relevant faults / total relevant faults
-```
-
-However, each word in this definition requires care.
-
-```text
-covered:
-  detected, corrected, masked, or controlled by a safety mechanism
-
-relevant:
-  meaningful for a failure mode, endpoint, cone, part, or safety goal
-
-faults:
-  not only raw fault nodes, but fault effects under defined assumptions
-```
-
-A more useful form is:
-
-```text
-DC(scope, mechanism, fault_model, failure_mode)
-```
-
-This means:
-
-```text
-Diagnostic coverage is a function of scope, mechanism, fault model, and failure semantics.
-```
-
-```mermaid
-flowchart TD
-    A[Fault Model] --> E[Diagnostic Coverage Claim]
-    B[Structural Scope] --> E
-    C[Safety Mechanism] --> E
-    D[Failure Mode] --> E
-    E --> F[Residual FIT Estimate]
-```
-
-**Figure 2. A DC claim should specify fault model, structural scope, safety mechanism, and failure mode.**
-
-A percentage without these dimensions is not reviewable.
-
----
-
-## 4. Estimated DC vs Measured DC
-
-A disciplined safety workflow must distinguish:
-
-```text
-estimated DC
-calculated DC
-measured DC
-```
-
-| Type | Meaning | Source |
-|---|---|---|
-| Estimated DC | Claimed or assumed coverage before validation | Safety architecture, SM library, expert assumption |
-| Calculated DC | Coverage computed from structure and mapping assumptions | Structural model, EP-to-SM map, FIT data |
-| Measured DC | Coverage derived from fault campaign outcomes | Fault injection results |
-
-```mermaid
-flowchart LR
-    A[Estimated DC] --> B[Architecture Exploration]
-    B --> C[Calculated DC]
-    C --> D[Fault Campaign]
-    D --> E[Measured DC]
-    E --> F[Metric Update]
-```
-
-**Figure 3. Estimated DC guides architecture; measured DC comes from fault campaign evidence.**
-
-D06 focuses mainly on estimated and calculated DC.
-
-Later fault campaign demos will measure whether these assumptions are valid under simulation context.
-
-The key rule is:
-
-> Never confuse a coverage assumption with validated evidence.
-
----
-
-## 5. Safety Mechanism Scope
-
-Different safety mechanisms protect different scopes.
-
-A parity check, ECC decoder, bus CRC, lockstep comparator, protocol checker, and watchdog are not interchangeable.
-
-| Safety Mechanism | Typical Scope | Example |
-|---|---|---|
-| Endpoint parity | Endpoint state | Register group parity |
-| ECC | Memory or register file state | SRAM ECC, register file ECC |
-| End-to-end CRC | Transaction path | Bus command/response integrity |
-| Duplication | Logic cone or endpoint | Redundant combinational or sequential logic |
-| Lockstep | Duplicated compute path | CPU core lockstep comparison |
-| Protocol checker | Temporal/control behavior | FSM transition check |
-| Watchdog | Temporal progress | Missing response detection |
-| Alarm monitor | Diagnostic path | Alarm stuck or masked detection |
-
-A safety mechanism library must describe this scope.
-
-Example:
-
-```yaml
-mechanisms:
-  endpoint_parity:
-    type: endpoint
-    coverage_scope:
-      endpoint: 0.90
-      cone: 0.00
-      path: 0.00
-      alarm_path: 0.00
-    detects:
-      - single_bit_error
-    corrects: false
-
-  memory_ecc:
-    type: memory
-    coverage_scope:
-      memory: 0.99
-      endpoint: 0.95
-      alarm_path: 0.00
-    detects:
-      - single_bit_error
-      - selected_multi_bit_error
-    corrects: true
-
-  end_to_end_crc:
-    type: path
-    coverage_scope:
-      path: 0.95
-      endpoint: 0.80
-      cone: 0.00
-    detects:
-      - data_corruption
-      - transaction_corruption
-    corrects: false
-
-  lockstep:
-    type: compute_path
-    coverage_scope:
-      cone: 0.95
-      endpoint: 0.95
-      comparator: 0.90
-      alarm_path: 0.00
-    detects:
-      - logic_error
-      - state_divergence
-    corrects: false
-```
-
-The numeric values are demo assumptions. In a real project, they must be justified and validated.
-
----
-
-## 6. Coverage Scope Is Not the Same as Signal Location
-
-A safety mechanism can be physically near an endpoint but not cover the whole cone.
-
-Example:
-
-```text
-endpoint parity on register output
-```
-
-may detect corruption of stored endpoint state, but it may not detect errors created in the upstream combinational logic before the next capture.
-
-Another example:
-
-```text
-bus CRC
-```
-
-may protect transaction data from source to destination, but it may not protect local control state outside the transaction path.
-
-A lockstep comparator may compare core outputs, but:
-
-```text
-comparator fault
-alarm path fault
-reset response fault
-common-cause fault
-```
-
-may still need separate consideration.
-
-```mermaid
-flowchart LR
-    A[Startpoints] --> B[Unprotected Cone]
-    B --> C[Endpoint]
-    C --> D[Endpoint Parity]
-    D --> E[Alarm]
-```
-
-**Figure 4. Endpoint protection does not automatically imply cone protection.**
-
-Therefore, `safeic-dc` must compute coverage according to declared scope, not according to mechanism name alone.
-
----
-
-## 7. Structural Units for DC Calculation
-
-D06 uses three major structural units:
-
-```text
+permanent fault contribution
+transient fault contribution
 endpoint
 startpoint
-cone
+logic cone
+DCE
+part / sub-part
+failure mode
+safety mechanism
+ASIL target
+fault classification policy
 ```
 
-A practical DC engine should be able to compute coverage at multiple levels:
+Safety Exploration exists because it is expensive to implement every possible safety mechanism directly in RTL, synthesize the design, rerun verification, run fault injection, and only then discover that the selected mechanism is too weak or too expensive.
 
-```text
-endpoint-level DC
-startpoint-level DC
-cone-level DC
-path-level DC
-part/sub-part-level DC
-failure-mode-level DC
-```
-
-```mermaid
-flowchart TD
-    A[Endpoint DC] --> D[Part/Sub-part DC]
-    B[Cone DC] --> D
-    C[Path DC] --> D
-    D --> E[FMEDA Metric Input]
-```
-
-**Figure 5. Diagnostic coverage can be computed at endpoint, cone, path, part, and failure-mode levels.**
-
-For a toy design, endpoint-level and cone-level DC are enough.
-
-For a real SoC, path-level, part-level, and failure-mode-level roll-up become important.
-
----
-
-## 8. Endpoint-Level DC
-
-Endpoint-level DC focuses on whether the endpoint state or value is protected.
-
-Example:
-
-```text
-Endpoint:
-  toy_counter.count
-
-Safety mechanism:
-  endpoint_parity
-
-Assumption:
-  endpoint parity detects 90% of relevant single-bit endpoint corruptions
-
-Endpoint DC:
-  0.90
-```
-
-Input mapping:
-
-```csv
-endpoint,safety_mechanism,scope,dc_estimate,alarm,failure_mode
-toy_counter.count,endpoint_parity,endpoint,0.90,toy_counter.alarm,FM_DATA_CORRUPTION
-```
-
-Output:
-
-```csv
-endpoint,failure_mode,mechanism,endpoint_dc,alarm,review_status
-toy_counter.count,FM_DATA_CORRUPTION,endpoint_parity,0.90,toy_counter.alarm,draft
-```
-
-Endpoint DC is useful, but it is not enough if the safety mechanism does not cover upstream logic.
-
----
-
-## 9. Cone-Level DC
-
-Cone-level DC asks:
-
-```text
-Does the safety mechanism cover the upstream logic that can influence the endpoint?
-```
-
-Example:
-
-```text
-Endpoint:
-  toy_counter.alarm
-
-Cone:
-  toy_counter.count
-  toy_counter.count_parity
-  expected_parity
-  parity_compare
-
-Safety mechanism:
-  none for alarm path
-
-Cone DC:
-  0.00 for alarm path protection
-```
-
-Another example:
-
-```text
-Safety mechanism:
-  duplication of compute cone
-
-Coverage:
-  cone = 0.95
-  endpoint = 0.90
-```
-
-Cone-level output:
-
-```csv
-endpoint,cone_size,covered_cone_nodes,total_cone_nodes,cone_dc,mechanism
-toy_counter.alarm,4,0,4,0.00,none
-top.u_ctrl.safe_state,180,171,180,0.95,cone_duplication
-```
-
-The key idea is:
-
-> A safety mechanism that only checks the endpoint may leave the cone uncovered.
-
----
-
-## 10. Startpoint-Level DC
-
-Startpoint-level DC asks:
-
-```text
-If a fault starts here, is its effect detected or controlled before reaching a safety-relevant endpoint?
-```
-
-This is useful for prioritization.
-
-Example:
-
-```csv
-startpoint,affected_endpoints,mechanisms,max_dc,min_dc,comment
-toy_counter.count_reg,toy_counter.count;toy_counter.alarm,endpoint_parity,0.90,0.00,count protected but alarm path unprotected
-toy_counter.parity_reg,toy_counter.alarm,none,0.00,0.00,parity state fault can block diagnosis
-```
-
-Startpoint-level DC helps identify:
-
-```text
-high-impact unprotected startpoints
-common-cause propagation sources
-diagnostic path weaknesses
-configuration registers that affect many endpoints
-```
-
-```mermaid
-flowchart LR
-    A[Startpoint] --> B[Endpoint 1]
-    A --> C[Endpoint 2]
-    B --> D[SM 1: DC 0.90]
-    C --> E[No SM: DC 0.00]
-```
-
-**Figure 6. One startpoint may have different coverage depending on which endpoint path is considered.**
-
-This is why DC roll-up must be careful.
-
----
-
-## 11. Combining Endpoint and Cone Coverage
-
-A safety mechanism may cover multiple scopes.
-
-A simplified combined DC model can use weighted contribution:
-
-```text
-combined_dc =
-  (endpoint_weight × endpoint_dc +
-   cone_weight × cone_dc +
-   path_weight × path_dc) /
-  (endpoint_weight + cone_weight + path_weight)
-```
-
-The weights can be based on:
-
-```text
-FIT contribution
-fault count
-cone node count
-endpoint criticality
-manual safety weighting
-failure mode severity
-```
-
-For a demo, use a simple weight model:
-
-```yaml
-dc_weighting:
-  endpoint_weight: 1.0
-  cone_weight: 1.0
-  path_weight: 1.0
-```
-
-For a more useful model, use FIT-based weights:
-
-```text
-combined_dc =
-  Σ(covered_fit_i × dc_i) / Σ(total_fit_i)
-```
-
-This is more meaningful because it weights coverage by failure-rate contribution.
+Instead, D06 provides an early exploration loop:
 
 ```mermaid
 flowchart TD
-    A[Endpoint FIT] --> D[Weighted DC]
-    B[Cone FIT] --> D
-    C[Path FIT] --> D
-    E[Endpoint DC] --> D
-    F[Cone DC] --> D
-    G[Path DC] --> D
+    A[D05 Evidence Center] --> B[Candidate Endpoint Selection]
+    B --> C[Safety Mechanism Hypothesis]
+    C --> D[What-if Exploration Run]
+    D --> E[Estimated DC and Residual FIT]
+    E --> F{Meets Target?}
+    F -- No --> G[Refine Candidate SM]
+    G --> C
+    F -- Yes --> H[Review PPA and Verification Cost]
+    H --> I[D07 Formal SM Mapping]
+    H --> J[D08 Fault List Generation]
 ```
 
-**Figure 7. FIT-weighted DC is more meaningful than simple fault-count averaging.**
+**Figure 1. Safety Exploration is an iterative what-if loop before implementation and fault campaign closure.**
 
-For D06, both simple and FIT-weighted modes can be supported.
+## 3. Safety Analysis, Safety Exploration, SM Validation, and Fault Campaign
 
----
+The terms are close, but they should not be mixed.
 
-## 12. Residual FIT from DC
+### 3.1 Safety Analysis
 
-Once DC is known, residual contribution can be estimated.
+Safety Analysis evaluates the current design state.
 
-A simplified formula:
+It answers:
 
 ```text
-residual_fit = base_fit × (1 - dc)
+What is the FIT rate?
+Where are the high-contribution structures?
+What are the current diagnostic coverage metrics?
+Which endpoints and cones dominate the risk?
 ```
 
-Example:
+D02, D03, and D04 are mainly safety analysis stages.
+
+### 3.2 Safety Exploration
+
+Safety Exploration evaluates proposed safety mechanisms.
+
+It answers:
 
 ```text
-base_fit = 10 FIT
-dc = 0.90
-residual_fit = 10 × (1 - 0.90) = 1 FIT
+What if endpoint A had parity?
+What if cone B were duplicated?
+What if memory C had ECC?
+What if a protocol checker protected a state machine?
+How much diagnostic coverage would be estimated?
 ```
 
-For endpoint-level contribution:
+The design may not yet contain the actual inserted logic.
 
-```csv
-endpoint,base_fit,dc,residual_fit
-toy_counter.count,0.064,0.90,0.0064
-toy_counter.alarm,0.010,0.00,0.0100
-```
+### 3.3 Safety Mechanism Validation
 
-This residual estimate is not final proof of safety. It is a structured safety-analysis estimate.
+Safety Mechanism Validation evaluates a design where safety mechanisms are already present or inserted.
 
-Later fault injection can replace or refine the DC value.
-
-```mermaid
-flowchart LR
-    A[Base FIT] --> B[Diagnostic Coverage]
-    B --> C[Residual FIT]
-    C --> D[FMEDA / Metric Review]
-```
-
-**Figure 8. DC converts base FIT into residual FIT estimate.**
-
----
-
-## 13. Failure Mode Matters
-
-The same endpoint can have multiple failure modes.
-
-Example:
+It asks:
 
 ```text
-Endpoint:
-  toy_counter.alarm
-
-Failure mode A:
-  alarm_not_asserted
-
-Failure mode B:
-  false_alarm
+Given the safe design, what FIT and DC are estimated now?
+Does the added logic change the FIT baseline?
+Does the implemented protection match the intended mechanism?
 ```
 
-A safety mechanism may cover one failure mode but not another.
+This is later and more concrete than D06.
 
-Example:
+### 3.4 Fault Campaign
+
+A fault campaign injects faults and classifies outcomes.
+
+It answers:
 
 ```text
-Alarm monitor:
-  may detect alarm_not_asserted
-
-Debounce or filtering:
-  may reduce false_alarm
-
-Redundant alarm:
-  may help both, depending on design
+Was the fault detected?
+Was it safe?
+Was it unsafe?
+Was it unresolved?
+Did the alarm fire within the expected observation window?
 ```
 
-Therefore DC should be indexed by failure mode.
+D06 estimates. Fault campaign validates through execution. The two must not be confused.
 
-Example:
+## 4. The Inputs D06 Should Consume
 
-```csv
-endpoint,failure_mode,mechanism,dc
-toy_counter.alarm,FM_ALARM_NOT_ASSERTED,none,0.00
-toy_counter.alarm,FM_FALSE_ALARM,none,0.00
-toy_counter.count,FM_DATA_CORRUPTION,endpoint_parity,0.90
-```
+D06 should not start from scratch. It should consume upstream evidence.
 
-This is more precise than:
+### 4.1 From D02: Base FIT and FIT Contribution
+
+D02 provides the baseline.
+
+Typical inputs include:
 
 ```text
-toy_counter.alarm has 0% DC
+bfr_summary.csv
+fit_contribution.csv
+base_fit_evidence_index.csv
 ```
 
-because it says which failure mode is uncovered.
-
----
-
-## 14. Alarm Path Coverage
-
-An alarm signal is part of the safety mechanism evidence chain.
-
-But alarm paths themselves can fail.
-
-Example:
+These files answer:
 
 ```text
-fault occurs
-parity mismatch happens
-alarm logic should assert
-alarm path stuck at 0
-system never receives the diagnostic event
+How much FIT exists before safety mechanisms are credited?
+Which modules or structures contribute more?
+Which FIT standard and mission profile were used?
 ```
 
-If the alarm path is not modeled, a DC estimate may be too optimistic.
+Without this baseline, a diagnostic coverage percentage is not meaningful.
 
-```mermaid
-flowchart LR
-    A[Fault Effect] --> B[Safety Mechanism Detects]
-    B --> C[Alarm Logic]
-    C --> D[Alarm Output]
-    D --> E[System Response]
-```
+A 90% DC over a negligible FIT region may matter less than a 60% DC over a dominant safety-critical cone.
 
-**Figure 9. Detection is not complete if the alarm reporting path is broken or unmodeled.**
+### 4.2 From D03: FIT Standard Identity and Run Variants
 
-For D06, alarm path coverage can be represented as:
+D03 provides the standard and mission-profile context.
 
-```yaml
-alarm_paths:
-  - alarm: toy_counter.alarm
-    protected_by: none
-    dc_estimate: 0.00
-    review_status: draft
-```
-
-The output should flag:
+Typical inputs include:
 
 ```text
-mechanism requires alarm but alarm path has no protection modeled
+fit_standard_real_comparison.csv
+d03_handoff_to_d04.csv
+evidence_index.csv
 ```
 
-This is a common and important safety weakness.
-
----
-
-## 15. Diagnostic Coverage and Safe Faults
-
-Fault injection often classifies faults as:
+D06 should preserve the distinction:
 
 ```text
-detected
-safe
-unsafe
-unresolved
+fit_standard = iec_62380 or sn_29500
+variant_id   = fit_standard + mission_profile + parameter_set
 ```
 
-For calculated DC, we may not yet have fault injection results.
+Safety Exploration results from different FIT standards or mission profiles must not be merged without an explicit comparison policy.
 
-But conceptually:
+### 4.3 From D04: Structural Building Blocks
+
+D04 provides the structural model.
+
+Typical inputs include:
 
 ```text
-Detected faults contribute to diagnostic coverage.
-Safe faults may reduce safety-relevant exposure.
-Unsafe faults remain residual risk.
-Unresolved faults require further evidence.
+structural_endpoint_inventory.csv
+structural_startpoint_inventory.csv
+logic_cone_map.csv
+dce_catalog.csv
+ep_to_sm_seed_map.csv
+protocol_visible_endpoint_map.csv
 ```
 
-A measured DC formula may look like:
+These files answer:
 
 ```text
-measured_dc = detected / (detected + unsafe)
+What are the endpoints?
+What are the startpoints?
+Which logic cone feeds each endpoint?
+Which endpoints are protocol-visible?
+Which DCE artifacts are available?
+Which endpoints are likely candidates for safety mechanisms?
 ```
 
-Another metric may account for safe faults differently, depending on the reporting rule.
+### 4.4 From D05: Common Evidence Center
 
-D06 does not define final measured DC. It prepares estimated/calculated DC before campaign.
+D05 provides the evidence registry.
 
-Later measured results should be compared against D06 estimates.
-
----
-
-## 16. Input Files for D06
-
-D06 consumes outputs from D05 and earlier demos.
-
-Suggested inputs:
+Typical inputs include:
 
 ```text
-inputs/
-  safety_mechanisms.yaml
-  ep_to_sm_map.csv
-  failure_modes.yaml
-  dc_policy.yaml
-
-intermediate/
-  structure_graph.json
-  startpoints.csv
-  endpoints.csv
-  cones.csv
-  startpoint_usage.csv
-
-optional/
-  base_fit_report.csv
-  instance_fit.csv
+common_db_session_manifest.csv
+common_db_object_catalog.csv
+common_db_link_graph.csv
+d05_handoff_to_d06.csv
 ```
 
-`dc_policy.yaml` defines how to compute coverage.
-
-Example:
-
-```yaml
-dc_policy:
-  mode: fit_weighted
-  default_unprotected_dc: 0.0
-  require_failure_mode: true
-  require_alarm_for_detecting_mechanism: true
-
-  rollup:
-    method: weighted_average
-    weight_source: base_fit
-    unresolved_policy: report_separately
-
-  validation:
-    reject_dc_out_of_range: true
-    warn_if_alarm_path_unprotected: true
-    warn_if_endpoint_unmapped: true
-```
-
-This policy file is important because DC calculation contains assumptions.
-
----
-
-## 17. The `safeic-dc` Tool Architecture
-
-The generic tool `safeic-dc` can be implemented as a staged pipeline.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-dc]
-    B[structure_graph.json] --> T
-    C[startpoints.csv / endpoints.csv / cones.csv] --> T
-    D[safety_mechanisms.yaml] --> T
-    E[ep_to_sm_map.csv] --> T
-    F[failure_modes.yaml] --> T
-    G[base_fit_report.csv / instance_fit.csv] --> T
-    H[dc_policy.yaml] --> T
-
-    T --> I[endpoint_dc.csv]
-    T --> J[cone_dc.csv]
-    T --> K[startpoint_dc.csv]
-    T --> L[residual_fit.csv]
-    T --> M[dc_summary.md]
-    T --> N[dc_warnings.csv]
-```
-
-**Figure 10. `safeic-dc` computes coverage and residual estimates from structure, SM mapping, and FIT contribution.**
-
-Suggested internal modules:
+These files answer:
 
 ```text
-safeic_dc/
-  cli.py
-  manifest.py
-  load_structure.py
-  load_sm_library.py
-  load_mapping.py
-  validate_mapping.py
-  endpoint_dc.py
-  cone_dc.py
-  startpoint_dc.py
-  fit_weighting.py
-  rollup.py
-  report.py
+Which session contains which data?
+Which artifact is derived from which upstream run?
+Which object IDs are stable across stages?
+Which evidence links must be preserved?
 ```
 
-Responsibilities:
+D06 must keep this traceability. Otherwise, the same endpoint may appear under different names across D04, D06, D07, and D08.
 
-| Module | Responsibility |
-|---|---|
-| `load_structure.py` | Load endpoints, startpoints, cones |
-| `load_sm_library.py` | Load safety mechanism definitions |
-| `load_mapping.py` | Load EP-to-SM map |
-| `validate_mapping.py` | Check missing endpoints, alarms, mechanisms, ranges |
-| `endpoint_dc.py` | Compute endpoint-level DC |
-| `cone_dc.py` | Compute cone-level DC |
-| `startpoint_dc.py` | Compute startpoint-level coverage |
-| `fit_weighting.py` | Apply BFR or instance FIT weights |
-| `rollup.py` | Generate part/sub-part/failure-mode roll-up |
-| `report.py` | Produce CSV, JSON, and Markdown reports |
+## 5. Core Concepts Introduced in D06
 
----
+### 5.1 Safety Mechanism
 
-## 18. D06 Directory Structure
+A **Safety Mechanism**, or SM, is a technical mechanism used to detect, control, correct, or mitigate faults.
 
-Suggested directory:
+Examples include:
 
 ```text
-D06_diagnostic_coverage/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    safety_mechanisms.yaml
-    ep_to_sm_map.csv
-    failure_modes.yaml
-    dc_policy.yaml
-
-  intermediate/
-    structure_graph.json
-    startpoints.csv
-    endpoints.csv
-    cones.csv
-    startpoint_usage.csv
-    base_fit_report.csv
-    instance_fit.csv
-
-  outputs/
-    endpoint_dc.csv
-    cone_dc.csv
-    startpoint_dc.csv
-    residual_fit.csv
-    dc_rollup_by_failure_mode.csv
-    dc_rollup_by_part.csv
-    dc_summary.md
-    dc_warnings.csv
+parity
+ECC
+duplication
+triplication
+lockstep comparison
+watchdog
+protocol checker
+range checker
+timeout checker
+memory scrubbing
+built-in self-test
 ```
 
-The key point is that D06 does not re-extract structure.
+A safety mechanism can be implemented in hardware, software, firmware, or a combination of them. In this series, D06 focuses on RTL and hardware-oriented safety mechanisms.
 
-It consumes D05 artifacts.
+### 5.2 What-if Safety Mechanism
 
----
+A **what-if safety mechanism** is a proposed mechanism that may not yet be inserted into the design.
 
-## 19. D06 Manifest
-
-Example `manifest.yaml`:
-
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D06_diagnostic_coverage
-  top_module: toy_counter
-
-inputs:
-  safety_mechanisms: inputs/safety_mechanisms.yaml
-  ep_to_sm_map: inputs/ep_to_sm_map.csv
-  failure_modes: inputs/failure_modes.yaml
-  dc_policy: inputs/dc_policy.yaml
-
-structure:
-  graph: intermediate/structure_graph.json
-  startpoints: intermediate/startpoints.csv
-  endpoints: intermediate/endpoints.csv
-  cones: intermediate/cones.csv
-  startpoint_usage: intermediate/startpoint_usage.csv
-
-fit:
-  base_fit_report: intermediate/base_fit_report.csv
-  instance_fit: intermediate/instance_fit.csv
-
-outputs:
-  endpoint_dc: outputs/endpoint_dc.csv
-  cone_dc: outputs/cone_dc.csv
-  startpoint_dc: outputs/startpoint_dc.csv
-  residual_fit: outputs/residual_fit.csv
-  summary: outputs/dc_summary.md
-```
-
-The manifest makes the DC run reproducible.
-
----
-
-## 20. D06 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load Structure Artifacts]
-    B --> C[Load SM Library]
-    C --> D[Load EP-to-SM Map]
-    D --> E[Load Failure Modes]
-    E --> F[Load FIT Contribution]
-    F --> G[Validate Inputs]
-    G --> H[Compute Endpoint DC]
-    G --> I[Compute Cone DC]
-    G --> J[Compute Startpoint DC]
-    H --> K[Estimate Residual FIT]
-    I --> K
-    J --> K
-    K --> L[Roll Up by Part and Failure Mode]
-    L --> M[Generate Reports]
-```
-
-**Figure 11. D06 execution flow: validate, compute coverage, estimate residual FIT, and roll up reports.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-dc \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D06_diagnostic_coverage
-echo "Running $DEMO"
-
-safeic-dc \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
+It is an exploration hypothesis:
 
 ```text
-outputs/endpoint_dc.csv
-outputs/cone_dc.csv
-outputs/startpoint_dc.csv
-outputs/residual_fit.csv
-outputs/dc_rollup_by_failure_mode.csv
-outputs/dc_rollup_by_part.csv
-outputs/dc_summary.md
-outputs/dc_warnings.csv
+Endpoint counter_reg[3] could be protected by endpoint parity.
+State machine control_state could be protected by a protocol checker.
+Memory status_ram could be protected by ECC.
+Critical cone feeding alarm_o could be duplicated.
 ```
 
----
+The word “what-if” is important. It means D06 is estimating the effect of the idea, not proving the final implementation.
 
-## 21. Example Safety Mechanism Library
+### 5.3 Diagnostic Coverage
 
-For the toy counter:
+**Diagnostic Coverage**, or DC, is the portion of relevant failures that are detected or controlled by a safety mechanism.
 
-```yaml
-mechanisms:
-  endpoint_parity:
-    description: Parity check on counter state.
-    type: endpoint
-    coverage_scope:
-      endpoint: 0.90
-      cone: 0.00
-      path: 0.00
-      alarm_path: 0.00
-    alarm_required: true
-    corrects: false
-    detects:
-      - single_bit_error
-
-  none:
-    description: No safety mechanism modeled.
-    type: none
-    coverage_scope:
-      endpoint: 0.00
-      cone: 0.00
-      path: 0.00
-      alarm_path: 0.00
-    alarm_required: false
-    corrects: false
-```
-
-Endpoint mapping:
-
-```csv
-endpoint,safety_mechanism,scope,dc_estimate,alarm,failure_mode,review_status
-toy_counter.count,endpoint_parity,endpoint,0.90,toy_counter.alarm,FM_DATA_CORRUPTION,draft
-toy_counter.count_parity,none,endpoint,0.00,,FM_DIAGNOSTIC_STATE_CORRUPTION,draft
-toy_counter.alarm,none,alarm_path,0.00,,FM_ALARM_NOT_ASSERTED,draft
-```
-
-This mapping intentionally exposes that:
+Conceptually:
 
 ```text
-the counter state is protected by parity
-the parity state itself is not protected
-the alarm path is not protected
+DC = failures detected or controlled by SM / total relevant failures
 ```
 
-That is the kind of insight D06 should produce.
-
----
-
-## 22. Example Output: `endpoint_dc.csv`
-
-```csv
-endpoint,failure_mode,safety_mechanism,scope,dc,alarm,status,comment
-toy_counter.count,FM_DATA_CORRUPTION,endpoint_parity,endpoint,0.90,toy_counter.alarm,PASS,endpoint parity mapped
-toy_counter.count_parity,FM_DIAGNOSTIC_STATE_CORRUPTION,none,endpoint,0.00,,WARN,no protection modeled
-toy_counter.alarm,FM_ALARM_NOT_ASSERTED,none,alarm_path,0.00,,WARN,alarm path unprotected
-```
-
-This report is more useful than saying:
+In a FIT-weighted context:
 
 ```text
-overall DC = 90%
+FIT-weighted DC = FIT contribution covered by SM / total relevant FIT contribution
 ```
 
-because it shows what is and is not covered.
-
----
-
-## 23. Example Output: `cone_dc.csv`
-
-```csv
-endpoint,cone_size,safety_mechanism,endpoint_dc,cone_dc,path_dc,alarm_path_dc,comment
-toy_counter.count,3,endpoint_parity,0.90,0.00,0.00,0.00,endpoint protected but cone not covered
-toy_counter.alarm,4,none,0.00,0.00,0.00,0.00,diagnostic path has no separate protection
-```
-
-This output highlights an important point:
-
-```text
-endpoint protection does not automatically imply cone protection
-```
-
-For a more advanced mechanism such as duplication, cone DC could be non-zero.
-
----
-
-## 24. Example Output: `residual_fit.csv`
-
-Assume instance FIT data:
-
-```csv
-endpoint,base_fit
-toy_counter.count,0.064
-toy_counter.count_parity,0.004
-toy_counter.alarm,0.010
-```
-
-Then residual output:
-
-```csv
-endpoint,failure_mode,base_fit,dc,residual_fit,comment
-toy_counter.count,FM_DATA_CORRUPTION,0.064,0.90,0.0064,protected by parity
-toy_counter.count_parity,FM_DIAGNOSTIC_STATE_CORRUPTION,0.004,0.00,0.0040,no protection modeled
-toy_counter.alarm,FM_ALARM_NOT_ASSERTED,0.010,0.00,0.0100,alarm path unprotected
-```
-
-The residual result shows where safety work should focus next.
-
----
-
-## 25. Roll-Up by Failure Mode
-
-DC should be summarized by failure mode.
-
-Example:
-
-```csv
-failure_mode,total_base_fit,covered_fit,residual_fit,weighted_dc
-FM_DATA_CORRUPTION,0.064,0.0576,0.0064,0.90
-FM_DIAGNOSTIC_STATE_CORRUPTION,0.004,0.0000,0.0040,0.00
-FM_ALARM_NOT_ASSERTED,0.010,0.0000,0.0100,0.00
-```
-
-Failure-mode roll-up is useful because safety review is usually concerned with functional consequences, not only signal names.
-
-```mermaid
-flowchart LR
-    A[Endpoint DC] --> B[Failure Mode Roll-up]
-    C[Residual FIT] --> B
-    B --> D[FMEDA Review]
-```
-
-**Figure 12. Failure-mode roll-up connects signal-level DC to safety review semantics.**
-
----
-
-## 26. Roll-Up by Part and Sub-part
-
-DC can also be summarized by part and sub-part.
-
-Example:
-
-```csv
-part,subpart,total_base_fit,residual_fit,weighted_dc,comment
-PART_COUNTER,SUBPART_COUNTER_STATE,0.064,0.0064,0.90,state protected by parity
-PART_COUNTER,SUBPART_COUNTER_DIAG,0.014,0.0140,0.00,diagnostic state and alarm path unprotected
-```
-
-This helps answer:
-
-```text
-Which part has the weakest coverage?
-Which sub-part dominates residual FIT?
-Which diagnostic block is itself unprotected?
-```
-
-This is especially important for FMEDA-style reporting.
-
----
-
-## 27. `dc_summary.md`
-
-A good summary report:
-
-```md
-# D06 Diagnostic Coverage Summary
-
-Project: automotive_safeic_practice
-Demo: D06_diagnostic_coverage
-Top: toy_counter
-
-## Overall Result
-
-Total base FIT: 0.078
-Total residual FIT: 0.0204
-Weighted DC: 0.738
-
-## Key Findings
-
-1. toy_counter.count is protected by endpoint_parity.
-2. toy_counter.count_parity has no protection modeled.
-3. toy_counter.alarm path has no protection modeled.
-4. Endpoint protection does not cover upstream cone logic.
-5. Alarm path coverage should be reviewed.
-
-## Warnings
-
-- Mechanism endpoint_parity requires alarm toy_counter.alarm.
-- Alarm toy_counter.alarm has no separate alarm-path protection.
-- Cone DC for toy_counter.count is 0.00 because endpoint_parity scope is endpoint-only.
-```
-
-The summary should be written for engineering review, not only machine parsing.
-
----
-
-## 28. Validation Rules
-
-`safeic-dc` should validate:
-
-```text
-all endpoints in ep_to_sm_map exist
-all safety mechanisms exist
-all failure modes exist
-all DC values are between 0 and 1
-all alarm signals exist if required
-all scopes are supported
-unmapped endpoints are reported
-unprotected endpoints are reported
-alarm paths are checked
-FIT data is available if fit_weighted mode is selected
-roll-up categories are valid
-```
-
-Example messages:
-
-```text
-[PASS] endpoint toy_counter.count found
-[PASS] safety mechanism endpoint_parity found
-[PASS] dc_estimate 0.90 is within range
-[WARN] endpoint toy_counter.alarm has no protection modeled
-[WARN] endpoint_parity requires alarm toy_counter.alarm, but alarm path protection is not modeled
-[ERROR] endpoint top.u_ctrl.hidden_state not found in structure graph
-[ERROR] dc_estimate 1.25 is out of range
-```
-
-A DC tool should never silently ignore unmapped endpoints.
-
----
-
-## 29. Common Mistakes
-
-### 29.1 Treating DC as a Mechanism Name Property
-
-Bad:
-
-```text
-ECC = 99% DC
-```
-
-Better:
-
-```text
-ECC on this memory array for this fault model under this assumption gives 99% estimated DC.
-```
-
-### 29.2 Ignoring Coverage Scope
-
-Endpoint protection does not imply cone protection.
-
-Path protection does not imply unrelated control protection.
-
-### 29.3 Ignoring Alarm Path
-
-Detection is incomplete if the alarm cannot be delivered or observed.
-
-### 29.4 Averaging Percentages Without Weights
-
-Simple arithmetic average can be misleading.
-
-FIT-weighted roll-up is usually more meaningful.
-
-### 29.5 Mixing Estimated and Measured Coverage
-
-Estimated DC comes from assumptions.
-
-Measured DC comes from fault injection evidence.
-
-They should be compared, not mixed.
-
-### 29.6 Hiding Unprotected Endpoints
-
-Unprotected endpoints are not embarrassing. They are engineering review items.
-
-They should be reported explicitly.
-
----
-
-## 30. Recommended Implementation Stages
-
-D06 can be implemented in stages.
-
-### Stage 1: Endpoint DC
-
-Compute endpoint-level DC from `ep_to_sm_map.csv`.
-
-Deliverables:
-
-```text
-endpoint_dc.csv
-dc_summary.md
-```
-
-### Stage 2: Cone DC
-
-Use D05 cone data to distinguish endpoint coverage from cone coverage.
-
-Deliverables:
-
-```text
-cone_dc.csv
-dc_warnings.csv
-```
-
-### Stage 3: FIT-Weighted Residual
-
-Use base FIT or instance FIT to compute residual FIT.
-
-Deliverables:
-
-```text
-residual_fit.csv
-```
-
-### Stage 4: Roll-Up
-
-Roll up by failure mode and part/sub-part.
-
-Deliverables:
-
-```text
-dc_rollup_by_failure_mode.csv
-dc_rollup_by_part.csv
-```
-
-### Stage 5: Compare with Measured Results
-
-Later, compare estimated DC with fault campaign measured DC.
-
-Deliverables:
-
-```text
-dc_estimated_vs_measured.csv
-```
-
-This staged implementation keeps D06 practical while preserving long-term expansion.
-
----
-
-## 31. How D06 Connects to Later Demos
-
-D06 produces coverage and residual FIT estimates.
-
-These outputs feed later stages:
-
-```mermaid
-flowchart LR
-    A[D06 Diagnostic Coverage] --> B[Fault List Prioritization]
-    A --> C[Safety Mechanism Improvement]
-    A --> D[FMEDA Roll-up]
-    A --> E[Fault Campaign Planning]
-    A --> F[Estimated vs Measured DC Comparison]
-```
-
-**Figure 13. D06 outputs guide fault list generation, FMEDA roll-up, and fault campaign planning.**
-
-The most important output is not one overall DC number.
-
-The most important output is:
-
-```text
-which structure is covered
-which structure is not covered
-which assumptions produced the result
-which residual FIT remains
-```
-
----
-
-## 32. Summary
-
-Diagnostic Coverage is not just a percentage.
-
-It is a structured claim about:
+DC is not a standalone number. It depends on:
 
 ```text
 fault model
-structural scope
-safety mechanism
+fault population
+structural boundary
+observation rule
+alarm definition
+FTTI requirement
+failure-mode classification
+FIT standard
+mission profile
+safety mechanism assumptions
+```
+
+### 5.4 Residual FIT
+
+**Residual FIT** is the failure-rate contribution remaining after diagnostic coverage is credited.
+
+A conceptual expression is:
+
+```text
+Residual FIT = Base FIT - Covered FIT
+```
+
+or:
+
+```text
+Residual FIT ≈ Base FIT × (1 - DC)
+```
+
+D06 should report residual FIT as a directional estimate, not as final signoff.
+
+### 5.5 Endpoint, Startpoint, and Cone
+
+D04 introduced these structural objects. D06 uses them to place candidate mechanisms.
+
+A practical interpretation:
+
+```text
 endpoint
-cone
-path
+    a structurally relevant observation or state boundary to protect
+
+startpoint
+    a source boundary from which fault effects may propagate
+
+logic cone
+    the combinational dependency region between startpoints and endpoints
+```
+
+A parity mechanism may protect the endpoint value. A duplication mechanism may protect more of the cone. A triplication mechanism may provide correction capability but at higher area cost.
+
+### 5.6 Alarm
+
+An **alarm** is a signal or event that indicates a safety mechanism has detected an abnormal condition.
+
+In early Safety Exploration, the physical alarm signal may not exist yet. The candidate map can use an abstract placeholder:
+
+```text
+alarm = TBD
+alarm = virtual_alarm_counter_parity
+alarm = NULL
+```
+
+This is acceptable in what-if analysis, but it must be resolved before fault campaign setup.
+
+### 5.7 Protocol Checker
+
+A **protocol checker** verifies that a state machine, transaction interface, or control flow obeys allowed behavior.
+
+For example, a simple bus protocol may require:
+
+```text
+request must remain stable until acknowledge
+response cannot occur before request
+error response must not be combined with valid data
+state machine must not transition from IDLE directly to ERROR_CLEAR without ERROR_DETECTED
+```
+
+A protocol checker is different from parity or ECC. Parity protects encoded values; a protocol checker protects legal temporal behavior.
+
+### 5.8 Safety Exploration Scenario
+
+A **scenario** is one exploration hypothesis.
+
+Example:
+
+```yaml
+scenario_id: exp_001
+fit_standard: iec_62380
+variant_id: iec62380_passenger_65c
+target_endpoint_group: high_fit_register_endpoints
+candidate_mechanism: endpoint_parity
+alarm_policy: virtual_alarm
+review_goal: improve permanent and transient DC with low area cost
+```
+
+A D06 demo should evaluate multiple scenarios and rank them.
+
+## 6. Safety Mechanism Families
+
+D06 should explain the mechanism families at a conceptual level.
+
+### 6.1 Endpoint Parity
+
+Endpoint parity protects endpoint state by adding a parity relation.
+
+Typical use:
+
+```text
+register arrays
+control state bits
+status fields
+small datapath registers
+```
+
+Strength:
+
+```text
+low area overhead
+simple alarm generation
+good for single-bit corruption detection
+```
+
+Limitation:
+
+```text
+may not protect the full fan-in cone
+may not correct the fault
+may be insufficient for multi-bit corruption
+```
+
+### 6.2 Endpoint ECC
+
+Endpoint ECC extends the parity idea by supporting stronger error detection and sometimes correction.
+
+Typical use:
+
+```text
+wider registers
+configuration state
+control tables
+critical status vectors
+```
+
+Strength:
+
+```text
+better coverage than simple parity for wider data
+possible correction depending on code
+```
+
+Limitation:
+
+```text
+more area and logic
+decoder/checker complexity
+timing impact
+```
+
+### 6.3 Memory ECC
+
+Memory ECC protects memory arrays or RAM-like structures.
+
+Typical use:
+
+```text
+SRAM
+register files
+FIFO storage
+lookup tables
+buffer memories
+```
+
+Strength:
+
+```text
+strong protection for storage-dominated FIT
+well understood failure model
+can support correction and scrubbing
+```
+
+Limitation:
+
+```text
+not enough for logic around the memory
+requires memory wrapper integration
+needs read/write timing consideration
+```
+
+### 6.4 Endpoint-Cone Duplication
+
+Endpoint-cone duplication protects the logic cone feeding the endpoint by duplicating logic and comparing results.
+
+Typical use:
+
+```text
+control cones
+safety-critical combinational logic
+data transformation logic
+```
+
+Strength:
+
+```text
+covers more than endpoint value
+detects faults in cone logic
+clear comparator alarm model
+```
+
+Limitation:
+
+```text
+higher area and power
+comparator and alarm path must be considered
+common-cause failures require review
+```
+
+### 6.5 Endpoint-Cone Startpoint Duplication
+
+This is a broader duplication strategy that considers startpoints as part of the protected boundary.
+
+Typical use:
+
+```text
+cones where startpoint corruption also matters
+logic with significant upstream influence
+multi-stage control paths
+```
+
+Strength:
+
+```text
+broader structural protection
+more complete cone-level reasoning
+```
+
+Limitation:
+
+```text
+higher implementation cost
+larger verification burden
+more complex mapping to failure modes
+```
+
+### 6.6 Triplication and Majority Voting
+
+Triplication creates three copies and uses a voter.
+
+Typical use:
+
+```text
+high-criticality control
+small safety islands
+fault-tolerant state machines
+```
+
+Strength:
+
+```text
+can correct certain faults
+may support fail-operational behavior
+```
+
+Limitation:
+
+```text
+large area and power overhead
+voter becomes safety-critical
+common-cause failure and physical independence must be reviewed
+```
+
+### 6.7 Protocol Checking
+
+Protocol checking verifies legal behavior.
+
+Typical use:
+
+```text
+FSM transitions
+bus handshakes
+control sequencing
+transaction ordering
+safety monitor state machines
+```
+
+Strength:
+
+```text
+captures semantic errors
+often cheaper than full duplication
+useful for control-dominated designs
+```
+
+Limitation:
+
+```text
+requires explicit protocol definition
+may miss data corruption unless combined with parity/ECC
+alarm timing must be designed carefully
+```
+
+## 7. The Candidate Selection Problem
+
+The hardest part of D06 is not running the exploration. The hardest part is choosing candidates.
+
+A poor candidate map can produce a large number of mechanisms with little metric improvement, or a small number of mechanisms that look good on paper but are impractical to implement.
+
+A good candidate selection policy combines:
+
+```text
+FIT contribution
+endpoint criticality
+cone size
+fanout impact
+protocol visibility
+memory vs logic classification
+current observability
+existing alarm potential
+implementation cost
+verification cost
+ASIL relevance
+FMEDA failure-mode mapping
+```
+
+A practical ranking score can be:
+
+```text
+candidate_score =
+    FIT_weight
+  × criticality_weight
+  × observability_weight
+  × mechanism_effectiveness
+  ÷ estimated_cost
+```
+
+This is not a standard formula. It is an engineering prioritization method.
+
+The important principle is:
+
+> Do not select safety mechanisms purely by endpoint count. Select them by risk contribution, functional criticality, and implementation feasibility.
+
+## 8. D06 Data Protocols
+
+Here, “protocol” means a data exchange contract between stages.
+
+### 8.1 Scenario Matrix Protocol
+
+D06 should define a scenario matrix.
+
+Example:
+
+```csv
+scenario_id,variant_id,fit_standard,target_group,candidate_mechanism,alarm_policy,review_goal
+EXP001,iec62380_passenger_65c,iec_62380,top_fit_endpoints,endpoint_parity,virtual_alarm,low_cost_detection
+EXP002,iec62380_passenger_65c,iec_62380,control_cones,endpoint_cone_duplication,virtual_alarm,cone_level_detection
+EXP003,sn29500_reference_65c,sn_29500,memory_like_storage,memory_ecc,virtual_alarm,storage_protection
+```
+
+The scenario matrix makes exploration reproducible.
+
+### 8.2 Candidate Safety Mechanism Map Protocol
+
+A candidate map should be explicit.
+
+Example:
+
+```csv
+scenario_id,object_type,object_name,candidate_mechanism,alarm_name,use_factor,notes
+EXP001,endpoint,toy_counter.count[0],endpoint_parity,virtual_alarm_count_parity,1.0,control-visible counter bit
+EXP001,endpoint,toy_counter.count[1],endpoint_parity,virtual_alarm_count_parity,1.0,control-visible counter bit
+EXP002,cone,toy_counter.count_cone,endpoint_cone_duplication,virtual_alarm_count_dup,1.0,cone-level protection
+```
+
+This file is not yet the final production mechanism map. It is a what-if exploration input.
+
+### 8.3 Metric Delta Protocol
+
+D06 should compare each scenario against a baseline.
+
+Example:
+
+```csv
+scenario_id,baseline_perm_fit,estimated_perm_dc,estimated_perm_residual_fit,baseline_tran_fit,estimated_tran_dc,estimated_tran_residual_fit
+EXP001,100.0,0.70,30.0,80.0,0.55,36.0
+EXP002,100.0,0.90,10.0,80.0,0.85,12.0
+```
+
+A review should focus on deltas:
+
+```text
+How much DC improved?
+How much residual FIT decreased?
+What mechanism produced the improvement?
+What cost is expected?
+Is the improvement concentrated in the right failure modes?
+```
+
+### 8.4 Decision Record Protocol
+
+D06 should not only output metrics. It should also output decisions.
+
+Example:
+
+```csv
+scenario_id,decision,reason,next_action
+EXP001,review,low cost but insufficient cone protection,combine with protocol checker
+EXP002,accept_for_D07,strong DC improvement with manageable cone size,formalize EP-to-SM mapping
+EXP003,defer,no memory macro in current design boundary,revisit after memory integration
+```
+
+This becomes engineering memory.
+
+## 9. What-if Evaluation Methodology
+
+A practical D06 flow can be organized as follows.
+
+### 9.1 Build Candidate Groups
+
+Group endpoints and cones before assigning mechanisms.
+
+Example groups:
+
+```text
+top_fit_endpoints
+protocol_visible_endpoints
+control_state_endpoints
+alarm_related_endpoints
+memory_related_objects
+large_fanout_cones
+unprotected_high_risk_cones
+```
+
+This reduces random manual selection.
+
+### 9.2 Assign Mechanism Families
+
+Use simple heuristics:
+
+```text
+state bits
+    endpoint parity or protocol checker
+
+wide control/status vectors
+    endpoint ECC or parity
+
+memory-like storage
+    memory ECC
+
+critical logic cones
+    endpoint-cone duplication
+
+high-criticality small controllers
+    triplication or lockstep-style checking
+
+transaction interfaces
+    protocol checker plus parity/ECC on payload
+```
+
+### 9.3 Estimate Coverage
+
+Run the exploration engine with the candidate map and baseline context.
+
+The command name should be stable at the project level:
+
+```text
+safeic_explore
+```
+
+A conceptual invocation may look like:
+
+```text
+safeic_explore
+  --input-package inputs/from_D01/
+  --baseline outputs/from_D02/bfr_summary.csv
+  --structural-model outputs/from_D04/structural_model.csv
+  --common-db outputs/from_D05/common_db_manifest.csv
+  --scenario-matrix inputs/exploration/scenario_matrix.csv
+  --output outputs/
+```
+
+This is a project-level orchestration interface. The local environment decides how it maps to the configured analysis engine.
+
+### 9.4 Compare Against Baseline
+
+For each scenario:
+
+```text
+baseline FIT
+estimated DC
+estimated residual FIT
+estimated SPFM trend
+estimated LFM trend
+candidate cost
+review decision
+```
+
+A useful comparison table is:
+
+```text
+baseline
+candidate parity
+candidate duplication
+candidate triplication
+candidate protocol checker
+hybrid candidate
+```
+
+### 9.5 Review Before Implementation
+
+A candidate should not be accepted solely because it has the highest estimated DC.
+
+Review criteria include:
+
+```text
+Does it protect the right failure mode?
+Can it generate an alarm within FTTI?
+Does it create unacceptable timing pressure?
+Does it add too much area or power?
+Is the comparator or checker itself protected?
+Does it require software reaction?
+Can it be verified with available tests?
+Does it map cleanly into FMEDA?
+```
+
+## 10. Diagnostic Coverage Is Not Just a Number
+
+A common mistake is to treat DC as a single percentage.
+
+A better view is:
+
+```text
+DC(object, fault_type, mechanism, observation_policy, timing_window)
+```
+
+This means DC depends on five dimensions:
+
+```text
+object
+    endpoint, startpoint, cone, memory, part, sub-part
+
+fault_type
+    permanent, transient, stuck-at, bit flip, delay-like effect
+
+mechanism
+    parity, ECC, duplication, protocol checker, triplication
+
+observation_policy
+    alarm, safe state, output equivalence, monitor state
+
+timing_window
+    immediate, within FTTI, within diagnostic test interval
+```
+
+D06 estimates coverage under assumptions. Those assumptions must be recorded.
+
+A good D06 report should state:
+
+```text
+This scenario estimates endpoint-level detection.
+This scenario estimates cone-level detection.
+This scenario assumes a virtual alarm.
+This scenario does not yet validate alarm timing.
+This scenario requires D09-D13 fault campaign evidence later.
+```
+
+## 11. Relationship to FMEDA
+
+FMEDA needs a connection between:
+
+```text
+part / sub-part
 failure mode
-alarm behavior
-coverage assumption
-validation status
+failure rate
+safety mechanism
+diagnostic coverage
+residual FIT
 ```
 
-The D06 demo:
+D06 begins to build that bridge.
+
+A candidate mechanism is not just a circuit idea. It should become an FMEDA candidate row.
+
+Example:
+
+```csv
+part,sub_part,failure_mode,base_fit,candidate_sm,estimated_dc,residual_fit,decision
+control_unit,state_register,state_bit_corruption,12.0,endpoint_parity,0.90,1.2,accept_for_mapping
+control_unit,next_state_logic,illegal_transition,8.0,protocol_checker,0.85,1.2,review
+```
+
+D15 will build the FMEDA data model in more detail. D06 prepares the candidate evidence.
+
+## 12. Relationship to Fault List Generation
+
+Safety Exploration can influence fault list generation.
+
+If a mechanism candidate protects a particular endpoint or cone, D08 should know:
 
 ```text
-D06_diagnostic_coverage
+which object was targeted
+which mechanism was assumed
+which fault type matters
+which alarm is expected
+which fault population should be generated
 ```
 
-introduces the generic tool:
+D06 does not need to run the fault campaign. But it should prepare handoff data for D08:
+
+```csv
+scenario_id,target_object,fault_scope,expected_alarm,priority
+EXP001,toy_counter.count[3],endpoint,virtual_alarm_count_parity,high
+EXP002,toy_counter.count_cone,cone,virtual_alarm_count_dup,high
+```
+
+This keeps fault list generation aligned with safety mechanism exploration.
+
+## 13. Relationship to Alarm and Observe Points
+
+D06 can use virtual alarms, but later stages cannot stop there.
+
+D10 will need concrete alarm and observe point definitions.
+
+D06 should classify alarm maturity:
 
 ```text
-safeic-dc
+virtual
+    proposed only, no physical signal yet
+
+candidate
+    RTL signal exists but not yet validated
+
+implemented
+    signal exists and is connected to a safety response
+
+validated
+    fault campaign has confirmed behavior under injection
 ```
 
-The tool consumes:
+The same applies to observe points:
 
 ```text
-D05 structural artifacts
-safety_mechanisms.yaml
-ep_to_sm_map.csv
-failure_modes.yaml
-dc_policy.yaml
-base_fit_report.csv
-instance_fit.csv
+critical_output
+safe_state
+error_status
+watchdog_reset
+interrupt_status
+system_response
 ```
 
-and generates:
+D06 should record what must be made concrete later.
+
+## 14. Permanent vs Transient Fault Exploration
+
+Safety mechanisms may behave differently for permanent and transient faults.
+
+### 14.1 Permanent Fault
+
+A permanent fault persists.
+
+Examples:
 
 ```text
-endpoint_dc.csv
-cone_dc.csv
-startpoint_dc.csv
-residual_fit.csv
-dc_rollup_by_failure_mode.csv
-dc_rollup_by_part.csv
-dc_summary.md
-dc_warnings.csv
+stuck-at fault
+permanent short
+permanent open
+aging-induced stuck behavior
 ```
 
-The central lesson is:
+A mechanism may detect it continuously or during periodic tests.
 
-> A DC value is meaningful only when its structural scope, safety mechanism, failure mode, alarm behavior, and residual FIT impact are explicit.
+### 14.2 Transient Fault
 
-This is the bridge from structural safety modeling to quantitative safety review.
+A transient fault is temporary.
 
----
-
-## 33. D06 Demo Checklist
-
-For `D06_diagnostic_coverage`, the expected deliverables are:
+Examples:
 
 ```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/safety_mechanisms.yaml
-[ ] inputs/ep_to_sm_map.csv
-[ ] inputs/failure_modes.yaml
-[ ] inputs/dc_policy.yaml
-
-[ ] intermediate/structure_graph.json
-[ ] intermediate/startpoints.csv
-[ ] intermediate/endpoints.csv
-[ ] intermediate/cones.csv
-[ ] intermediate/startpoint_usage.csv
-[ ] intermediate/base_fit_report.csv
-[ ] intermediate/instance_fit.csv
-
-[ ] outputs/endpoint_dc.csv
-[ ] outputs/cone_dc.csv
-[ ] outputs/startpoint_dc.csv
-[ ] outputs/residual_fit.csv
-[ ] outputs/dc_rollup_by_failure_mode.csv
-[ ] outputs/dc_rollup_by_part.csv
-[ ] outputs/dc_summary.md
-[ ] outputs/dc_warnings.csv
+single event upset
+temporary bit flip
+temporary logic glitch
+radiation-induced soft error
 ```
 
-A successful D06 run should answer:
+A mechanism must detect it within the relevant window, or the system must tolerate its effect.
+
+### 14.3 Why D06 Should Separate Them
+
+A mechanism that looks strong for endpoint storage may not cover combinational transient propagation well. A protocol checker may detect illegal state behavior but miss transient data corruption that does not violate the protocol.
+
+D06 should therefore report:
 
 ```text
-Which endpoints are protected?
-Which endpoints are unprotected?
-Which safety mechanisms are mapped?
-What structural scope does each mechanism cover?
-What is endpoint-level DC?
-What is cone-level DC?
-What residual FIT remains?
-Which failure modes have weak coverage?
-Which parts or sub-parts dominate residual risk?
-Which alarm paths are unprotected?
-Can the result guide fault list generation and FMEDA review?
+estimated permanent DC
+estimated transient DC
+estimated permanent residual FIT
+estimated transient residual FIT
 ```
+
+## 15. Use Factor and Partial Coverage
+
+Some mechanisms do not protect all behavior equally.
+
+A practical example:
+
+```text
+A data path has parity for payload traffic,
+but control register writes are only partly protected.
+```
+
+This is where a use factor or weighting factor becomes useful.
+
+Conceptually:
+
+```text
+Effective transient DC = min(sum(use_factor_i × dc_i), max_credit)
+```
+
+The exact calculation depends on the configured methodology and coverage definition file, but the engineering idea is simple:
+
+```text
+not every mechanism is active for every usage mode;
+not every coverage claim applies to all traffic;
+partial coverage must be represented explicitly.
+```
+
+D06 should not hide partial coverage.
+
+## 16. Cost Model for Exploration
+
+A safety mechanism is not free.
+
+D06 should attach a simple cost model:
+
+```csv
+mechanism_family,area_cost,power_cost,timing_cost,verification_cost,software_dependency
+endpoint_parity,low,low,low,medium,possible
+endpoint_ecc,medium,medium,medium,medium,possible
+memory_ecc,medium,medium,medium,high,possible
+cone_duplication,high,high,medium_to_high,high,low
+triplication,very_high,very_high,high,very_high,low
+protocol_checker,low_to_medium,low,medium,high,possible
+```
+
+This does not replace synthesis or implementation data. It gives early review structure.
+
+A candidate with slightly lower estimated DC may be better if it has much lower timing risk and clearer verification closure.
+
+## 17. D06 Demo Architecture
+
+The D06 demo should be organized as an evidence transformation pipeline.
+
+```text
+D06_safety_exploration_what_if_sm_dc_estimation/
+├── README.md
+├── manifest.yaml
+├── inputs/
+│   ├── from_D02/
+│   ├── from_D03/
+│   ├── from_D04/
+│   ├── from_D05/
+│   └── exploration/
+│       ├── scenario_matrix.csv
+│       ├── candidate_sm_map.csv
+│       ├── mechanism_cost_model.csv
+│       └── review_policy.yaml
+├── scripts/
+│   ├── run_demo.csh
+│   └── run_demo.sh
+├── tools/
+│   ├── build_candidate_groups.py
+│   ├── generate_exploration_inputs.py
+│   ├── collect_exploration_metrics.py
+│   ├── rank_scenarios.py
+│   └── build_d07_d08_handoff.py
+├── outputs/
+│   ├── candidate_endpoint_groups.csv
+│   ├── candidate_cone_groups.csv
+│   ├── exploration_scenario_manifest.csv
+│   ├── estimated_dc_summary.csv
+│   ├── residual_fit_estimate.csv
+│   ├── scenario_ranking.csv
+│   ├── safety_mechanism_review_matrix.csv
+│   ├── d06_handoff_to_d07.csv
+│   ├── d06_handoff_to_d08.csv
+│   ├── d06_handoff_to_d15.csv
+│   ├── d06_quality_gate.csv
+│   └── demo_summary.md
+└── logs/
+```
+
+The demo should not require private paths in source files. Local execution should map the project-level orchestration to the installed safety analysis engine.
+
+## 18. Example Scenario Design
+
+Suppose D04 found these structural objects:
+
+```text
+toy_counter.count[0]
+toy_counter.count[1]
+toy_counter.count[2]
+toy_counter.count[3]
+toy_counter.alarm
+toy_counter.count_cone
+```
+
+D06 may create scenarios:
+
+```csv
+scenario_id,target_group,candidate_mechanism,description
+EXP001,count_state_bits,endpoint_parity,protect counter state bits using parity-style detection
+EXP002,count_cone,endpoint_cone_duplication,duplicate the cone feeding the count state
+EXP003,alarm_output,protocol_checker,check legal alarm behavior against counter state
+EXP004,count_state_bits,triplication,high-cost correction-oriented candidate
+```
+
+Then D06 ranks them:
+
+```csv
+scenario_id,estimated_dc_gain,cost_class,review_decision
+EXP001,medium,low,accept_for_D07_seed
+EXP002,high,high,review_for_timing_and_area
+EXP003,medium,medium,accept_if_protocol_rule_is_defined
+EXP004,very_high,very_high,defer_for_small_high_criticality_blocks
+```
+
+These are demonstration numbers and categories, not real signoff results.
+
+## 19. Quality Gates
+
+D06 should have quality gates.
+
+A minimal quality gate set:
+
+```text
+[PASS] D05 handoff exists
+[PASS] D04 endpoint inventory exists
+[PASS] D04 cone map exists
+[PASS] D02 baseline FIT summary exists
+[PASS] scenario matrix exists
+[PASS] candidate SM map exists
+[PASS] every scenario has a target group
+[PASS] every candidate mechanism has a cost model
+[PASS] every estimated metric links to a baseline run
+[PASS] every accepted scenario has a handoff entry
+```
+
+Warning-level gates:
+
+```text
+[WARN] scenario uses virtual alarm
+[WARN] scenario has high cost class
+[WARN] scenario improves transient DC but not permanent DC
+[WARN] scenario has no FMEDA failure-mode placeholder
+```
+
+Failure-level gates:
+
+```text
+[FAIL] missing baseline FIT
+[FAIL] missing structural endpoint object
+[FAIL] unsupported mechanism family
+[FAIL] scenario cannot be traced to a common evidence session
+[FAIL] accepted scenario has no D07 handoff
+```
+
+## 20. Common Mistakes
+
+### 20.1 Treating Safety Exploration as Signoff
+
+Safety Exploration estimates. Fault campaigns validate. FMEDA integrates. Final metrics close the loop.
+
+### 20.2 Selecting Mechanisms by Count Instead of Risk
+
+Protecting many low-risk endpoints may look impressive but may not reduce residual FIT meaningfully.
+
+### 20.3 Ignoring Alarm Realism
+
+A virtual alarm is useful in D06. But by D10 and D11, alarm and observe point definitions must be concrete.
+
+### 20.4 Mixing FIT Standards
+
+Do not mix exploration metrics from different FIT standards or mission profiles without explicit labeling.
+
+### 20.5 Hiding Cost
+
+A high-coverage mechanism with unacceptable PPA cost may not be the best engineering choice.
+
+### 20.6 Forgetting Latent Faults
+
+A safety mechanism itself can fail. D06 can note latent-mechanism concerns, even if final LFM analysis is later.
+
+### 20.7 Not Preserving Object Identity
+
+Endpoint names, DCE IDs, scenario IDs, and session IDs must remain traceable.
+
+## 21. D06 Outputs
+
+A strong D06 demo should produce:
+
+```text
+candidate_endpoint_groups.csv
+candidate_cone_groups.csv
+exploration_scenario_manifest.csv
+candidate_sm_map.csv
+estimated_dc_summary.csv
+residual_fit_estimate.csv
+scenario_ranking.csv
+safety_mechanism_review_matrix.csv
+alarm_maturity_matrix.csv
+d06_handoff_to_d07.csv
+d06_handoff_to_d08.csv
+d06_handoff_to_d15.csv
+d06_quality_gate.csv
+evidence_index.csv
+demo_summary.md
+```
+
+These outputs answer:
+
+```text
+Which safety mechanism candidates were considered?
+Which endpoint or cone does each candidate protect?
+What estimated DC improvement was observed?
+What residual FIT trend remains?
+What is the expected cost?
+Which candidates are accepted, reviewed, deferred, or rejected?
+What should D07 formalize?
+What should D08 use for fault-list generation?
+What should D15 use for FMEDA data modeling?
+```
+
+## 22. D06 Handoff to D07
+
+D07 will focus on mapping failure modes to safety mechanisms and endpoints.
+
+D06 should hand off accepted or review-worthy candidates:
+
+```csv
+scenario_id,target_object,candidate_mechanism,estimated_dc,decision,d07_action
+EXP001,toy_counter.count[3],endpoint_parity,0.90,accept,create_failure_mode_to_sm_mapping
+EXP002,toy_counter.count_cone,endpoint_cone_duplication,0.95,review,define_cone_failure_mode
+EXP003,toy_counter.alarm,protocol_checker,0.85,accept,define_protocol_failure_mode
+```
+
+D07 turns these candidates into a more formal safety mechanism map.
+
+## 23. D06 Handoff to D08
+
+D08 will focus on fault list generation.
+
+D06 should hand off fault-list priorities:
+
+```csv
+scenario_id,target_object,fault_scope,fault_type_priority,expected_alarm
+EXP001,toy_counter.count[3],endpoint,permanent_and_transient,virtual_alarm_count_parity
+EXP002,toy_counter.count_cone,cone,permanent,virtual_alarm_count_dup
+EXP003,toy_counter.alarm,protocol_endpoint,transient,virtual_alarm_protocol
+```
+
+D08 can then generate fault populations aligned with the exploration intent.
+
+## 24. D06 Handoff to D15
+
+D15 will focus on FMEDA data modeling.
+
+D06 should hand off candidate FMEDA rows:
+
+```csv
+part,sub_part,failure_mode,candidate_sm,estimated_dc,residual_fit_class,decision
+control_block,counter_state,state_bit_corruption,endpoint_parity,high,low,accept
+control_block,count_logic,wrong_next_count,endpoint_cone_duplication,high,low,review
+control_block,alarm_logic,missed_alarm,protocol_checker,medium,medium,review
+```
+
+This keeps FMEDA connected to structural evidence rather than manual spreadsheet guesswork.
+
+## 25. Summary
+
+D06 is the bridge between structural evidence and safety mechanism decisions.
+
+It takes:
+
+```text
+Base FIT from D02
+FIT-standard context from D03
+endpoint / startpoint / cone / DCE evidence from D04
+common database traceability from D05
+```
+
+and turns them into:
+
+```text
+candidate safety mechanism scenarios
+estimated diagnostic coverage
+residual FIT trends
+cost and complexity review
+decision records
+handoff to D07, D08, and D15
+```
+
+The central principle is:
+
+> Safety Exploration is not final proof. It is disciplined engineering search.
+
+A mature Safe-IC workflow does not randomly insert safety logic and hope for metric closure. It first asks structured what-if questions, records assumptions, compares candidate mechanisms, ranks trade-offs, and preserves traceability into later fault injection and FMEDA stages.
+
+That is the role of D06.
