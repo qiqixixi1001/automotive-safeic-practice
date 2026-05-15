@@ -1,1553 +1,1363 @@
-# [Automotive Safe-IC Practice 09] VCD Safety Context: Turning Waveforms into Fault Injection Evidence
+# Automotive Safe-IC Practice 09: Simulation Safety Context — VCD, Good Machine, FTTI, and Observe Points
 
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D09_vcd_safety_context  
-**Tags**: Automotive Chip, Functional Safety, VCD, Waveform, Fault Injection, Fault Campaign, Golden Simulation, Alarm, Observe Point, Injection Window, Diagnostic Coverage
-
----
-
-## 1. Why This Article Matters
-
-In the previous article, we generated a traceable fault list.
-
-The fault list answered:
-
-```text
-which fault to inject
-where to inject it
-which endpoint it targets
-which failure mode it relates to
-which alarm is expected
-which observe points should be checked
-why this fault is included
-```
-
-However, a fault list alone is still not enough.
-
-Fault injection needs a meaningful simulation context.
-
-A fault injected during reset may be overwritten.  
-A bus fault injected when no transaction is active may not propagate.  
-A memory fault injected into a location that is never read may appear safe.  
-An alarm signal that is not dumped in the waveform may make a detected fault look unresolved.
-
-Therefore, before executing a fault campaign, we need to extract a **VCD Safety Context**.
-
-The ninth demo in this repository is:
-
-```text
-D09_vcd_safety_context
-```
-
-The generic tool introduced in this article is:
-
-```text
-safeic-vcdctx
-```
-
-The purpose of `safeic-vcdctx` is to transform a golden simulation waveform into structured fault-campaign context:
-
-```text
-clock and reset behavior
-active windows
-signal presence
-signal activity
-golden values
-alarm baseline
-observe point availability
-fault injection windows
-transaction windows
-missing signal report
-context summary
-```
-
-The central idea is:
-
-> In functional safety fault injection, a VCD is not just a waveform file. It is the golden behavioral context that makes fault timing, propagation, detection, and classification meaningful.
+Author: Darren H. Chen  
+Direction: Automotive chip functional safety analysis and fault-injection verification  
+Demo: D09_simulation_safety_context_vcd_good_machine_ftti_observe_point  
+Tags: Functional Safety, ISO 26262, Safe-IC, Fault Injection, VCD, Good Machine, FTTI, Observe Point, Fault Campaign, Safety Verification
 
 ---
 
-## 2. Why VCD Context Comes After Fault List Generation
+## 1. From Fault List to Runtime Evidence
 
-D08 generated the campaign targets.
-
-D09 asks whether the campaign can be executed and interpreted under a real simulation context.
-
-```mermaid
-flowchart LR
-    A[D08 Fault List] --> B[D09 VCD Safety Context]
-    B --> C[Injection Timing]
-    B --> D[Alarm Availability]
-    B --> E[Observe Point Availability]
-    B --> F[Golden Behavior]
-    C --> G[D10 Fault Campaign]
-    D --> G
-    E --> G
-    F --> G
-```
-
-**Figure 1. VCD safety context converts a fault list into campaign-ready injection and observation data.**
-
-A fault list may say:
+The previous step, D08, converted structural safety analysis results and safety mechanism mapping decisions into a campaign-oriented fault list. That list answers an important question:
 
 ```text
-Inject transient_flip on toy_counter.count[0].
-Expected alarm is toy_counter.alarm.
-Observe toy_counter.count and toy_counter.alarm.
+Which faults should be injected?
 ```
 
-But the VCD context must answer:
+However, a fault list alone does not define a fault campaign.
+
+A fault becomes meaningful only when it is injected into a known execution context. The same stuck-at fault can be irrelevant in one simulation window, dangerous in another, detected in a third, and unresolved in a fourth. The difference is not the fault object itself. The difference is the runtime situation around that fault.
+
+D09 is about that runtime situation.
+
+This article focuses on four concepts:
 
 ```text
-Is toy_counter.count[0] present in the waveform?
-Is toy_counter.alarm present in the waveform?
-When is reset released?
-When is toy_counter.count active?
-Does toy_counter.alarm ever toggle in the golden run?
-What is the legal injection window?
-What golden values should be used for comparison?
+VCD
+Good Machine
+FTTI
+Observe Point
 ```
 
-Without these answers, fault campaign classification becomes unreliable.
+Together, they form the simulation safety context. They connect the static fault list from D08 to the fault campaign setup in D11 and the fault injection execution in D12.
+
+A simple mental model is:
+
+```text
+D08: fault population
+D09: golden simulation context
+D10: alarm and observation boundary
+D11: fault campaign input package
+D12: fault injection execution
+D13: outcome classification
+```
+
+D09 does not prove final diagnostic coverage by itself. It defines the runtime reference that later fault injection will use to judge whether a fault is detected, safe, unsafe, or unresolved.
 
 ---
 
-## 3. VCD Is More Than a Waveform
+## 2. The Role of D09 in the 20-Step Flow
 
-A Value Change Dump file records signal value changes over time.
-
-In normal debug, engineers use it to inspect waveforms.
-
-In fault injection, it becomes a structured reference.
-
-It defines:
+In the core flow, D09 is:
 
 ```text
-golden behavior
-baseline signal values
-active operation windows
-clock cycles
-reset release
-expected alarm state
-observable signal set
-missing signal set
-candidate injection timing
+Simulation Safety Context: VCD, Good Machine, FTTI, observe point
 ```
 
-```mermaid
-flowchart TD
-    A[VCD File] --> B[Clock / Reset Context]
-    A --> C[Signal Activity]
-    A --> D[Golden Values]
-    A --> E[Alarm Baseline]
-    A --> F[Observe Point Availability]
-    B --> G[VCD Safety Context]
-    C --> G
-    D --> G
-    E --> G
-    F --> G
-```
+It follows D08 and precedes D10 / D11.
 
-**Figure 2. A VCD file becomes safety context when clock, reset, activity, golden values, alarms, and observe points are extracted.**
-
-The VCD context is the baseline used later to decide whether a faulted run is:
+The flow dependency is deliberate:
 
 ```text
-detected
-safe
-unsafe
-unresolved
+D07 Safety Mechanism Map
+  -> D08 Fault List Generation
+    -> D09 Simulation Safety Context
+      -> D10 Alarm List and Observe Point Boundary
+        -> D11 Fault Campaign Setup
 ```
+
+D08 says which faults should be considered. D09 says what normal execution looks like. D10 says how the campaign will observe detection or unsafe behavior. D11 combines these into one executable input package.
+
+Without D09, a fault campaign becomes a collection of injections without a reliable reference. The campaign may still run, but the classification results will be weak because there is no clearly defined golden context, no timing window, and no stable mapping between testbench hierarchy and design hierarchy.
 
 ---
 
-## 4. Golden Simulation Context
+## 3. Safety Verification Needs a Golden Runtime Context
 
-Fault injection is usually compared against a golden simulation.
+Traditional functional verification often answers:
 
-The golden simulation is the non-fault reference run.
+```text
+Did the design pass the test?
+```
+
+Functional safety verification asks a different question:
+
+```text
+If a hardware fault occurs during this test, does the system detect, tolerate, mask, or expose it?
+```
+
+To answer that, the verification environment needs a reference run.
+
+The reference run is the no-fault execution of the same design under the same stimulus. This is often called the golden run or good-machine simulation.
+
+A later fault campaign compares each faulty run against this reference context:
+
+```text
+good machine state
+faulty machine state
+alarm behavior
+observe point behavior
+simulation time
+clock cycle
+FTTI window
+```
+
+If the faulty machine diverges but an alarm fires in time, the fault may be classified as detected. If the faulty machine diverges and no alarm fires, it may be unsafe. If the fault does not affect the relevant machine state, it may be safe. If the tool cannot decide because of missing data, black-box propagation, unknown values, or insufficient stimulus, the result may become unresolved.
+
+D09 builds the foundation for that comparison.
+
+---
+
+## 4. What Is VCD?
+
+VCD stands for **Value Change Dump**.
+
+It is a waveform file format that records signal value changes over simulation time. A VCD file does not normally store every signal at every time point. Instead, it records changes:
+
+```text
+time 0: reset = 0, count = 0
+time 10: clk toggles
+time 20: reset = 1
+time 30: enable = 1
+time 40: count changes
+```
+
+This event-based representation is compact enough for many simulation flows and simple enough to be produced by many simulators.
+
+In a safety verification context, VCD is not just a waveform for human debugging. It becomes a machine-readable record of the golden execution. A fault campaign engine can use it to understand:
+
+```text
+which signals toggled
+when the design was out of reset
+which endpoints had known values
+where the DUT is located inside the testbench
+what normal state evolution looked like
+which signals are available for comparison or forcing
+```
+
+That is why D09 treats VCD as a safety input artifact rather than a casual debug file.
+
+---
+
+## 5. VCD as a Data-Exchange Protocol
+
+In this series, the word protocol often means a data contract between flow stages.
+
+VCD is one such contract.
+
+It connects functional simulation with fault injection:
+
+```text
+functional simulation
+  -> VCD
+    -> simulation safety context
+      -> fault injection engine
+```
+
+The contract includes more than the `.vcd` file itself. It also includes:
+
+```text
+DUT hierarchy path
+top module name
+clock definition
+reset behavior
+timescale
+simulation start time
+simulation end time
+signal naming conventions
+which signals are dumped
+which signals are required
+which signals are optional
+```
+
+If any part of this contract is unstable, later fault injection becomes fragile.
+
+For example, if a testbench dumps:
+
+```text
+tb.u_dut.count[7:0]
+```
+
+but the fault campaign configuration expects:
+
+```text
+tb_top.dut_i.count[7:0]
+```
+
+then the waveform exists, but the context is not usable.
+
+D09 therefore treats VCD preparation as a controlled interface, not merely a simulator option.
+
+---
+
+## 6. Good Machine Simulation
+
+Good Machine Simulation is the fault-free reference execution.
 
 It answers:
 
 ```text
-What should the design do without injected faults?
+What should the design do when no fault is injected?
 ```
 
-For each observe point, the golden context can provide:
+The good machine context is used later as a comparison baseline. It defines the expected state trajectory of endpoints, alarms, observe points, and key internal nodes.
+
+A good machine context should be reproducible:
 
 ```text
-initial value
-value changes
-cycle-by-cycle values
-final value
-active-cycle values
-stable windows
-unexpected X/Z behavior
+same RTL or netlist boundary
+same testbench
+same reset sequence
+same stimulus
+same compile options
+same clock definition
+same dumped signals
+same simulation time window
+same DUT hierarchy
 ```
 
-Example:
+If two good-machine runs produce different VCD content for the same intended test, the fault campaign evidence becomes questionable. The issue may be caused by random stimulus without a recorded seed, uninitialized memory, race conditions, X-propagation, or simulator configuration differences.
 
-```json
-{
-  "signal": "toy_counter.count",
-  "present": true,
-  "toggles": 17,
-  "first_value": "0",
-  "last_value": "17",
-  "has_unknown": false,
-  "active_window_values": {
-    "30": "1",
-    "40": "2",
-    "50": "3"
-  }
-}
-```
-
-Golden context is essential because classification requires comparison:
+D09 should therefore record a simulation manifest:
 
 ```text
-golden behavior vs faulted behavior
-```
-
-A faulted run cannot be classified safely if the golden behavior is unknown or incomplete.
-
----
-
-## 5. Clock Context
-
-A digital fault campaign usually needs cycle information.
-
-The VCD context should identify:
-
-```text
-clock signal
+test name
+simulator wrapper
+random seed
+DUT path
+VCD path
+start time
+end time
 clock period
-clock edges
-cycle count
-first active edge
-last active edge
-cycle-to-time mapping
-```
-
-Example:
-
-```yaml
-clock:
-  name: clk
-  period: 10ns
-  edge: rising
-  first_edge: 5
-  last_edge: 245
-  cycle_count: 25
-```
-
-Why does this matter?
-
-Because many faults are cycle-based:
-
-```text
-flip this register for one cycle
-inject after reset release
-inject during transaction
-check alarm within N cycles
-observe response after M cycles
-```
-
-```mermaid
-sequenceDiagram
-    participant C as Clock
-    participant R as Reset
-    participant F as Fault Injection
-    participant A as Alarm Check
-    C->>R: cycle 0
-    R->>C: reset released
-    C->>F: choose active cycle
-    F->>A: check detection window
-```
-
-**Figure 3. Clock context connects simulation time to cycle-based fault injection and alarm checking.**
-
-Without a clock context, injection timing is just a timestamp, not an operational event.
-
----
-
-## 6. Reset Context
-
-Reset behavior is one of the most important parts of VCD context.
-
-The tool should identify:
-
-```text
-reset signal
-reset polarity
-reset assertion window
 reset release time
-first stable cycle after reset
-whether reset is reasserted
-whether observe points are valid after reset
+dumped signal groups
+expected output artifacts
 ```
 
-Example:
-
-```yaml
-reset:
-  name: rst_n
-  active: low
-  asserted_intervals:
-    - [0, 20]
-  release_time: 20
-  first_active_time: 30
-```
-
-Fault injection during reset can be misleading.
-
-A transient fault injected before reset release may be cleared and classified as safe even though it did not test the intended behavior.
-
-Therefore, D09 should create default injection windows after reset release.
-
-```mermaid
-flowchart LR
-    A[Reset Asserted] --> B[Reset Released]
-    B --> C[Stabilization Window]
-    C --> D[Active Injection Window]
-```
-
-**Figure 4. Fault injection should usually occur after reset release and stabilization.**
-
-A good report should warn if the selected injection window overlaps reset.
+This is not bureaucracy. It is what makes the safety evidence reviewable.
 
 ---
 
-## 7. Active Windows
+## 7. Good Machine Is Not the Same as Passing Functional Simulation
 
-Not all simulation time is equally useful.
+A functional test can pass while still being a poor good-machine source.
 
-An active window is a time interval where the design is performing meaningful work.
-
-Examples:
+For example, a test might check only one final output:
 
 ```text
-counter enabled
-bus transaction active
-memory read active
-FSM in operational state
-watchdog counting
-safety monitor enabled
-diagnostic check active
+PASS if final count == 8'h12
 ```
 
-A simple active window can be manually configured:
-
-```yaml
-active_windows:
-  - name: counter_enabled
-    start: 30
-    end: 200
-    condition: toy_counter.en == 1
-```
-
-The VCD context extractor can also infer activity from signal toggles.
-
-Example output:
-
-```csv
-window_name,start,end,reason
-post_reset_active,30,200,after reset release
-counter_enabled,30,200,en high and count toggles
-alarm_observation,30,220,include detection latency margin
-```
-
-```mermaid
-flowchart TD
-    A[VCD Activity] --> B[Reset Release]
-    A --> C[Enable Signal]
-    A --> D[Signal Toggles]
-    B --> E[Active Window]
-    C --> E
-    D --> E
-```
-
-**Figure 5. Active windows can be derived from reset release, enables, and signal activity.**
-
-Fault injection should usually be sampled inside active windows.
-
----
-
-## 8. Signal Presence Check
-
-A fault campaign depends on specific signals.
-
-From the fault list, D09 can derive:
+That is enough for a simple functional regression, but it may be insufficient for fault injection because the fault engine may need many intermediate signals:
 
 ```text
-fault nodes
-expected alarms
+state registers
+endpoint values
+alarm candidates
 observe points
-clock signal
-reset signal
-safety mechanism signals
-diagnostic status signals
+valid / ready handshakes
+reset status
+clock activity
+protocol control signals
 ```
 
-`safeic-vcdctx` should check whether these signals exist in the VCD.
+A VCD that dumps only the final output may not give enough information to classify a fault. The good-machine context must support fault outcome classification, not just functional pass/fail.
 
-Example output:
+D09 therefore asks:
 
-```csv
-signal,role,present,status,comment
-clk,clock,true,PASS,
-rst_n,reset,true,PASS,
-toy_counter.count,observe_point,true,PASS,
-toy_counter.alarm,alarm,true,PASS,
-toy_counter.hidden_state,observe_point,false,WARN,missing from VCD
+```text
+Does the VCD contain the signals needed for safety verification?
 ```
 
-A missing signal does not always block the campaign, but it affects classification.
+not merely:
+
+```text
+Did the functional test pass?
+```
+
+---
+
+## 8. The Relationship Between VCD and Fault Outcome
+
+Fault outcome classification depends on comparing faulty behavior against the golden context.
+
+A simplified classification model is:
+
+```text
+no meaningful divergence
+  -> safe
+
+divergence reaches alarm within FTTI
+  -> detected
+
+divergence affects safety-relevant observe point and no alarm fires
+  -> unsafe
+
+divergence cannot be fully classified due to missing data, black boxes, X values, or insufficient stimulus
+  -> unresolved
+```
+
+The VCD is used as the reference for this comparison.
+
+This means a poor VCD can increase unresolved results even if the design has real safety mechanisms. Missing signals, missing reset context, short simulation windows, and inconsistent hierarchy paths can all cause a campaign to produce low-quality evidence.
+
+The problem is not always the safety mechanism. Sometimes it is the simulation context.
+
+D09 exists to reduce that risk before D12 and D13.
+
+---
+
+## 9. FTTI: Fault Tolerant Time Interval
+
+FTTI means **Fault Tolerant Time Interval**.
+
+It is the time interval within which a fault must be detected, controlled, or otherwise prevented from violating a safety goal.
+
+In a fault campaign, FTTI becomes an observation window.
+
+A conceptual timeline:
+
+```text
+t0: fault injected
+t1: fault propagates
+t2: alarm should fire or system should enter safe behavior
+t3: FTTI expires
+```
+
+If the system detects the fault before `t3`, the fault may receive diagnostic credit. If detection occurs after the FTTI window, the response may be too late for the safety goal.
+
+In digital simulation, FTTI may be represented in:
+
+```text
+clock cycles
+simulation time units
+testbench phases
+protocol transactions
+```
 
 For example:
 
 ```text
-missing expected alarm
-  -> detected classification may become impossible
-
-missing observe point
-  -> safe vs unsafe classification may become unresolved
-
-missing fault node
-  -> injection may be impossible or require name mapping
-```
-
-The tool should not silently ignore missing signals.
-
----
-
-## 9. Signal Naming and Hierarchy Problems
-
-VCD signal names may not match the names used in the fault list.
-
-Reasons include:
-
-```text
-RTL hierarchy changes
-testbench wrapping
-escaped identifiers
-bus naming differences
-flattened hierarchy
-synthesis renaming
-generate block naming
-simulator naming conventions
-```
-
-Examples:
-
-```text
-fault list:
-  toy_counter.count[0]
-
-VCD:
-  tb.dut.count[0]
+FTTI = 64 clock cycles
 ```
 
 or:
 
 ```text
-fault list:
-  top.u_ctrl.state_reg[2]
-
-VCD:
-  testbench.dut.u_ctrl.state_reg[2]
+FTTI = 500 ns
 ```
 
-A VCD context tool should support name mapping:
-
-```yaml
-name_mapping:
-  - fault_prefix: toy_counter
-    vcd_prefix: tb.dut
-
-  - fault_name: toy_counter.count
-    vcd_name: tb.dut.count
-```
-
-Output:
-
-```csv
-fault_name,vcd_name,status
-toy_counter.count,tb.dut.count,MAPPED
-toy_counter.alarm,tb.dut.alarm,MAPPED
-toy_counter.hidden_state,,MISSING
-```
-
-Name mapping is not a cosmetic issue. It determines whether fault injection and observation can be connected to the golden context.
+The exact interpretation must be explicit. D09 should record both the engineering meaning and the file-level representation.
 
 ---
 
-## 10. Signal Activity Analysis
+## 10. FTTI Is a Safety Requirement, Not a Simulator Timeout
 
-Signal presence is not enough.
+It is easy to confuse FTTI with a simulation runtime limit.
 
-A signal may exist in the VCD but never toggle.
+They are different.
 
-Activity analysis should compute:
+A simulation runtime limit answers:
 
 ```text
-toggle count
-first toggle time
-last toggle time
-active ratio
-unknown value count
-stable intervals
-value distribution
+How long should the simulator run?
 ```
 
-Example:
+FTTI answers:
 
-```csv
-signal,toggles,first_toggle,last_toggle,has_x,activity_status
-toy_counter.count,17,30,190,false,ACTIVE
-toy_counter.alarm,0,,false,STABLE_ZERO
-toy_counter.en,1,30,30,false,ENABLE_STATIC_HIGH
+```text
+How quickly must the system react to a fault?
 ```
 
-Signal activity helps interpret results.
+A campaign may simulate longer than FTTI for debugging or classification reasons, but diagnostic credit depends on whether the response happens inside the fault tolerant interval.
 
 For example:
 
 ```text
-An alarm that is stable zero in the golden run is normal.
-A counter that never toggles may indicate missing stimulus.
-An observe point with X values may make classification unreliable.
-A bus valid signal that is never high means bus faults cannot be meaningfully validated.
+simulation duration = 10,000 cycles
+FTTI = 128 cycles
+fault injected at cycle 1,000
+alarm fires at cycle 1,300
 ```
 
-```mermaid
-flowchart LR
-    A[Signal Present] --> B{Toggles?}
-    B -- Yes --> C[Active]
-    B -- No --> D[Stable]
-    D --> E{Expected Stable?}
-    E -- Yes --> F[Valid Baseline]
-    E -- No --> G[Stimulus Warning]
+The alarm fired within the full simulation duration, but not within the 128-cycle FTTI. Depending on the policy, that may not be credited as timely detection.
+
+D09 should separate:
+
+```text
+simulation duration
+fault injection time
+post-injection observation window
+FTTI
+alarm deadline
+observe point deadline
 ```
 
-**Figure 6. Signal activity analysis distinguishes useful baseline behavior from missing stimulus.**
+This distinction becomes important in D13 when detected, safe, unsafe, and unresolved outcomes are classified.
 
 ---
 
-## 11. Alarm Baseline
+## 11. Observe Point
 
-An alarm signal is special.
+An observe point is a signal or state element used to judge whether a fault has reached a safety-relevant boundary.
 
-In many golden runs, alarms should remain inactive.
+It is not necessarily an alarm.
 
-For each alarm, D09 should record:
-
-```text
-present or missing
-golden active value
-inactive value
-toggle count
-unexpected golden assertion
-time intervals where alarm is active
-whether alarm is X/Z
-```
-
-Example:
-
-```csv
-alarm,present,inactive_value,golden_asserted,toggles,status
-toy_counter.alarm,true,0,false,0,PASS
-top.u_mem.ecc_error,true,0,false,0,PASS
-top.u_alarm.global_alert,true,0,true,2,WARN
-```
-
-An alarm active in the golden run requires review.
-
-It may mean:
+An alarm says:
 
 ```text
-the testbench intentionally triggers a diagnostic event
-the design has an issue
-the alarm polarity is misconfigured
-the checker is not reset properly
-the VCD context is not suitable for this campaign
+the safety mechanism detected something
 ```
 
-Fault campaign classification needs a clean alarm baseline.
+An observe point says:
 
-If the golden alarm is already asserted, a faulted alarm assertion may not prove detection.
+```text
+this is where we check whether behavior became relevant to safety
+```
+
+Examples:
+
+```text
+critical_output_o
+safe_state_o
+actuator_cmd_o
+protocol_response_valid
+error_status_o
+state_reg
+```
+
+Observe points help define what counts as observable divergence. A fault that changes an internal node but never reaches an observe point may be less important than a fault that changes a safety-critical output.
+
+In some campaign configurations, a fault may be considered failed only if it reaches an observe point. In other configurations, endpoint mismatch alone may be enough to classify a divergence. D09 should document the intended observation policy, while D10 will refine alarm and observe point lists.
 
 ---
 
-## 12. Observe Point Context
+## 12. Alarm vs. Observe Point
 
-Observe points are used to decide whether the fault changed relevant behavior.
+Alarm and observe point are related but not interchangeable.
 
-They may include:
+An alarm is usually generated by a safety mechanism:
 
 ```text
-outputs
-state variables
-bus signals
-memory data
-control signals
+parity_error
+ecc_error
+lockstep_mismatch
+protocol_check_fail
+timeout_alarm
+```
+
+An observe point may be a system behavior signal:
+
+```text
+brake_cmd
+torque_request
+valid_response
+safe_state
+output_data
+```
+
+A simplified relationship:
+
+```text
+fault occurs
+  -> internal deviation
+    -> safety mechanism detects deviation
+      -> alarm fires
+
+fault occurs
+  -> internal deviation
+    -> propagates to safety-relevant output
+      -> observe point changes
+```
+
+For a detected fault, alarm timing matters. For an unsafe fault, observe point impact matters.
+
+D09 introduces the concept of observation boundaries. D10 will turn that into explicit alarm and observe point artifacts.
+
+---
+
+## 13. Simulation Start Time
+
+Fault injection should not usually begin during reset or before the design has entered a meaningful operational state.
+
+D09 should define:
+
+```text
+simulation_start_time
+reset_release_time
+first_valid_injection_time
+```
+
+A common mistake is to inject faults too early. If the design is still in reset, many faults may be masked, overwritten, or irrelevant. That can inflate safe-fault counts or create misleading outcomes.
+
+Another mistake is to inject too late. If the simulation window is nearly over, there may not be enough time for fault propagation and alarm response.
+
+A robust D09 package includes a candidate injection window:
+
+```text
+reset stable before injection
+input stimulus active
+clock active
+safety-relevant transactions visible
+enough remaining time for FTTI
+```
+
+This is part of the simulation safety context.
+
+---
+
+## 14. DUT Path and Error Injection Instance
+
+A VCD is usually generated by a testbench, not by the DUT alone.
+
+The hierarchy may look like:
+
+```text
+tb_top
+  u_env
+  u_scoreboard
+  u_dut
+    u_core
+    u_timer
+```
+
+The fault engine must know which hierarchy corresponds to the design under analysis. This is often represented as an error injection instance or DUT path.
+
+For example:
+
+```text
+vcd_dut_path = tb_top.u_dut
+```
+
+If the DUT path is wrong, the fault engine may fail to map VCD signals to design nodes even when the VCD contains the right data.
+
+D09 therefore validates the hierarchy contract:
+
+```text
+analysis top name
+testbench DUT instance path
+VCD signal prefix
+filelist design hierarchy
+fault list naming style
+```
+
+The goal is to avoid late-stage campaign failures caused by path mismatch.
+
+---
+
+## 15. Timescale and Clock Alignment
+
+VCD stores time in simulation units. The campaign engine may interpret time through:
+
+```text
+VCD timescale
+clock definition
+simulation start time
+fault injection time
+FTTI cycles
+```
+
+A mismatch between time units and cycle-based expectations can break the safety context.
+
+For example:
+
+```text
+VCD timescale = 1ps
+clock period = 10ns
+FTTI = 128 cycles
+```
+
+The implementation must know whether to convert:
+
+```text
+128 cycles -> 1280 ns -> 1,280,000 ps
+```
+
+or whether the fault engine expects cycles directly.
+
+D09 should document:
+
+```text
+clock name
+clock period
+VCD timescale
+reset edge
+injection start
+FTTI in cycles
+FTTI in time units
+```
+
+This makes the context understandable to both tools and reviewers.
+
+---
+
+## 16. Reset and Initialization
+
+A good-machine context must include enough reset and initialization information.
+
+The following questions matter:
+
+```text
+When does reset assert?
+When does reset deassert?
+Are memories initialized?
+Are internal registers known?
+Are X values expected?
+Is the testbench using random initialization?
+Is there a stabilization window before fault injection?
+```
+
+Uninitialized state can cause spurious mismatches between good-machine and faulty-machine runs. It can also create unresolved faults because the campaign cannot determine whether a divergence is caused by the injected fault or by unstable initial conditions.
+
+D09 should treat initialization as part of safety evidence.
+
+A context manifest may include:
+
+```text
+reset_active_level
+reset_assert_time
+reset_deassert_time
+memory_init_files
+random_seed
+first_safe_injection_cycle
+```
+
+---
+
+## 17. X and Z Values
+
+Digital simulation may contain unknown (`X`) or high-impedance (`Z`) values.
+
+In ordinary functional debug, engineers may tolerate some X values if the final test passes. In fault injection, X propagation can make classification ambiguous.
+
+A fault may appear unresolved because:
+
+```text
+an X reaches an observe point
+a black-box boundary loses visibility
+the VCD does not contain required internal signals
+the good-machine reference already has unknown values
+```
+
+D09 should not try to hide X issues. It should classify them:
+
+```text
+expected X during reset
+unexpected X after reset
+X only on unused debug signals
+X on safety-relevant observe points
+X on alarm candidates
+```
+
+If X appears after reset on a safety-relevant signal, the campaign context may not be ready.
+
+---
+
+## 18. VCD Signal Coverage
+
+Not all VCD files are equally useful.
+
+A minimal VCD may include:
+
+```text
+clk
+rst_n
+input stimulus
+final outputs
+```
+
+A safety verification VCD often needs more:
+
+```text
+endpoint signals
+safety mechanism outputs
+alarm candidates
+protocol handshakes
+observe points
+internal state
+memory interface signals
+transaction-valid indicators
 safe-state indicators
-alarm signals
-diagnostic status registers
 ```
 
-For each observe point, D09 should record:
-
-```text
-presence
-activity
-golden values
-unknown values
-valid windows
-comparison policy
-```
-
-Example:
-
-```yaml
-observe_points:
-  - name: toy_counter.count
-    present: true
-    compare_mode: cycle_value
-    valid_window: [30, 200]
-    has_unknown: false
-
-  - name: toy_counter.alarm
-    present: true
-    compare_mode: alarm_event
-    valid_window: [30, 220]
-    has_unknown: false
-```
-
-Observe point context later supports classification:
-
-```text
-No deviation at observe points
-  -> safe or no-effect
-
-Deviation with alarm
-  -> detected
-
-Deviation without alarm
-  -> unsafe or unresolved
-
-Missing observe point
-  -> unresolved
-```
-
----
-
-## 13. Injection Window Generation
-
-D09 should generate candidate injection windows for each fault.
-
-Input from fault list:
-
-```text
-fault type
-target node
-related endpoint
-expected alarm
-priority
-```
-
-Input from VCD context:
-
-```text
-reset release
-active windows
-signal activity
-valid observe windows
-clock cycles
-```
-
-Output:
-
-```text
-fault_id
-recommended injection time
-recommended injection window
-reason
-```
+D09 should generate or validate a signal requirement list.
 
 Example:
 
 ```csv
-fault_id,node,fault_type,injection_window,recommended_time,reason
-F001,toy_counter.count[0],transient_flip,30:200,60,active counter window
-F004,toy_counter.alarm,stuck_at_0,30:220,30,persistent after reset
+signal_group,required,reason
+clock,yes,timing alignment
+reset,yes,initialization
+endpoint,yes,golden endpoint comparison
+alarm_candidate,yes,detection evidence
+observe_point,yes,unsafe behavior boundary
+protocol_valid_ready,yes,transaction context
+debug_signal,no,manual debug only
 ```
 
-```mermaid
-flowchart TD
-    A[Fault List] --> D[Injection Window Generator]
-    B[Reset Context] --> D
-    C[Active Windows] --> D
-    E[Signal Activity] --> D
-    D --> F[Campaign-Ready Timing]
-```
-
-**Figure 7. Injection windows should be derived from fault list intent and golden activity context.**
-
-For transient faults, time selection matters a lot.
+The goal is not to dump every signal blindly. Huge VCD files can slow down later steps. The goal is to dump enough relevant signals to classify faults.
 
 ---
 
-## 14. Detection Window
+## 19. VCD Filtering
 
-Fault detection may not be immediate.
+Large VCD files can become expensive.
 
-A parity alarm might assert in the same cycle.  
-A watchdog timeout may require many cycles.  
-A software-visible diagnostic register may update later.  
-A system response may need a reaction window.
+D09 should distinguish:
 
-Therefore, the VCD context should define detection windows.
-
-Example:
-
-```yaml
-detection_policy:
-  default_detection_cycles: 3
-  mechanisms:
-    endpoint_parity:
-      detection_cycles: 1
-    watchdog:
-      detection_cycles: 20
-    memory_ecc:
-      detection_cycles: 2
+```text
+raw simulation waveform
+filtered campaign waveform
+indexed signal manifest
+context quality report
 ```
 
-Output:
+A raw waveform may be useful for debugging, but a filtered waveform is often better for fault campaign execution.
+
+Filtering criteria may include:
+
+```text
+keep clock and reset
+keep DUT boundary inputs and outputs
+keep endpoints from D04
+keep fault-list nodes from D08 when needed
+keep alarm candidates from D07/D10
+keep observe points
+keep protocol context signals
+drop unrelated testbench debug
+drop scoreboard internals
+drop unused coverage signals
+```
+
+VCD filtering should be reproducible. It should not be an ad hoc GUI operation. A filter manifest should explain why each signal group is kept or removed.
+
+---
+
+## 20. VCD Grading
+
+VCD grading asks:
+
+```text
+Is this simulation data useful for fault injection?
+```
+
+A VCD may be syntactically valid but weak for safety verification.
+
+D09 can grade VCD quality using criteria such as:
+
+```text
+clock exists and toggles
+reset exists and releases
+DUT hierarchy matches expected path
+required endpoint signals exist
+alarm candidates exist or are scheduled for D10
+observe point candidates exist
+simulation duration exceeds injection window + FTTI
+fault-list nodes are reachable or mappable
+post-reset X ratio is acceptable
+protocol transactions occur
+```
+
+A simple grade model:
+
+```text
+PASS: ready for campaign packaging
+WARN: usable but needs review
+FAIL: cannot support reliable fault classification
+```
+
+This grade is an engineering gate before D11.
+
+---
+
+## 21. Protocol-Visible Safety Context
+
+Automotive SoCs often use bus and handshake protocols. Even a small demonstration design can model protocol-visible behavior:
+
+```text
+valid / ready
+req / ack
+addr / data / write
+status / error
+interrupt / alarm
+```
+
+A fault may not immediately change a final output, but it may corrupt protocol behavior:
+
+```text
+valid asserted with wrong data
+ready stuck low
+ack missing
+error response not generated
+timeout not triggered
+interrupt not raised
+```
+
+D09 should capture protocol context signals when they are safety-relevant.
+
+This matters because D13 classification may need to know whether the system violated a protocol-level safety contract. D10 will formalize alarms and observe points, but D09 must ensure the VCD contains the protocol signals needed for that analysis.
+
+---
+
+## 22. Transaction Windows
+
+A simulation contains phases:
+
+```text
+reset phase
+initialization phase
+idle phase
+transaction phase
+response phase
+shutdown phase
+```
+
+Fault injection is usually most meaningful during transaction phases.
+
+D09 can define transaction windows:
 
 ```csv
-fault_id,inject_time,check_start,check_end,expected_alarm
-F001,60,60,70,toy_counter.alarm
-F010,80,80,100,top.u_wdog.timeout_alarm
+window_id,start_cycle,end_cycle,description
+W_RESET,0,20,reset and stabilization
+W_INIT,21,50,configuration
+W_ACTIVE_0,51,150,first active transaction
+W_ACTIVE_1,151,260,second active transaction
+W_IDLE,261,320,idle after transaction
 ```
 
-Detection window is important for classification.
+This helps D11 and D12 choose injection times.
 
-If the alarm asserts after the allowed detection window, the result may not count as detected for the intended safety requirement.
+Injecting during idle can be useful for latent fault analysis, but it should be intentional. Injecting during active protocol windows can test detection under realistic operation.
+
+D09 records those choices.
 
 ---
 
-## 15. Golden X and Z Handling
+## 23. Multi-VCD Context
 
-Unknown values can make classification difficult.
+A single VCD may not cover all safety-relevant behavior.
 
-The VCD context should report X/Z conditions:
+D09 can support multiple simulation data files:
 
 ```text
-which signals contain X/Z
-when X/Z occurs
-whether X/Z is inside active window
-whether X/Z affects observe points
-whether X/Z affects alarms
+reset_and_init.vcd
+nominal_operation.vcd
+error_response.vcd
+high_activity.vcd
+low_power_transition.vcd
 ```
 
-Example:
+A fault campaign may distribute faults across multiple VCDs or use different VCDs for different scenarios.
 
-```csv
-signal,has_unknown,unknown_intervals,status
-toy_counter.count,false,,PASS
-toy_counter.alarm,false,,PASS
-top.u_bus.rdata,true,0:25,WARN_RESET_ONLY
-top.u_ctrl.state,true,80:90,WARN_ACTIVE_WINDOW
-```
-
-Unknown values during reset may be acceptable.
-
-Unknown values during active operation may make fault classification unreliable.
-
-D09 should not hide X/Z problems.
-
----
-
-## 16. Transaction Context
-
-For bus or interface fault injection, simple active windows may not be enough.
-
-The tool may need transaction context:
+The context manifest should describe:
 
 ```text
-valid high
-ready high
-read/write active
-address stable
-data sampled
-response valid
-transaction ID active
+which VCD covers which scenario
+which test generated it
+which seed was used
+which injection window applies
+which fault subset it supports
+which observe point policy applies
 ```
 
-Example transaction window:
-
-```csv
-transaction_id,start,end,kind,signals
-T001,50,70,write,bus.valid;bus.ready;bus.wdata
-T002,90,110,read,bus.valid;bus.ready;bus.rdata
-```
-
-A fault on bus data should ideally be injected when the transaction is meaningful.
-
-```mermaid
-sequenceDiagram
-    participant V as valid
-    participant R as ready
-    participant D as data
-    participant F as fault
-    V->>R: valid asserted
-    R->>V: ready asserted
-    D->>F: data sampled window
-    F->>D: inject data fault
-```
-
-**Figure 8. Interface fault injection should align with transaction windows.**
-
-For D09, transaction extraction can be simple or optional, but the architecture should support it.
+This prevents the common problem of treating all waveforms as interchangeable.
 
 ---
 
-## 17. Memory Access Context
+## 24. Good Machine Consistency Checks
 
-For memory-related faults, VCD context may include memory access windows.
+Before injecting faults, D09 should run consistency checks on the good-machine context.
 
-Important signals:
-
-```text
-read enable
-write enable
-address
-write data
-read data
-ECC error
-parity error
-scrub enable
-```
-
-Example:
-
-```csv
-memory,access_type,start,end,address,comment
-u_sram,write,40,50,0x10,initial data write
-u_sram,read,90,100,0x10,read after possible corruption
-```
-
-A memory bit flip is meaningful if:
-
-```text
-the corrupted location is later read
-the data affects an observe point
-ECC/parity is checked
-an alarm can be observed
-```
-
-If the memory location is never read, the fault may classify as safe or no-effect, but that may not prove coverage.
-
-D09 should report memory access context when available.
-
----
-
-## 18. Context for Fault Classification
-
-D09 does not classify fault outcomes yet, but it prepares the data needed for classification.
-
-Outcome classification needs:
-
-```text
-golden observe values
-faulted observe values
-golden alarm baseline
-faulted alarm behavior
-expected detection window
-valid comparison window
-missing signal status
-X/Z status
-```
-
-```mermaid
-flowchart TD
-    A[VCD Safety Context] --> B[Golden Values]
-    A --> C[Alarm Baseline]
-    A --> D[Observe Point Validity]
-    A --> E[Injection Window]
-    A --> F[Detection Window]
-    B --> G[Fault Outcome Classification]
-    C --> G
-    D --> G
-    E --> G
-    F --> G
-```
-
-**Figure 9. Fault outcome classification depends on the context extracted before campaign execution.**
-
-If D09 is weak, D10 and later classification will be weak.
-
----
-
-## 19. Output Artifacts
-
-D09 should generate both machine-readable and human-readable outputs.
-
-Suggested outputs:
-
-```text
-outputs/vcd_context.json
-outputs/signal_presence.csv
-outputs/signal_activity.csv
-outputs/alarm_baseline.csv
-outputs/observe_context.csv
-outputs/injection_windows.csv
-outputs/detection_windows.csv
-outputs/missing_signals.csv
-outputs/xz_report.csv
-outputs/vcd_context_summary.md
-```
-
-Each output serves a purpose:
-
-| Artifact | Purpose |
-|---|---|
-| `vcd_context.json` | Main machine-readable context |
-| `signal_presence.csv` | Signal availability check |
-| `signal_activity.csv` | Toggle and activity summary |
-| `alarm_baseline.csv` | Golden alarm behavior |
-| `observe_context.csv` | Observe point validity |
-| `injection_windows.csv` | Campaign-ready timing |
-| `detection_windows.csv` | Alarm checking windows |
-| `missing_signals.csv` | Missing or unmapped signals |
-| `xz_report.csv` | Unknown-value warnings |
-| `vcd_context_summary.md` | Human-readable review report |
-
----
-
-## 20. Example `vcd_context.json`
-
-```json
-{
-  "project": "automotive_safeic_practice",
-  "demo": "D09_vcd_safety_context",
-  "top": "toy_counter",
-  "vcd": "inputs/sim.vcd",
-  "timescale": "1ns",
-  "clock": {
-    "name": "clk",
-    "period": 10,
-    "edge": "rising",
-    "first_edge": 5,
-    "last_edge": 245
-  },
-  "reset": {
-    "name": "rst_n",
-    "active": "low",
-    "release_time": 20,
-    "first_active_time": 30
-  },
-  "active_windows": [
-    {
-      "name": "post_reset_active",
-      "start": 30,
-      "end": 200
-    }
-  ],
-  "alarms": [
-    {
-      "name": "toy_counter.alarm",
-      "present": true,
-      "golden_asserted": false,
-      "toggles": 0
-    }
-  ],
-  "observe_points": [
-    {
-      "name": "toy_counter.count",
-      "present": true,
-      "toggles": 17,
-      "has_unknown": false
-    }
-  ]
-}
-```
-
-This file becomes a shared context for campaign execution and classification.
-
----
-
-## 21. Example `signal_presence.csv`
-
-```csv
-signal,role,fault_list_name,vcd_name,present,status,comment
-clk,clock,clk,clk,true,PASS,
-rst_n,reset,rst_n,rst_n,true,PASS,
-toy_counter.count,observe_point,toy_counter.count,tb.dut.count,true,PASS,mapped by prefix rule
-toy_counter.alarm,alarm,toy_counter.alarm,tb.dut.alarm,true,PASS,mapped by prefix rule
-toy_counter.hidden_state,observe_point,toy_counter.hidden_state,,false,WARN,missing from VCD
-```
-
-This report immediately tells whether campaign observability is complete.
-
----
-
-## 22. Example `injection_windows.csv`
-
-```csv
-fault_id,node,fault_type,default_window,recommended_time,detection_window,reason
-F001,toy_counter.count[0],transient_flip,30:200,60,60:70,active after reset and counter toggling
-F002,toy_counter.count[1],transient_flip,30:200,70,70:80,active after reset and counter toggling
-F004,toy_counter.alarm,stuck_at_0,30:220,30,30:220,persistent alarm path fault after reset
-F005,toy_counter.alarm,stuck_at_1,30:220,30,30:220,persistent false alarm test
-```
-
-This turns the D08 fault list into a campaign-ready list.
-
----
-
-## 23. The `safeic-vcdctx` Tool Architecture
-
-The generic tool `safeic-vcdctx` can be implemented as a staged pipeline.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-vcdctx]
-    B[VCD File] --> T
-    C[Fault List] --> T
-    D[Alarm List] --> T
-    E[Observe Points] --> T
-    F[Clock / Reset Config] --> T
-    G[Name Mapping] --> T
-    H[VCD Policy] --> T
-
-    T --> I[vcd_context.json]
-    T --> J[signal_presence.csv]
-    T --> K[signal_activity.csv]
-    T --> L[alarm_baseline.csv]
-    T --> M[injection_windows.csv]
-    T --> N[vcd_context_summary.md]
-```
-
-**Figure 10. `safeic-vcdctx` converts waveform data and campaign intent into structured safety context.**
-
-Suggested internal modules:
-
-```text
-safeic_vcdctx/
-  cli.py
-  manifest.py
-  vcd_reader.py
-  name_mapping.py
-  clock_reset.py
-  signal_presence.py
-  signal_activity.py
-  alarm_context.py
-  observe_context.py
-  active_window.py
-  injection_window.py
-  xz_report.py
-  report.py
-```
-
-Responsibilities:
-
-| Module | Responsibility |
-|---|---|
-| `vcd_reader.py` | Parse VCD header and value changes |
-| `name_mapping.py` | Map fault-list names to VCD names |
-| `clock_reset.py` | Extract clock/reset behavior |
-| `signal_presence.py` | Check required signal availability |
-| `signal_activity.py` | Compute toggles and activity windows |
-| `alarm_context.py` | Build alarm baseline |
-| `observe_context.py` | Build observe point context |
-| `active_window.py` | Infer or load active windows |
-| `injection_window.py` | Assign injection and detection windows |
-| `xz_report.py` | Detect X/Z conditions |
-| `report.py` | Generate CSV, JSON, and Markdown outputs |
-
----
-
-## 24. D09 Directory Structure
-
-Suggested directory:
-
-```text
-D09_vcd_safety_context/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    sim.vcd
-    fault_list.csv
-    alarm.list
-    observe_points.list
-    clkdef.clk
-    reset.yaml
-    name_mapping.yaml
-    vcd_policy.yaml
-
-  outputs/
-    vcd_context.json
-    signal_presence.csv
-    signal_activity.csv
-    alarm_baseline.csv
-    observe_context.csv
-    injection_windows.csv
-    detection_windows.csv
-    missing_signals.csv
-    xz_report.csv
-    vcd_context_summary.md
-```
-
-This demo focuses on waveform context extraction, not fault execution.
-
----
-
-## 25. D09 Manifest
-
-Example:
-
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D09_vcd_safety_context
-  top_module: toy_counter
-
-inputs:
-  vcd: inputs/sim.vcd
-  fault_list: inputs/fault_list.csv
-  alarm_list: inputs/alarm.list
-  observe_points: inputs/observe_points.list
-  clock_def: inputs/clkdef.clk
-  reset_config: inputs/reset.yaml
-  name_mapping: inputs/name_mapping.yaml
-  vcd_policy: inputs/vcd_policy.yaml
-
-outputs:
-  context_json: outputs/vcd_context.json
-  signal_presence: outputs/signal_presence.csv
-  signal_activity: outputs/signal_activity.csv
-  alarm_baseline: outputs/alarm_baseline.csv
-  observe_context: outputs/observe_context.csv
-  injection_windows: outputs/injection_windows.csv
-  summary: outputs/vcd_context_summary.md
-```
-
-The manifest makes the context extraction reproducible.
-
----
-
-## 26. D09 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load Fault List]
-    B --> C[Load Alarm and Observe Lists]
-    C --> D[Load VCD]
-    D --> E[Apply Name Mapping]
-    E --> F[Extract Clock / Reset Context]
-    F --> G[Check Signal Presence]
-    G --> H[Analyze Signal Activity]
-    H --> I[Build Alarm Baseline]
-    I --> J[Build Observe Context]
-    J --> K[Generate Injection Windows]
-    K --> L[Generate Reports]
-```
-
-**Figure 11. D09 execution flow: load campaign intent, extract waveform context, and generate campaign-ready timing and observability data.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-vcdctx \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D09_vcd_safety_context
-echo "Running $DEMO"
-
-safeic-vcdctx \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
-
-```text
-outputs/vcd_context.json
-outputs/signal_presence.csv
-outputs/signal_activity.csv
-outputs/alarm_baseline.csv
-outputs/observe_context.csv
-outputs/injection_windows.csv
-outputs/detection_windows.csv
-outputs/missing_signals.csv
-outputs/xz_report.csv
-outputs/vcd_context_summary.md
-```
-
----
-
-## 27. Example `vcd_policy.yaml`
-
-```yaml
-vcd_policy:
-  require_clock: true
-  require_reset: true
-  require_expected_alarms: true
-  require_observe_points: true
-
-  active_window:
-    mode: after_reset
-    stabilization_cycles: 1
-    end_margin_cycles: 2
-
-  signal_presence:
-    missing_alarm_is_error: true
-    missing_observe_point_is_warning: true
-    missing_fault_node_is_warning: true
-
-  xz_handling:
-    allow_xz_during_reset: true
-    warn_xz_in_active_window: true
-    error_xz_on_alarm: true
-
-  injection:
-    default_transient_duration_cycles: 1
-    default_detection_cycles: 3
-    avoid_reset_window: true
-```
-
-This policy makes waveform interpretation explicit.
-
----
-
-## 28. Example `vcd_context_summary.md`
-
-```md
-# D09 VCD Safety Context Summary
-
-Project: automotive_safeic_practice
-Demo: D09_vcd_safety_context
-Top: toy_counter
-
-## VCD
-
-File: inputs/sim.vcd  
-Timescale: 1ns  
-
-## Clock / Reset
-
-Clock: clk  
-Period: 10ns  
-Reset: rst_n active low  
-Reset release time: 20ns  
-First active time: 30ns  
-
-## Active Windows
-
-- post_reset_active: 30ns to 200ns
-
-## Signal Presence
-
-Required signals: 5  
-Present: 4  
-Missing: 1  
-
-Missing:
-- toy_counter.hidden_state
-
-## Alarm Baseline
-
-- toy_counter.alarm: present, inactive in golden run
-
-## Injection Windows
-
-Generated windows for 5 faults.
-
-## Warnings
-
-- toy_counter.hidden_state is missing from VCD.
-- Some observe points may be unresolved if not dumped.
-```
-
-This summary should be short enough for engineers to review before running the campaign.
-
----
-
-## 29. Validation Rules
-
-`safeic-vcdctx` should validate:
+Typical checks:
 
 ```text
 VCD file exists
-fault list exists
-alarm list exists
-observe point list exists
-clock definition exists
-reset definition exists
-clock is present in VCD
-reset is present in VCD
-expected alarms are present or reported
-observe points are present or reported
-VCD covers injection windows
-reset release can be determined
-active window is non-empty
-X/Z behavior is reported
-name mapping is applied
-missing signals are not silently ignored
+VCD is non-empty
+timescale is present
+clock toggles
+reset releases
+DUT path exists
+top-level signals are mapped
+required endpoint signals are dumped
+required observe point candidates are dumped
+simulation duration is long enough
+FTTI can fit after chosen injection time
 ```
 
-Example messages:
+A stronger check compares the VCD against the design boundary:
 
 ```text
-[PASS] VCD file inputs/sim.vcd loaded
-[PASS] clock clk found
-[PASS] reset rst_n found
-[PASS] reset release time detected at 20ns
-[PASS] alarm toy_counter.alarm found and inactive in golden run
-[WARN] observe point toy_counter.hidden_state missing from VCD
-[WARN] signal top.u_bus.rdata has X in active window
-[ERROR] expected alarm top.u_alarm.fatal not found in VCD
+every required endpoint from D04 has a waveform signal
+every high-risk fault scope from D08 has a relevant observation path
+every proposed alarm from D07 is either present or marked for D10 review
 ```
 
-The tool should fail early when required context is missing.
+D09 therefore connects static evidence to dynamic evidence.
 
 ---
 
-## 30. Common Mistakes
+## 25. Force Signals and Context Bridging
 
-### 30.1 Treating VCD as Optional Debug Data
+Sometimes a VCD does not contain every internal signal needed for exact simulation comparison.
 
-For fault campaign classification, VCD context is evidence infrastructure.
+Some fault campaign flows allow selected signals to be forced from simulation data instead of being recomputed internally. This can help bridge mismatches between RTL simulation context and fault propagation context, but it must be used carefully.
 
-It should be treated as an input artifact, not a debug side product.
+A force-list policy should answer:
 
-### 30.2 Ignoring Reset
+```text
+Which signals are forced?
+Why are they forced?
+Are they endpoints, internal nodes, or protocol context signals?
+Do they affect classification?
+Is this a temporary workaround or intended methodology?
+```
 
-Faults injected during reset may be overwritten.
+D09 should not silently force signals. It should produce a reviewable force list if such bridging is needed.
 
-Always identify reset release and active windows.
+A generic force list format may look like:
 
-### 30.3 Missing Alarm Signals
+```text
+top.u_block.signal_a
+top.u_block.signal_b
+```
 
-If alarms are not dumped, detected classification may become impossible.
+The exact syntax depends on the local tool adapter, but the evidence principle is tool-independent:
 
-### 30.4 Missing Observe Points
-
-If observe points are not dumped, safe vs unsafe classification may become unresolved.
-
-### 30.5 Assuming Signal Names Match
-
-Fault list names and VCD names may differ.
-
-Name mapping should be explicit.
-
-### 30.6 Ignoring X/Z Values
-
-Unknown values inside active windows can invalidate classification.
-
-### 30.7 Ignoring Transaction Timing
-
-Bus and memory faults should align with meaningful transactions or access windows.
+```text
+forced context must be explicit and reviewable
+```
 
 ---
 
-## 31. How D09 Connects to Later Demos
+## 26. Context Package Structure
 
-D09 prepares context for campaign execution and classification.
+A D09 demo should produce a context package, not just a VCD.
 
-```mermaid
-flowchart LR
-    A[D08 Fault List] --> B[D09 VCD Safety Context]
-    B --> C[D10 Fault Campaign Execution]
-    C --> D[D11 Fault Outcome Classification]
-    D --> E[Measured DC]
-    E --> F[FMEDA Update]
+A practical directory structure:
+
+```text
+D09_simulation_safety_context/
+  inputs/
+    from_D08/
+    from_D07/
+    from_D04/
+    simulation/
+  configs/
+    simulation_context_manifest.csv
+    vcd_signal_requirements.csv
+    ftti_policy.csv
+    observe_point_candidates.csv
+  outputs/
+    vcd_inventory.csv
+    good_machine_context.csv
+    hierarchy_mapping.csv
+    signal_presence_matrix.csv
+    ftti_window_plan.csv
+    observe_point_candidate_map.csv
+    simulation_context_quality_gate.csv
+    d09_handoff_to_d10.csv
+    d09_handoff_to_d11.csv
+    evidence_index.csv
+    demo_summary.md
+  scripts/
+    run_demo.csh
 ```
 
-**Figure 12. D09 connects the generated fault list to executable and classifiable fault campaign evidence.**
+This structure makes D09 useful even before the fault campaign engine is invoked.
 
-D10 will execute or emulate injection.
-
-D11 will classify results using the context created here.
-
-If D09 is incomplete, later measured coverage will be weak.
+The output files become the bridge to D10 and D11.
 
 ---
 
-## 32. Recommended Implementation Stages
+## 27. Generic D09 Command Flow
 
-D09 can be implemented in stages.
+A public engineering demo should not depend on a hard-coded private tool path. It can use local configuration and generic entry points.
 
-### Stage 1: Signal Presence and Basic Timing
+An illustrative command flow:
 
-Parse VCD header, check signals, identify clock/reset.
+```csh
+setenv D08_ROOT /path/to/D08_fault_list_generation
+setenv D07_ROOT /path/to/D07_safety_mechanism_map
+setenv D04_ROOT /path/to/D04_structural_building_blocks
 
-Deliverables:
-
-```text
-signal_presence.csv
-vcd_context_summary.md
+csh scripts/run_demo.csh
 ```
 
-### Stage 2: Activity Analysis
-
-Compute toggles and active windows.
-
-Deliverables:
+Inside the demo, the workflow can be:
 
 ```text
-signal_activity.csv
-active_windows.csv
+1. snapshot D08 fault-list handoff
+2. snapshot D07 map and alarm proposal
+3. snapshot D04 endpoint inventory
+4. read or generate simulation metadata
+5. inspect VCD inventory
+6. build good-machine context manifest
+7. check hierarchy mapping
+8. build FTTI window plan
+9. build observe point candidate map
+10. generate D10 and D11 handoff files
 ```
 
-### Stage 3: Alarm and Observe Context
-
-Build alarm baseline and observe point context.
-
-Deliverables:
-
-```text
-alarm_baseline.csv
-observe_context.csv
-```
-
-### Stage 4: Injection and Detection Windows
-
-Generate campaign-ready timing.
-
-Deliverables:
-
-```text
-injection_windows.csv
-detection_windows.csv
-```
-
-### Stage 5: X/Z and Name Mapping Robustness
-
-Add unknown-value reporting and robust name mapping.
-
-Deliverables:
-
-```text
-xz_report.csv
-missing_signals.csv
-name_mapping_report.csv
-```
-
-This staged path makes D09 practical and directly useful for D10.
+If a local simulator or waveform generator is configured, the demo may optionally run a reference simulation. If not, it can still validate the context files and produce a reviewable package.
 
 ---
 
-## 33. Summary
+## 28. Example Simulation Context Manifest
 
-VCD safety context is the bridge between a generated fault list and a meaningful fault campaign.
+A compact D09 manifest may look like:
 
-The D09 demo:
-
-```text
-D09_vcd_safety_context
+```csv
+field,value
+demo_id,D09_simulation_safety_context
+design_top,toy_counter
+testbench_top,tb_toy_counter
+dut_path,tb_toy_counter.u_dut
+vcd_file,inputs/simulation/toy_counter_good.vcd
+vcd_timescale,1ns
+clock_signal,tb_toy_counter.clk
+reset_signal,tb_toy_counter.rst_n
+reset_release_time,20ns
+first_injection_time,50ns
+simulation_end_time,1000ns
+ftti_cycles,64
+clock_period,10ns
+observe_policy,endpoint_and_observe_point
 ```
 
-introduces the generic tool:
+This file answers the reviewer's first questions:
 
 ```text
-safeic-vcdctx
+What waveform is being used?
+Where is the DUT inside the waveform?
+When can faults be injected?
+What is the FTTI?
+Which signals define timing?
 ```
 
-The tool consumes:
-
-```text
-sim.vcd
-fault_list.csv
-alarm.list
-observe_points.list
-clock/reset configuration
-name mapping
-VCD policy
-```
-
-and generates:
-
-```text
-vcd_context.json
-signal_presence.csv
-signal_activity.csv
-alarm_baseline.csv
-observe_context.csv
-injection_windows.csv
-detection_windows.csv
-missing_signals.csv
-xz_report.csv
-vcd_context_summary.md
-```
-
-The central lesson is:
-
-> A waveform becomes safety evidence only after it is converted into clock/reset context, activity context, alarm baseline, observe-point availability, injection windows, and classification-ready golden behavior.
-
-Without this context, fault injection results may look precise but remain difficult to trust.
+D09 should make these answers explicit.
 
 ---
 
-## 34. D09 Demo Checklist
+## 29. Example VCD Signal Requirement Matrix
 
-For `D09_vcd_safety_context`, the expected deliverables are:
+D09 can generate a signal requirement matrix:
 
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/sim.vcd
-[ ] inputs/fault_list.csv
-[ ] inputs/alarm.list
-[ ] inputs/observe_points.list
-[ ] inputs/clkdef.clk
-[ ] inputs/reset.yaml
-[ ] inputs/name_mapping.yaml
-[ ] inputs/vcd_policy.yaml
-
-[ ] outputs/vcd_context.json
-[ ] outputs/signal_presence.csv
-[ ] outputs/signal_activity.csv
-[ ] outputs/alarm_baseline.csv
-[ ] outputs/observe_context.csv
-[ ] outputs/injection_windows.csv
-[ ] outputs/detection_windows.csv
-[ ] outputs/missing_signals.csv
-[ ] outputs/xz_report.csv
-[ ] outputs/vcd_context_summary.md
+```csv
+signal_name,required,present,group,reason
+tb_toy_counter.clk,yes,yes,clock,cycle alignment
+tb_toy_counter.rst_n,yes,yes,reset,initialization context
+tb_toy_counter.u_dut.count[0],yes,yes,endpoint,state comparison
+tb_toy_counter.u_dut.alarm,yes,yes,alarm_candidate,detection signal
+tb_toy_counter.u_dut.error_flag,yes,no,alarm_candidate,D10 review needed
+tb_toy_counter.u_dut.safe_state,yes,no,observe_point,D10 review needed
 ```
 
-A successful D09 run should answer:
+This is more useful than simply saying:
 
 ```text
-Is the VCD usable for this fault campaign?
-Are clock and reset available?
-When is reset released?
-What is the active injection window?
-Are all expected alarms present?
-Are all observe points present?
-Which signals are missing?
-Which signals contain X/Z values?
-Which faults have recommended injection windows?
-Which detection windows should be used?
-Can D10 execute the fault campaign using this context?
+VCD exists
 ```
+
+A VCD can exist and still miss critical signals.
+
+The signal matrix tells D10 which alarms and observe points are already visible and which require design, testbench, or dump configuration changes.
+
+---
+
+## 30. Example FTTI Window Plan
+
+D09 should also produce an FTTI plan.
+
+Example:
+
+```csv
+scenario_id,injection_start_cycle,injection_end_cycle,ftti_cycles,post_fault_observe_cycles,status
+SCN_ACTIVE_0,50,120,64,80,PASS
+SCN_ACTIVE_1,150,220,64,80,PASS
+SCN_IDLE,260,300,64,80,WARN
+```
+
+This plan does not inject faults yet. It defines where fault injection will be meaningful.
+
+A quality gate can check:
+
+```text
+injection_end + FTTI <= simulation_end
+reset_release < injection_start
+clock is active during window
+required observe points are present
+```
+
+This reduces avoidable failures in D11 and D12.
+
+---
+
+## 31. Observe Point Candidate Map
+
+D09 prepares observe point candidates for D10.
+
+Example:
+
+```csv
+observe_point_id,signal_name,source,reason,priority
+OP_COUNT,tb_toy_counter.u_dut.count,D04 endpoint inventory,state behavior
+OP_ALARM,tb_toy_counter.u_dut.alarm,D07 alarm proposal,detection signal
+OP_SAFE_STATE,tb_toy_counter.u_dut.safe_state,manual review,safe-state evidence
+OP_PROTOCOL_VALID,tb_toy_counter.u_dut.valid,D07 protocol-visible map,handshake evidence
+```
+
+The key idea is that D09 does not finalize all observe points. It identifies which signals are available in simulation context and which should be promoted in D10.
+
+D10 will define the actual alarm list and observe point boundary.
+
+---
+
+## 32. D09 Quality Gate
+
+D09 should have a quality gate.
+
+Suggested checks:
+
+```text
+D08 handoff exists
+D07 handoff exists
+D04 endpoint inventory exists
+VCD manifest exists
+VCD file exists
+DUT path is defined
+clock signal is defined
+reset signal is defined
+FTTI is defined
+simulation window is long enough
+required endpoint signals are mapped
+observe point candidates are generated
+D10 handoff is generated
+D11 handoff is generated
+```
+
+A typical status policy:
+
+```text
+PASS: ready for D10/D11
+WARN: usable but needs review
+FAIL: context cannot support fault campaign setup
+```
+
+Warnings are acceptable when they are explicit. Hidden context assumptions are not acceptable.
+
+---
+
+## 33. Handoff to D10
+
+D10 focuses on:
+
+```text
+Alarm List and Observe Point: fault outcome observation boundary
+```
+
+D09 gives D10:
+
+```text
+observe point candidates
+alarm candidate signal visibility
+signal presence matrix
+DUT path
+VCD hierarchy mapping
+FTTI policy
+missing signal list
+protocol context signals
+```
+
+D10 then decides:
+
+```text
+which signals become alarms
+which signals become observe points
+which missing signals require waveform dump changes
+which alarm names map to safety mechanisms
+which observe policy should be used
+```
+
+D09 therefore prepares the evidence, but D10 finalizes the observation boundary.
+
+---
+
+## 34. Handoff to D11
+
+D11 focuses on the complete fault campaign input package.
+
+D09 gives D11:
+
+```text
+VCD list
+good-machine context manifest
+DUT path
+clock / reset timing
+simulation start time
+FTTI
+injection window
+signal mapping
+context quality status
+```
+
+D11 combines this with:
+
+```text
+D08 fault list
+D10 alarm list
+D10 observe point list
+filelist
+clock definition
+fault campaign initialization file
+database session settings
+execution mode
+```
+
+D09 is therefore not an isolated waveform step. It is a required contributor to the full campaign package.
+
+---
+
+## 35. Common D09 Failure Modes
+
+D09 helps catch common issues early:
+
+```text
+VCD exists but DUT path is wrong
+VCD uses different RTL hierarchy than the fault list
+clock is not dumped
+reset never releases
+simulation ends before FTTI can be observed
+alarm candidate not dumped
+observe point not dumped
+endpoint names do not match D04 inventory
+fault nodes from D08 are not visible or mappable
+VCD contains excessive X values after reset
+testbench random seed is not recorded
+simulation is too short or too idle
+```
+
+Catching these in D09 is much cheaper than discovering them during a large fault campaign.
+
+---
+
+## 36. Methodology: Context First, Campaign Later
+
+A mature safety verification flow does not jump directly from fault list to fault injection.
+
+It first builds context:
+
+```text
+fault list
++ good machine
++ VCD
++ FTTI
++ observe point candidates
++ alarm candidates
++ hierarchy mapping
++ quality gate
+```
+
+Only after that should the flow build a fault campaign package.
+
+The practical principle is:
+
+> A fault campaign result is only as credible as the simulation context used to classify it.
+
+D09 operationalizes that principle.
+
+---
+
+## 37. What Demo9 Should Demonstrate
+
+The D09 demo should demonstrate the following:
+
+```text
+read D08 campaign fault list
+read D07 safety mechanism map and alarm proposal
+read D04 endpoint inventory
+create or validate a good-machine VCD context
+build a VCD inventory
+build a signal presence matrix
+define FTTI policy
+define injection windows
+generate observe point candidates
+detect missing signals
+generate D10 handoff
+generate D11 handoff
+produce evidence index and quality gate
+```
+
+It should not rely on real post-campaign logs. It should not classify detected, safe, unsafe, or unresolved faults yet. That belongs to D13.
+
+D09 prepares the ground for those classifications.
+
+---
+
+## 38. Expected D09 Outputs
+
+A useful D09 output set:
+
+```text
+outputs/vcd_inventory.csv
+outputs/good_machine_context.csv
+outputs/hierarchy_mapping.csv
+outputs/signal_presence_matrix.csv
+outputs/ftti_policy.csv
+outputs/ftti_window_plan.csv
+outputs/observe_point_candidate_map.csv
+outputs/missing_signal_review.csv
+outputs/simulation_context_quality_gate.csv
+outputs/d09_handoff_to_d10.csv
+outputs/d09_handoff_to_d11.csv
+outputs/evidence_index.csv
+outputs/demo_summary.md
+```
+
+Each file has a role:
+
+```text
+vcd_inventory.csv
+  what simulation data exists
+
+good_machine_context.csv
+  how golden context is defined
+
+hierarchy_mapping.csv
+  how testbench hierarchy maps to design hierarchy
+
+signal_presence_matrix.csv
+  whether required signals are present
+
+ftti_window_plan.csv
+  where fault injection can be observed safely
+
+observe_point_candidate_map.csv
+  what D10 should review
+
+d09_handoff_to_d10.csv
+  alarm / observe input handoff
+
+d09_handoff_to_d11.csv
+  campaign setup input handoff
+```
+
+This creates a traceable bridge from D08 to D11.
+
+---
+
+## 39. Closing View
+
+D09 is the transition from static safety evidence to dynamic safety evidence.
+
+D08 produces the fault population. D09 defines the runtime reference. D10 defines observation boundaries. D11 packages the campaign. D12 injects faults. D13 classifies outcomes. D14 feeds the results back into final metrics.
+
+The essential idea is simple:
+
+```text
+Do not inject a fault before you know what normal behavior looks like.
+```
+
+For automotive chip functional safety, that normal behavior must be captured, mapped, timed, and reviewed. VCD, good machine, FTTI, and observe points are the language of that capture.
+
+D09 turns that language into an engineering artifact.
