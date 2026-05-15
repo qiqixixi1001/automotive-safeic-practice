@@ -1,1641 +1,1205 @@
-# [Automotive Safe-IC Practice 05] Structural Safety Modeling: From RTL Hierarchy to Startpoints, Endpoints, and Cones
+# Automotive Safe-IC Practice 05: FuSa Common Database — `.fdb::session` as the Evidence Center
 
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D05_structural_safety_model  
-**Tags**: Automotive Chip, Functional Safety, Structural Analysis, Startpoint, Endpoint, Cone, Diagnostic Coverage, FMEDA, Fault Propagation, RTL, Netlist, Safety Mechanism
-
----
-
-## 1. Why This Article Matters
-
-In the previous articles, we built the quantitative side of the safety workflow:
-
-```text
-input package
-→ FIT model normalization
-→ Base FIT Rate
-```
-
-However, FIT alone does not tell us whether a design is safe.
-
-FIT tells us:
-
-```text
-How much random hardware failure exposure exists?
-```
-
-But it does not answer:
-
-```text
-Where can a fault start?
-Where can the error be observed?
-Which logic region can propagate the error?
-Which endpoint is safety-relevant?
-Which safety mechanism protects that endpoint?
-Which failure mode does the endpoint map to?
-```
-
-To answer these questions, we need a **structural safety model**.
-
-The fifth demo in this repository is:
-
-```text
-D05_structural_safety_model
-```
-
-The generic tool introduced in this article is:
-
-```text
-safeic-structure
-```
-
-The purpose of `safeic-structure` is to transform RTL or netlist information into a safety-oriented graph:
-
-```text
-design hierarchy
-→ signals and state elements
-→ startpoints
-→ endpoints
-→ cones
-→ part/sub-part mapping
-→ safety mechanism mapping
-→ diagnostic coverage input
-```
-
-The central idea is:
-
-> Functional safety analysis cannot rely on a flat list of signals. It needs a structural model that explains how faults propagate from possible origin points to safety-relevant endpoints.
+Author: Darren H. Chen  
+Direction: Automotive chip functional safety analysis and fault injection  
+Demo: D05_fusa_common_database_evidence_center  
+Tags: Safe-IC, ISO 26262, Functional Safety, FuSa Database, Evidence Traceability, FMEDA, FIT, Diagnostic Coverage, Fault Campaign, Safety Mechanism, Automotive Semiconductor
 
 ---
 
-## 2. Why Structure Comes After FIT
+## 1. From Report Files to Reviewable Safety Evidence
 
-Base FIT Rate gives a quantitative baseline.
+The first four practices establish the essential engineering context for a safety-oriented semiconductor flow.
 
-But without structure, BFR remains too coarse.
+D01 defines a reproducible analysis input package: design boundary, filelist, clock definition, FIT setup, initialization configuration, and run identity.
+
+D02 derives the Base FIT Rate and begins to explain where random hardware failure exposure comes from.
+
+D03 compares the supported FIT standards under the same upstream design boundary and separates the true standard selector from experiment variants.
+
+D04 turns the design into structural safety objects: endpoints, startpoints, logic cones, DCE artifacts, and seed maps between endpoints and safety mechanisms.
+
+D05 is the point where these artifacts stop being a loose group of files and become a managed evidence system.
+
+A safety analysis flow can generate many reports, CSV files, logs, markdown summaries, and intermediate artifacts. That is useful, but it is not enough. In a real review, the problem is rarely that there is no file. The problem is usually that the relationship between files is unclear.
+
+A reviewer may ask:
+
+```text
+Which FIT setup produced this number?
+Which design boundary was used?
+Which standard was selected?
+Which DCE artifact belongs to which analysis run?
+Which fault list was generated from which safety-mechanism assumption?
+Which fault campaign result should be used for final metrics?
+Which FMEDA part or sub-part consumes this diagnostic-coverage result?
+```
+
+If every artifact is only a standalone file, these questions become manual investigation. D05 introduces the common safety database as the evidence center so that the flow can answer these questions with an explicit session model.
+
+The central pattern is:
+
+```text
+<database_file>.fdb::<session_name>
+```
+
+The database file is the container. The session name is the partition of evidence inside that container.
+
+This sounds simple, but it changes the architecture of the entire flow.
+
+---
+
+## 2. What D05 Adds to the Flow
+
+D05 is named:
+
+```text
+FuSa Common Database: .fdb::session as Evidence Center
+```
+
+It is not a new FIT standard. It is not a new structural extraction algorithm. It is not a fault campaign yet. It is the evidence-management layer that connects the earlier analysis stages with the later safety-exploration, fault-list, fault-campaign, final-metrics, and FMEDA stages.
+
+The practical role of D05 is:
+
+```text
+D01 -> input package evidence
+D02 -> Base FIT evidence
+D03 -> FIT-standard comparison evidence
+D04 -> structural safety evidence
+D05 -> database/session evidence center
+D06 -> safety exploration
+D07 -> safety mechanism map
+D08 -> fault list generation
+D09-D14 -> simulation context, fault campaign, classification, final metrics
+D15-D16 -> FMEDA data model and top-down FMEDA flow
+D17-D20 -> closure, regression gate, traceability, end-to-end mini flow
+```
+
+D05 therefore has one main responsibility:
+
+```text
+make every important safety artifact addressable, traceable, and reusable through a database/session identity.
+```
+
+A report file is still useful. A CSV file is still useful. A log file is still useful. D05 does not replace them. It gives them a stable relationship.
+
+The engineering objective is to move from this:
+
+```text
+reports/
+logs/
+outputs/
+csv/
+manual_notes/
+```
+
+to this:
+
+```text
+Database: project_safety.fdb
+  Session: D01_INPUT_CONTEXT
+  Session: D02_BASE_FIT
+  Session: D03_FIT_STANDARD_IEC62380_PASSENGER
+  Session: D03_FIT_STANDARD_SN29500_REFERENCE
+  Session: D04_STRUCTURAL_MODEL
+  Session: D06_EXPLORATION_CANDIDATE_A
+  Session: D08_FAULT_LIST
+  Session: D12_FAULT_CAMPAIGN
+  Session: D14_FINAL_METRICS
+  Session: D15_FMEDA_EXPORT
+```
+
+The second model is much easier to audit, reproduce, compare, and automate.
+
+---
+
+## 3. Understanding `.fdb::session`
+
+A database-session reference should be read as two different pieces of identity.
 
 Example:
 
 ```text
-total BFR = 120 FIT
+outputs/db/project_safety.fdb::D05_EVIDENCE_INDEX
 ```
 
-This number does not tell us:
+This means:
 
 ```text
-which registers dominate the risk
-which endpoints are protected
-which cones are uncovered
-which faults should be injected first
-which failure modes are affected
+Database file: outputs/db/project_safety.fdb
+Session name:  D05_EVIDENCE_INDEX
 ```
 
-A structural safety model connects quantitative contribution to design topology.
+The database file represents a container for the safety workflow. The session represents a particular run, stage, assumption set, or result partition.
 
-```mermaid
-flowchart LR
-    A[Base FIT Contribution] --> B[Startpoint]
-    B --> C[Logic Cone]
-    C --> D[Endpoint]
-    D --> E[Safety Mechanism]
-    D --> F[Failure Mode]
-    E --> G[Diagnostic Coverage]
-    F --> H[FMEDA Row]
-```
-
-**Figure 1. Structural safety modeling connects FIT contribution to endpoint, safety mechanism, failure mode, and FMEDA evidence.**
-
-In a practical workflow:
+This distinction matters because many stages may use the same database file while writing different sessions:
 
 ```text
-D03/D04 provide the failure-rate baseline.
-D05 explains where that baseline can propagate.
-Later demos estimate DC, generate fault lists, and run fault campaigns.
+project_safety.fdb::D02_BASE_FIT
+project_safety.fdb::D03_IEC62380_PASSENGER_65C
+project_safety.fdb::D03_SN29500_REFERENCE
+project_safety.fdb::D04_STRUCTURAL_MODEL
+project_safety.fdb::D08_FAULT_LIST
+project_safety.fdb::D12_FAULT_CAMPAIGN
+project_safety.fdb::D14_FINAL_METRICS
+```
+
+A session should not be treated as a temporary scratch area. It should be treated as an evidence partition with a clear meaning.
+
+A good session name usually includes:
+
+```text
+stage id
+analysis purpose
+standard or variant identity when relevant
+major assumption set
+```
+
+A poor session name looks like this:
+
+```text
+run1
+test
+new
+final
+final2
+```
+
+Those names are convenient for local debugging, but they become unusable in review.
+
+A better session name looks like this:
+
+```text
+D03_IEC62380_PASSENGER_65C
+D04_STRUCTURAL_MODEL_IEC62380
+D08_FAULT_LIST_MAIN
+D12_FAULT_CAMPAIGN_REGRESSION_A
+D14_FINAL_METRICS_FROM_D12
+```
+
+The key idea is simple:
+
+```text
+session identity is part of safety evidence.
 ```
 
 ---
 
-## 3. The Three Core Structural Objects
+## 4. Why a Common Database Is Needed
 
-The three most important structural objects are:
+A functional safety flow crosses several domains.
+
+It starts with design files and reliability assumptions. It moves into structural analysis. It then enters safety-mechanism exploration, fault-list generation, simulation context, fault injection, classification, final metric calculation, and FMEDA.
+
+Each domain has a different data shape.
+
+| Domain | Typical Evidence |
+|---|---|
+| Design input | RTL, filelist, clock definition, blackbox list, memory definition |
+| Reliability setup | FIT setup, mission profile, process model, package data, temperature assumptions |
+| Quantitative analysis | FIT, BFR, permanent and transient contribution, diagnostic coverage |
+| Structural analysis | endpoint, startpoint, cone, DCE, hierarchy boundary |
+| Safety mechanism reasoning | EP-to-SM map, diagnostic coverage assumption, mechanism type |
+| Fault campaign setup | fault list, alarm list, observe point, FTTI window, simulation stimulus |
+| Fault campaign result | detected, safe, unsafe, unresolved, not-triggered, not-observed |
+| Final metric validation | final DC, residual FIT, SPFM/LFM/PMHF-style metrics |
+| FMEDA | part, sub-part, failure mode, safety mechanism, residual contribution |
+
+A common database gives the flow a way to carry these data types across tools and across stages.
+
+The main benefit is not only storage. The main benefit is continuity.
 
 ```text
-startpoint
-endpoint
-cone
+analysis output -> fault-list input -> fault-campaign input -> final metric input -> FMEDA evidence
 ```
 
-### 3.1 Startpoint
+Without this continuity, engineers often end up doing manual joins between reports. Manual joins are dangerous because they are easy to make once and hard to review later.
 
-A startpoint is a location where a fault can originate or begin propagating.
+---
+
+## 5. File-Based Evidence and Database-Based Evidence
+
+A mature safety flow should keep both file-based evidence and database-based evidence.
+
+They solve different problems.
+
+### 5.1 File-Based Evidence
+
+File-based evidence is human-friendly and Git-friendly.
 
 Examples:
 
 ```text
-flip-flop output
-memory bit
-latch output
-input port
-black-box output
-internal net
-state register bit
+summary reports
+FIT contribution reports
+DCE files
+fault-list exports
+fault-campaign summaries
+CSV indexes
+markdown summaries
+run manifests
+quality-gate reports
 ```
 
-A startpoint answers:
+File evidence is good for:
 
 ```text
-Where can the fault effect begin?
+review
+side-by-side diff
+publication demo
+CI archive
+manual inspection
+minimal reproducibility package
 ```
 
-### 3.2 Endpoint
+### 5.2 Database-Based Evidence
 
-An endpoint is a location where a propagated error becomes observable or safety-relevant.
+Database-based evidence is tool-friendly and workflow-friendly.
 
 Examples:
 
 ```text
-state register input
-output port
-safety-critical control signal
-alarm-related state
-bus response signal
-memory write data
-interface transaction field
+coverage metrics
+fault lists
+fault simulation results
+part and sub-part mapping
+alarm and observe-point settings
+FTTI settings
+safety-mechanism maps
+session identity
 ```
 
-An endpoint answers:
+Database evidence is good for:
 
 ```text
-Where does the fault effect matter?
+cross-tool handoff
+fault campaign reuse
+final metric validation
+GUI visualization
+FMEDA assembly
+session-level traceability
 ```
 
-### 3.3 Cone
+D05 should not choose one and discard the other. It should bind the two.
 
-A cone is the logic region between startpoints and endpoints.
-
-It answers:
+A practical pattern is:
 
 ```text
-Through which logic can an error propagate?
+outputs/evidence_index.csv      -> file-level index
+outputs/session_catalog.csv     -> session-level index
+outputs/db/project_safety.fdb   -> structured database container
+outputs/demo_summary.md         -> human-readable explanation
 ```
 
-```mermaid
-flowchart LR
-    SP1[Startpoint 1] --> C[Logic Cone]
-    SP2[Startpoint 2] --> C
-    SP3[Startpoint 3] --> C
-    C --> EP1[Endpoint 1]
-    C --> EP2[Endpoint 2]
-```
-
-**Figure 2. A cone captures the propagation region from startpoints to endpoints.**
-
-The structural model is not only a graph. It is the basis for safety reasoning.
+The evidence index explains where the files are. The session catalog explains what each database session means. The database stores structured data for later stages. The summary explains the engineering interpretation.
 
 ---
 
-## 4. Fault Propagation Is a Graph Problem
+## 6. The Session Catalog as a First-Class Artifact
 
-At the RTL or netlist level, a digital design can be viewed as a graph.
+The session catalog is the heart of D05.
 
-```text
-nodes:
-  wires
-  ports
-  registers
-  memories
-  cells
-  module instances
+A session catalog is a table that describes every session written to or read from the common database.
 
-edges:
-  signal dependencies
-  driver-to-load connections
-  register-to-combinational paths
-  memory read/write dependencies
-  module port connections
-```
+A useful schema is:
 
-A simplified dependency graph:
+| Column | Meaning |
+|---|---|
+| `session_name` | Logical session identity |
+| `stage_id` | D01, D02, D03, D04, D05, etc. |
+| `session_role` | input, analysis, structural, fault_list, campaign_result, final_metric, FMEDA |
+| `database_path` | Path to `.fdb` container |
+| `source_stage` | Upstream stage that produced the session |
+| `fit_standard` | Standard identity when applicable |
+| `variant_id` | Experiment variant when applicable |
+| `design_top` | Top-level design boundary |
+| `input_manifest` | File describing input provenance |
+| `derived_from` | Parent session or parent artifact |
+| `overwrite_policy` | Whether overwrite is allowed |
+| `quality_status` | PASS, WARN, FAIL |
+| `notes` | Human-readable explanation |
 
-```mermaid
-flowchart LR
-    A[count_reg] --> B[adder]
-    B --> C[next_count]
-    C --> D[count_reg_d]
-    D --> E[count_reg_q]
-    E --> F[parity_logic]
-    F --> G[alarm]
-```
+This catalog is separate from the database itself. That is intentional.
 
-**Figure 3. RTL structure can be represented as a dependency graph for safety analysis.**
+The database may be optimized for tool access. The catalog is optimized for engineering review.
 
-Once the graph is built, structural analysis can answer:
-
-```text
-Which startpoints can reach this endpoint?
-Which endpoints can be affected by this startpoint?
-How large is the cone?
-Is the cone protected?
-Is the endpoint protected?
-Is the alarm path part of the protected cone?
-```
-
-This is why a structural safety tool needs graph algorithms, not just text parsing.
+A reviewer should be able to open the catalog and understand the flow without reverse-engineering every command.
 
 ---
 
-## 5. Structural Model vs Functional Simulation
+## 7. Database Session Design Principles
 
-Functional simulation tells us how the design behaves for a specific stimulus.
+### 7.1 One Session Has One Responsibility
 
-Structural analysis tells us what can potentially propagate independent of one specific run.
+A session should not mix unrelated purposes.
 
-They are complementary.
-
-| Method | What It Answers | Limitation |
-|---|---|---|
-| Functional simulation | What happened under this stimulus? | May not activate all paths |
-| Structural analysis | What can potentially propagate through design topology? | May over-approximate real behavior |
-| Fault injection | What happens when a specific fault is injected under a context? | Can be expensive |
-| FMEDA | How results map to safety metrics and failure modes | Depends on input quality |
-
-Structural analysis is useful before fault injection because it helps prioritize where to inject faults.
-
-```mermaid
-flowchart TD
-    A[Structural Analysis] --> B[Candidate Fault Region]
-    B --> C[Prioritized Fault List]
-    D[Simulation Context] --> E[Fault Campaign]
-    C --> E
-    E --> F[Measured Outcome]
-```
-
-**Figure 4. Structural analysis narrows and prioritizes the fault campaign.**
-
-A naive fault campaign may inject faults everywhere.
-
-A structural safety campaign should inject faults where the safety argument needs evidence.
-
----
-
-## 6. RTL-Level vs Netlist-Level Structure
-
-A structural safety model can be built at different abstraction levels:
+For example, this is not ideal:
 
 ```text
-architectural level
-RTL level
-gate-level netlist
-post-synthesis netlist
-post-layout netlist
+project_safety.fdb::ALL_RESULTS
 ```
 
-Each level has different tradeoffs.
+It hides the difference between BFR, structural analysis, fault list, fault campaign result, and final metric validation.
 
-| Level | Advantage | Limitation |
-|---|---|---|
-| Architectural | Early safety exploration | Coarse structure |
-| RTL | Early design feedback, readable hierarchy | Some implementation details missing |
-| Gate-level netlist | More accurate logic structure | Less readable, larger graph |
-| Post-layout netlist | Closest to implementation | Expensive and late |
-| Final signoff netlist | Most accurate for final metrics | Least flexible for design changes |
-
-A good safety workflow should support multiple levels.
-
-```mermaid
-flowchart LR
-    A[Architecture] --> B[RTL]
-    B --> C[Synthesized Netlist]
-    C --> D[Gate-Level Netlist]
-    D --> E[Final Safety Metrics]
-```
-
-**Figure 5. Structural safety analysis should start early at RTL and become more accurate near signoff.**
-
-The first implementation of D05 can use a toy RTL design.
-
-Later versions can use an open-source synthesis frontend to produce a normalized structural representation.
-
----
-
-## 7. Why RTL Hierarchy Matters
-
-Safety reports are usually reviewed by humans.
-
-A flat netlist is difficult to review because names become transformed, optimized, and sometimes unrecognizable.
-
-RTL hierarchy helps preserve intent:
+A better model is:
 
 ```text
-top.u_ctrl.state_reg
-top.u_timer.timeout_cnt
-top.u_bus.wdata_reg
-top.u_alarm.err_pending
+project_safety.fdb::D02_BASE_FIT
+project_safety.fdb::D04_STRUCTURAL_MODEL
+project_safety.fdb::D08_FAULT_LIST
+project_safety.fdb::D12_FAULT_CAMPAIGN
+project_safety.fdb::D14_FINAL_METRICS
 ```
 
-These names tell an engineer what the signal means.
+Each session has a clear owner and a clear consumer.
 
-Hierarchy also helps map design structure to FMEDA:
+### 7.2 Treat Sessions as Evidence, Not Scratch Space
 
-```text
-top.u_ctrl      → Control Part
-top.u_timer     → Timer Part
-top.u_bus       → Bus Interface Part
-top.u_mem       → Memory Subsystem Part
-top.u_alarm     → Diagnostic Part
-```
+During early debugging, it is tempting to overwrite the same session repeatedly.
 
-```mermaid
-flowchart TD
-    A[top] --> B[u_ctrl]
-    A --> C[u_timer]
-    A --> D[u_bus]
-    A --> E[u_alarm]
-    B --> F[state_reg]
-    C --> G[timeout_cnt]
-    D --> H[wdata_reg]
-    E --> I[err_pending]
-```
-
-**Figure 6. RTL hierarchy provides reviewable names for safety mapping.**
-
-However, hierarchy alone is not enough.
-
-We still need connectivity.
-
----
-
-## 8. Connectivity Is the Key
-
-A hierarchy tree says:
-
-```text
-where something is located
-```
-
-A connectivity graph says:
-
-```text
-how something can influence something else
-```
-
-Both are needed.
-
-```mermaid
-flowchart TD
-    H[Hierarchy] --> M[Structural Safety Model]
-    C[Connectivity] --> M
-    M --> E[Endpoint Cone]
-    M --> S[Startpoint Usage]
-    M --> D[Diagnostic Coverage Input]
-```
-
-**Figure 7. A structural safety model combines hierarchy and connectivity.**
+That is acceptable only for local experiments. For a reviewable flow, the session naming strategy should make the run identity explicit.
 
 For example:
 
 ```text
-top.u_cfg.mode_reg
+D03_IEC62380_PASSENGER_65C
+D03_IEC62380_MOTORCONTROL_85C
+D03_SN29500_REFERENCE_65C
 ```
 
-may be in a configuration block, but it may influence:
+These session names tell the reviewer what changed.
+
+### 7.3 Do Not Mix Standards in a Single Analysis Session
+
+D03 already established that `fit_standard` and `variant_id` are different concepts.
+
+A database session should preserve this distinction.
+
+The wrong approach is:
 
 ```text
-top.u_ctrl.state_reg
-top.u_bus.access_grant
-top.u_alarm.mask_enable
+project_safety.fdb::D03_STANDARD_COMPARISON
 ```
 
-The safety relevance of `mode_reg` is not determined only by its module name. It is determined by what it can influence.
+if that single session internally mixes IEC 62380-derived and SN 29500-derived values without a clear separation.
 
----
-
-## 9. Startpoint Discovery
-
-A first implementation of `safeic-structure` should discover candidate startpoints.
-
-Candidate startpoints may include:
+The better approach is:
 
 ```text
-sequential elements
-memory bits
-primary inputs
-black-box outputs
-selected internal nets
-safety-critical configuration registers
+project_safety.fdb::D03_IEC62380_PASSENGER_65C
+project_safety.fdb::D03_SN29500_REFERENCE_65C
 ```
 
-Example startpoint table:
+Then a separate comparison table can reference both sessions.
 
-```csv
-startpoint,type,module,width,reason
-toy_counter.count_reg,flip_flop_array,toy_counter,8,state element
-toy_counter.en,input,toy_counter,1,primary input
-toy_counter.rst_n,input,toy_counter,1,reset input
-toy_counter.parity_reg,flip_flop,toy_counter,1,state element
-```
+### 7.4 Record Both Producer and Consumer
 
-Startpoint discovery should be configurable because not every node should be injected in every campaign.
-
-Possible policies:
-
-```text
-all_state_elements
-all_primary_inputs
-all_memory_bits
-only_safety_relevant
-manual_allowlist
-exclude_reset_clock
-exclude_test_logic
-```
-
-A practical tool should support both automatic discovery and manual override.
-
----
-
-## 10. Endpoint Discovery
-
-Endpoints define where safety-relevant effects are observed.
-
-Candidate endpoints may include:
-
-```text
-state register inputs
-output ports
-alarm signals
-safety-critical control signals
-bus response fields
-memory write enables
-interface valid/ready signals
-FSM state variables
-```
-
-Example endpoint table:
-
-```csv
-endpoint,type,module,width,reason
-toy_counter.count,output,toy_counter,8,observable state
-toy_counter.alarm,output,toy_counter,1,diagnostic alarm
-toy_counter.count_parity,output,toy_counter,1,diagnostic state
-```
-
-Automatic endpoint discovery is useful, but safety relevance often requires human input.
-
-Therefore D05 should support endpoint tags:
-
-```yaml
-endpoints:
-  - name: toy_counter.count
-    type: observable_state
-    safety_relevance: safety_related
-    failure_modes:
-      - FM_DATA_CORRUPTION
-
-  - name: toy_counter.alarm
-    type: diagnostic_alarm
-    safety_relevance: diagnostic
-    failure_modes:
-      - FM_ALARM_NOT_ASSERTED
-```
-
-The structural model should not assume every endpoint has the same safety meaning.
-
----
-
-## 11. Cone Extraction
-
-Cone extraction is the core structural operation.
-
-For each endpoint, find the upstream logic that can influence it.
-
-```mermaid
-flowchart TD
-    A[Endpoint] --> B[Backward Trace]
-    B --> C[Drivers]
-    C --> D[Upstream Cells]
-    D --> E[Registers / Inputs / Memories]
-    E --> F[Startpoint Set]
-```
-
-**Figure 8. Cone extraction traces backward from endpoint to upstream startpoints.**
+Every session should have a producer and a consumer.
 
 Example:
 
-```text
-endpoint:
-  toy_counter.alarm
+| Session | Producer | Consumer |
+|---|---|---|
+| `D02_BASE_FIT` | analysis engine | D03, D05, FMEDA pre-check |
+| `D04_STRUCTURAL_MODEL` | structural collector | D06, D08, D15 |
+| `D08_FAULT_LIST` | analysis engine | fault campaign engine |
+| `D12_FAULT_CAMPAIGN` | fault campaign engine | final metric analysis |
+| `D14_FINAL_METRICS` | analysis engine | FMEDA / review |
 
-upstream cone:
-  toy_counter.count
-  toy_counter.count_parity
-  toy_counter.expected_parity
-  parity_logic
-```
-
-Output:
-
-```json
-{
-  "endpoint": "toy_counter.alarm",
-  "cone": {
-    "startpoints": [
-      "toy_counter.count_reg",
-      "toy_counter.parity_reg"
-    ],
-    "internal_nodes": [
-      "toy_counter.expected_parity",
-      "toy_counter.parity_logic"
-    ],
-    "cone_size": 4
-  }
-}
-```
-
-Cone extraction can support:
-
-```text
-backward cone
-forward cone
-bounded-depth cone
-clock-domain-limited cone
-reset-excluded cone
-black-box boundary cone
-```
-
-For D05, a simple backward cone is enough.
+If a session has no known consumer, it may be a temporary artifact rather than safety evidence.
 
 ---
 
-## 12. Forward Impact Analysis
+## 8. The Read/Write Pattern Across the Flow
 
-Backward cone answers:
+A common database becomes powerful when stages read from and write to different sessions.
 
-```text
-What can influence this endpoint?
-```
-
-Forward impact analysis answers:
+The pattern is:
 
 ```text
-What endpoints can this startpoint influence?
+write analysis evidence
+read analysis evidence
+write fault-list evidence
+read fault-list evidence
+write fault-campaign evidence
+read fault-campaign evidence
+write final metric evidence
+export FMEDA evidence
 ```
+
+Conceptually:
 
 ```mermaid
 flowchart LR
-    A[Startpoint] --> B[Forward Trace]
-    B --> C[Affected Cone]
-    C --> D[Endpoint 1]
-    C --> E[Endpoint 2]
-    C --> F[Endpoint 3]
+    A[D02 Base FIT Session] --> B[D03 Standard Comparison Sessions]
+    B --> C[D04 Structural Model Session]
+    C --> D[D06 Safety Exploration Sessions]
+    D --> E[D08 Fault List Session]
+    E --> F[D12 Fault Campaign Session]
+    F --> G[D14 Final Metrics Session]
+    G --> H[D15 FMEDA Data Model]
 ```
 
-**Figure 9. Forward impact analysis helps rank startpoints by how many safety-relevant endpoints they can affect.**
+D05 does not need to execute all these stages. It defines the evidence architecture that allows these stages to work together.
 
-Example:
-
-```csv
-startpoint,affected_endpoints,count
-toy_counter.count_reg,toy_counter.count;toy_counter.alarm,2
-toy_counter.parity_reg,toy_counter.alarm,1
-toy_counter.en,toy_counter.count;toy_counter.alarm,2
-```
-
-Forward impact is useful for:
-
-```text
-fault list prioritization
-startpoint usage reporting
-endpoint contribution estimation
-identifying high-fanout safety-critical nodes
-debugging unsafe fault propagation
-```
-
-A startpoint that affects many safety-critical endpoints may deserve stronger protection or earlier fault injection.
-
----
-
-## 13. Startpoint Usage
-
-Startpoint usage measures how startpoints participate in endpoint cones.
-
-It can answer:
-
-```text
-Which startpoints appear in many endpoint cones?
-Which startpoints are unused?
-Which startpoints dominate safety-relevant propagation?
-Which startpoints are only diagnostic-path related?
-```
-
-Example report:
-
-```csv
-startpoint,type,used_by_endpoints,usage_count
-toy_counter.count_reg,flip_flop_array,toy_counter.count;toy_counter.alarm,2
-toy_counter.parity_reg,flip_flop,toy_counter.alarm,1
-toy_counter.rst_n,input,all,2
-```
-
-In safety review, startpoint usage helps identify:
-
-```text
-common propagation sources
-single-point weakness
-unprotected configuration state
-global control signals
-dangerous diagnostic masking paths
-```
-
-This is why structural analysis is not only a pre-processing step. It is a safety review tool.
-
----
-
-## 14. Diagnostic Coverage Needs Structure
-
-Diagnostic Coverage is often described as a percentage.
-
-But the percentage is meaningful only when the covered structure is clear.
-
-For example:
-
-```text
-endpoint parity covers endpoint state
-CRC covers transaction path
-lockstep covers duplicated compute path
-ECC covers memory array
-watchdog covers temporal response
-```
-
-Each mechanism has a structural scope.
-
-```mermaid
-flowchart TD
-    A[Safety Mechanism] --> B[Covered Scope]
-    B --> C[Endpoint]
-    B --> D[Cone]
-    B --> E[Path]
-    B --> F[Memory]
-    B --> G[Alarm Path]
-```
-
-**Figure 10. A safety mechanism must be mapped to the structure it actually covers.**
-
-Examples:
-
-| Safety Mechanism | Structural Scope |
-|---|---|
-| Endpoint parity | Endpoint state |
-| Memory ECC | Memory array and read/write data path |
-| Bus CRC | Transaction path |
-| Lockstep | Duplicated compute path and comparator |
-| Protocol checker | Control sequence and state transition |
-| Watchdog | Temporal progress and response path |
-| Alarm monitor | Diagnostic reporting path |
-
-This is why D05 prepares the input for later DC computation.
-
----
-
-## 15. Endpoint-to-Safety-Mechanism Mapping
-
-The endpoint-to-safety-mechanism map connects structure to protection.
-
-Example:
-
-```csv
-endpoint,safety_mechanism,coverage_scope,alarm,assumption
-toy_counter.count,endpoint_parity,endpoint,toy_counter.alarm,parity protects counter state
-toy_counter.alarm,none,diagnostic_path,,alarm path protection not modeled
-```
-
-This mapping answers:
-
-```text
-Which endpoint is protected?
-Which mechanism protects it?
-What scope does the mechanism cover?
-Which alarm reports the diagnostic result?
-Which assumptions are made?
-```
-
-A stronger map can include:
-
-```csv
-endpoint,safety_mechanism,scope,dc_estimate,alarm,failure_mode,review_status
-toy_counter.count,endpoint_parity,endpoint,0.90,toy_counter.alarm,FM_DATA_CORRUPTION,draft
-toy_counter.alarm,none,diagnostic_path,0.00,,FM_ALARM_NOT_ASSERTED,draft
-```
-
-The structural model should validate this map:
-
-```text
-endpoint exists
-safety mechanism exists
-alarm exists
-failure mode exists
-scope is supported
-coverage value is within range
-```
-
----
-
-## 16. Part and Sub-part Mapping
-
-Functional safety reports are usually organized by parts and sub-parts.
-
-A structural tool should support this mapping.
-
-Example:
-
-```yaml
-parts:
-  - id: PART_COUNTER
-    name: Counter Block
-    instances:
-      - toy_counter
-
-subparts:
-  - id: SUBPART_COUNTER_STATE
-    parent: PART_COUNTER
-    name: Counter State
-    objects:
-      - toy_counter.count
-
-  - id: SUBPART_COUNTER_DIAG
-    parent: PART_COUNTER
-    name: Counter Diagnostic Logic
-    objects:
-      - toy_counter.count_parity
-      - toy_counter.alarm
-```
-
-This mapping connects signal-level structure to FMEDA structure.
-
-```mermaid
-flowchart LR
-    A[RTL Instance] --> B[Part]
-    B --> C[Sub-part]
-    C --> D[Endpoint]
-    D --> E[Failure Mode]
-    E --> F[FMEDA Row]
-```
-
-**Figure 11. Part/sub-part mapping converts signal-level structure into FMEDA-ready organization.**
-
-Without this mapping, a fault result remains too low-level:
-
-```text
-toy_counter.count[3] stuck_at_1 detected
-```
-
-With this mapping, the same result can become:
-
-```text
-PART_COUNTER / SUBPART_COUNTER_STATE / FM_DATA_CORRUPTION / detected
-```
-
-That is much more useful for safety reporting.
-
----
-
-## 17. Failure Mode Mapping
-
-Failure mode mapping adds semantics.
-
-Example:
-
-```yaml
-failure_mode_map:
-  - object: toy_counter.count
-    failure_modes:
-      - FM_DATA_CORRUPTION
-      - FM_WRONG_COUNT_VALUE
-
-  - object: toy_counter.alarm
-    failure_modes:
-      - FM_ALARM_NOT_ASSERTED
-      - FM_FALSE_ALARM
-```
-
-The same structural object may have multiple failure modes.
-
-For example, an alarm signal can fail in at least two opposite ways:
-
-```text
-alarm not asserted when needed
-alarm asserted when not needed
-```
-
-These have different safety implications.
-
-```mermaid
-flowchart TD
-    A[Endpoint] --> B[Failure Mode 1]
-    A --> C[Failure Mode 2]
-    B --> D[Safety Mechanism Need]
-    C --> E[Diagnostic Robustness Need]
-```
-
-**Figure 12. Failure mode mapping adds safety semantics to structural endpoints.**
-
-D05 should not try to compute all metrics yet. It should prepare the mapping so later demos can use it.
-
----
-
-## 18. Black-Box Boundaries
-
-Real designs contain black boxes.
-
-Examples:
-
-```text
-memory macro
-PLL
-analog block
-third-party IP
-encrypted IP
-hard macro
-external interface
-```
-
-A structural tool must handle black boxes explicitly.
-
-Possible policies:
-
-```text
-stop at black-box input
-treat black-box output as startpoint
-use user-supplied summary model
-require supplier safety data
-mark cone as incomplete
-```
-
-Example black-box summary:
-
-```yaml
-blackboxes:
-  - instance: top.u_sram
-    type: memory_macro
-    policy: user_summary
-    outputs_as_startpoints: true
-    fit_source: supplier_override
-    review_status: draft
-```
-
-If a cone crosses a black-box boundary, the report should say so.
-
-Example:
-
-```csv
-endpoint,blackbox_boundary,status,comment
-top.u_bus.rdata,top.u_sram,incomplete,user summary required
-```
-
-A safe engineering flow should never silently pretend that black-box structure is known.
-
----
-
-## 19. Clock, Reset, and Test Logic Exclusions
-
-Structural analysis must be careful with global signals.
-
-Signals such as:
-
-```text
-clock
-reset
-scan enable
-test mode
-DFT control
-power isolation enable
-```
-
-can appear in many cones.
-
-If not handled carefully, they can dominate reports and obscure the real safety structure.
-
-D05 should support exclusion or special classification:
-
-```yaml
-special_signals:
-  clocks:
-    - clk
-  resets:
-    - rst_n
-  test_controls:
-    - scan_en
-    - test_mode
-```
-
-Policy examples:
-
-```text
-exclude clocks from fault startpoints
-include resets only if reset safety is being analyzed
-exclude scan/test logic in functional safety mode
-tag test-mode paths separately
-```
-
-This is not just a tool convenience. It affects safety interpretation.
-
----
-
-## 20. Structural Output Artifacts
-
-D05 should generate machine-readable and human-readable outputs.
-
-Suggested outputs:
-
-```text
-outputs/structure_summary.md
-outputs/hierarchy.json
-outputs/connectivity_graph.json
-outputs/startpoints.csv
-outputs/endpoints.csv
-outputs/cones.csv
-outputs/startpoint_usage.csv
-outputs/endpoint_to_sm_check.csv
-outputs/part_subpart_map_check.csv
-outputs/blackbox_boundary_report.csv
-```
-
-Example `startpoints.csv`:
-
-```csv
-startpoint,type,module,width,reason
-toy_counter.count_reg,flip_flop_array,toy_counter,8,state element
-toy_counter.parity_reg,flip_flop,toy_counter,1,state element
-toy_counter.en,input,toy_counter,1,primary input
-```
-
-Example `endpoints.csv`:
-
-```csv
-endpoint,type,module,width,safety_relevance
-toy_counter.count,output,toy_counter,8,safety_related
-toy_counter.alarm,output,toy_counter,1,diagnostic
-toy_counter.count_parity,output,toy_counter,1,diagnostic_state
-```
-
-Example `cones.csv`:
-
-```csv
-endpoint,startpoints,internal_nodes,cone_size
-toy_counter.count,toy_counter.count_reg;toy_counter.en,next_count_logic,3
-toy_counter.alarm,toy_counter.count_reg;toy_counter.parity_reg,expected_parity;parity_compare,4
-```
-
----
-
-## 21. The `safeic-structure` Tool Architecture
-
-The tool can be implemented as a staged pipeline.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> B[safeic-structure]
-    C[RTL / Netlist Files] --> B
-    D[Manual Endpoint Config] --> B
-    E[Part/Sub-part Map] --> B
-    F[SM Map] --> B
-    G[Black-box Config] --> B
-
-    B --> H[Hierarchy Model]
-    B --> I[Connectivity Graph]
-    B --> J[Startpoints]
-    B --> K[Endpoints]
-    B --> L[Cones]
-    B --> M[Review Reports]
-```
-
-**Figure 13. `safeic-structure` converts design files and safety mappings into structural safety artifacts.**
-
-Suggested internal modules:
-
-```text
-safeic_structure/
-  cli.py
-  manifest.py
-  rtl_frontend.py
-  hierarchy.py
-  connectivity.py
-  startpoint.py
-  endpoint.py
-  cone.py
-  partmap.py
-  smmap_check.py
-  blackbox.py
-  report.py
-```
-
-Responsibilities:
-
-| Module | Responsibility |
-|---|---|
-| `rtl_frontend.py` | Load normalized RTL/netlist representation |
-| `hierarchy.py` | Build instance and module hierarchy |
-| `connectivity.py` | Build signal dependency graph |
-| `startpoint.py` | Discover or load startpoint candidates |
-| `endpoint.py` | Discover or load endpoint candidates |
-| `cone.py` | Extract backward and forward cones |
-| `partmap.py` | Validate part/sub-part mapping |
-| `smmap_check.py` | Validate endpoint-to-safety-mechanism mapping |
-| `blackbox.py` | Identify black-box boundaries |
-| `report.py` | Generate CSV, JSON, and Markdown outputs |
-
----
-
-## 22. Using Open-Source Frontends
-
-For an open educational implementation, the structural frontend can be built in stages.
-
-### Stage 1: Manual Toy Graph
-
-Use a small hand-written structural graph for `toy_counter`.
-
-This keeps the first demo simple.
-
-### Stage 2: RTL Parsing
-
-Use a lightweight parser to identify modules, ports, assignments, and registers.
-
-### Stage 3: Yosys-Based Normalization
-
-Use an open-source synthesis frontend to convert RTL into a normalized representation.
-
-A normalized intermediate representation can make structural analysis easier because it exposes cells, wires, connections, memories, and processes in a consistent form.
-
-### Stage 4: Netlist-Based Graph
-
-Use synthesized netlist output to build a more accurate graph.
-
-### Stage 5: Name Mapping
-
-Add RTL-to-netlist name mapping so reports remain reviewable.
-
-```mermaid
-flowchart TD
-    A[Stage 1 Manual Graph] --> B[Stage 2 RTL Parser]
-    B --> C[Stage 3 Normalized IR]
-    C --> D[Stage 4 Netlist Graph]
-    D --> E[Stage 5 Name Mapping]
-```
-
-**Figure 14. D05 can start with a simple graph and evolve toward normalized RTL/netlist structural analysis.**
-
-The staged approach avoids overbuilding while still pointing toward a realistic architecture.
-
----
-
-## 23. D05 Directory Structure
-
-Suggested directory:
-
-```text
-D05_structural_safety_model/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    rtl/
-      toy_counter.v
-    filelist.f
-    top.yaml
-    endpoints.yaml
-    startpoint_policy.yaml
-    safety_mechanisms.yaml
-    ep_to_sm_map.csv
-    failure_modes.yaml
-    part_subpart_map.yaml
-    blackbox.yaml
-    special_signals.yaml
-
-  intermediate/
-    normalized_design.json
-    hierarchy.json
-    connectivity_graph.json
-
-  outputs/
-    structure_summary.md
-    startpoints.csv
-    endpoints.csv
-    cones.csv
-    startpoint_usage.csv
-    endpoint_to_sm_check.csv
-    part_subpart_map_check.csv
-    blackbox_boundary_report.csv
-```
-
-This structure separates:
-
-```text
-design input
-manual safety mapping
-intermediate structural model
-reviewable reports
-```
-
----
-
-## 24. D05 Manifest
-
-Example `manifest.yaml`:
-
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D05_structural_safety_model
-  top_module: toy_counter
-
-design:
-  filelist: inputs/filelist.f
-  top_config: inputs/top.yaml
-
-structure:
-  endpoint_config: inputs/endpoints.yaml
-  startpoint_policy: inputs/startpoint_policy.yaml
-  special_signals: inputs/special_signals.yaml
-  blackbox_config: inputs/blackbox.yaml
-
-safety:
-  safety_mechanisms: inputs/safety_mechanisms.yaml
-  ep_to_sm_map: inputs/ep_to_sm_map.csv
-  failure_modes: inputs/failure_modes.yaml
-  part_subpart_map: inputs/part_subpart_map.yaml
-
-outputs:
-  structure_summary: outputs/structure_summary.md
-  hierarchy: intermediate/hierarchy.json
-  connectivity_graph: intermediate/connectivity_graph.json
-  startpoints: outputs/startpoints.csv
-  endpoints: outputs/endpoints.csv
-  cones: outputs/cones.csv
-  startpoint_usage: outputs/startpoint_usage.csv
-```
-
-The manifest ensures the structural run is reproducible.
-
----
-
-## 25. D05 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load Design Files]
-    B --> C[Build Hierarchy]
-    C --> D[Build Connectivity Graph]
-    D --> E[Discover Startpoints]
-    D --> F[Load / Discover Endpoints]
-    E --> G[Extract Cones]
-    F --> G
-    G --> H[Compute Startpoint Usage]
-    H --> I[Validate SM Mapping]
-    H --> J[Validate Part/Sub-part Mapping]
-    I --> K[Generate Reports]
-    J --> K
-```
-
-**Figure 15. D05 execution flow: from design files to cones, mappings, and structural reports.**
-
-Example bash script:
+A neutral analysis-stage invocation may look like this:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-structure \
-  --manifest manifest.yaml \
-  --output-dir outputs
+safeic_analyze \
+  --config inputs/analysis/base_fit.ini \
+  --filelist inputs/filelist/design.f \
+  --output-dir outputs/native/d02_base_fit
 ```
 
-Example csh script:
+The initialization file defines database writing:
+
+```ini
+mode = analysis
+top = demo_top
+clkdef = inputs/clock/clocks.clk
+fit_setup = inputs/fit/FIT_inputs.txt
+fit_standard = iec_62380
+
+write_fusa_db = true
+fusa_db_name = outputs/db/project_safety.fdb::D02_BASE_FIT
+overwrite_session = true
+```
+
+A later fault-campaign stage may read from a fault-list session and write to a campaign-result session:
+
+```ini
+mode = fault_campaign
+top = demo_top
+clkdef = inputs/clock/clocks.clk
+
+fault_db_name = outputs/db/project_safety.fdb::D08_FAULT_LIST
+write_fusa_db = true
+fusa_db_name = outputs/db/project_safety.fdb::D12_FAULT_CAMPAIGN
+overwrite_session = true
+```
+
+Then a final-metric stage may read the campaign result and write a final metric session:
+
+```ini
+mode = analysis
+top = demo_top
+clkdef = inputs/clock/clocks.clk
+
+read_campaign_db = outputs/db/project_safety.fdb::D12_FAULT_CAMPAIGN
+write_fusa_db = true
+fusa_db_name = outputs/db/project_safety.fdb::D14_FINAL_METRICS
+overwrite_session = true
+```
+
+The exact option names depend on the configured engine, but the architecture is stable:
+
+```text
+read from one session
+write to another session
+keep session responsibility explicit
+```
+
+---
+
+## 9. What Belongs in D05
+
+D05 should package and explain database-centered evidence, not repeat all previous computations.
+
+The D05 demo should consume upstream outputs such as:
+
+```text
+D01 input inventory
+D01 analysis options
+D02 BFR summary
+D02 FIT contribution
+D03 FIT-standard comparison
+D03 database sessions
+D04 endpoint inventory
+D04 startpoint inventory
+D04 DCE catalog
+D04 EP-to-SM seed map
+D04 quality gate
+```
+
+Then it should generate:
+
+```text
+outputs/session_catalog.csv
+outputs/session_catalog.md
+outputs/evidence_graph.csv
+outputs/database_write_plan.csv
+outputs/database_read_plan.csv
+outputs/db_session_manifest.csv
+outputs/fmeda_bridge_seed.csv
+outputs/d05_quality_gate.csv
+outputs/d05_handoff_to_d06.csv
+outputs/d05_handoff_to_d08.csv
+outputs/d05_handoff_to_d15.csv
+outputs/demo_summary.md
+```
+
+This is a different kind of demo from D02 or D03.
+
+D02 and D03 focus on numerical analysis. D04 focuses on structural extraction. D05 focuses on evidence architecture.
+
+---
+
+## 10. The Evidence Graph
+
+A database session is useful only if its lineage is known.
+
+D05 should build an evidence graph.
+
+A minimal evidence graph has four kinds of nodes:
+
+```text
+input artifact
+run configuration
+output artifact
+database session
+```
+
+And several kinds of edges:
+
+```text
+used_by
+produced_by
+derived_from
+stored_in
+read_by
+consumed_by
+```
+
+Example:
+
+```text
+FIT setup file
+  used_by -> D03 IEC62380 run configuration
+  produced_by -> D03 IEC62380 summary report
+  stored_in -> project_safety.fdb::D03_IEC62380_PASSENGER_65C
+```
+
+Another example:
+
+```text
+D04 endpoint inventory
+  derived_from -> D03 DCE artifacts
+  stored_in -> project_safety.fdb::D04_STRUCTURAL_MODEL
+  consumed_by -> D06 safety exploration
+  consumed_by -> D08 fault-list generation
+  consumed_by -> D15 FMEDA mapping
+```
+
+This is the difference between a demo folder and an engineering evidence system.
+
+A demo folder tells you what files exist.
+
+An evidence graph tells you why they exist and how they are allowed to be used.
+
+---
+
+## 11. Why the Database Matters for FMEDA
+
+FMEDA is not only a spreadsheet. It is a model that connects:
+
+```text
+part
+sub-part
+failure mode
+safety mechanism
+diagnostic coverage
+residual FIT
+final metric evidence
+```
+
+The common database is important because it can carry the information needed to connect analysis results to FMEDA rows.
+
+A simplified FMEDA bridge looks like this:
+
+| FMEDA Concept | Database-Backed Evidence |
+|---|---|
+| Part | design hierarchy, instance grouping, structural catalog |
+| Sub-part | module or function-level partition |
+| Failure mode | safety analysis assumption or FMEDA library entry |
+| Safety mechanism | EP-to-SM map, diagnostic coverage assumption |
+| DC value | estimated or validated diagnostic coverage |
+| Residual FIT | FIT contribution after diagnostic coverage |
+| Fault result | campaign classification session |
+
+D05 does not complete the FMEDA. That will come later. But D05 prepares the path.
+
+If the database already contains structured metrics, fault lists, campaign results, part/sub-part mapping, alarm and observe-point settings, and safety-mechanism maps, then the FMEDA stage becomes a controlled export rather than a manual reconstruction.
+
+This is the difference between:
+
+```text
+copy numbers into FMEDA manually
+```
+
+and:
+
+```text
+export FMEDA evidence from traceable sessions
+```
+
+---
+
+## 12. Alarms, Observe Points, and FTTI as Database-Centered Evidence
+
+D05 also prepares the vocabulary for later fault-campaign stages.
+
+These terms appear later, but the database architecture should reserve a place for them now.
+
+### 12.1 Alarm
+
+An alarm is a signal, event, status bit, interrupt, or protocol-visible indication that a fault has been detected or controlled.
+
+An alarm is not just a waveform signal. In safety reasoning, it is evidence that the safety mechanism reached a detection or control boundary.
+
+Examples:
+
+```text
+error interrupt
+ECC error flag
+lockstep mismatch flag
+watchdog timeout
+bus response error
+safety monitor alert
+```
+
+### 12.2 Observe Point
+
+An observe point is a location where the effect of a fault is checked.
+
+An observe point may be a primary output, a register, a protocol response, a status signal, a memory interface, or an internal monitor boundary.
+
+In later fault campaigns, observe points help decide whether the machine state differs from the expected golden safety context.
+
+### 12.3 FTTI
+
+FTTI means Fault Tolerant Time Interval.
+
+It is the time window in which a fault must be detected, controlled, or made safe before it can violate the safety goal.
+
+FTTI connects digital timing to safety reasoning.
+
+For example:
+
+```text
+fault occurs at T0
+fault effect propagates to safety-critical state at T1
+alarm is expected before T0 + FTTI
+system enters safe state before the hazardous event becomes unacceptable
+```
+
+D05 should not run a fault campaign. But it should reserve database/session fields and evidence indexes for alarm lists, observe-point specifications, timescale settings, and FTTI assumptions.
+
+---
+
+## 13. Protocol-Visible Evidence
+
+D04 introduced protocol-visible endpoints. D05 explains why they matter in a database-centered flow.
+
+A protocol is an agreed behavioral contract at an interface.
+
+In digital SoC design, common protocol ideas include:
+
+```text
+valid / ready handshake
+request / grant arbitration
+address / data / response phase
+interrupt / acknowledge sequence
+error response semantics
+reset and initialization sequence
+```
+
+Functional safety does not only care whether an internal register changed. It also cares whether the fault effect became visible at a meaningful interface boundary.
+
+For example:
+
+```text
+A wrong internal state may be harmless if it is overwritten before any observable transaction.
+A wrong response on a safety-critical bus may be unsafe even if the internal state later recovers.
+An alarm flag may be meaningful only if software can observe it within the FTTI.
+```
+
+Therefore, D05 should keep protocol-visible evidence traceable:
+
+```text
+endpoint -> protocol boundary -> observe point -> alarm or no alarm -> fault classification -> FMEDA row
+```
+
+This chain becomes critical in D09 to D14.
+
+---
+
+## 14. Common Database Quality Gates
+
+D05 should introduce quality gates for database evidence.
+
+A suggested D05 quality gate includes:
+
+| Gate | Meaning |
+|---|---|
+| `DB_PATH_DEFINED` | A database path exists for all planned sessions |
+| `SESSION_NAMES_UNIQUE` | No duplicate session names for different meanings |
+| `STAGE_ID_VALID` | Every session belongs to a known stage |
+| `PRODUCER_DEFINED` | Every session has a known producer |
+| `CONSUMER_DEFINED` | Every durable session has a planned consumer |
+| `FIT_STANDARD_SEPARATED` | IEC 62380 and SN 29500 evidence are not mixed silently |
+| `DCE_STANDARD_MATCH` | DCE artifacts are not reused across incompatible standard contexts |
+| `UPSTREAM_EVIDENCE_LINKED` | D01-D04 artifacts are linked to D05 session catalog |
+| `OVERWRITE_POLICY_REVIEWED` | Overwrite behavior is explicit |
+| `HANDOFF_READY` | D06, D08, and D15 have enough input references |
+
+The quality gate should not require that all later sessions already exist. D05 happens before D06-D20.
+
+Instead, it should distinguish between:
+
+```text
+existing session
+planned session
+external session
+future session
+```
+
+A good session catalog can include planned future sessions as long as they are clearly marked.
+
+---
+
+## 15. A Practical D05 Directory Layout
+
+A clean D05 demo package can use this structure:
+
+```text
+D05_fusa_common_database_evidence_center/
+  README.md
+  scripts/
+    run_demo.csh
+    run_demo.sh
+  tools/
+    build_session_catalog.py
+    build_evidence_graph.py
+    validate_database_plan.py
+    export_handoff.py
+  inputs/
+    from_D01/
+    from_D02/
+    from_D03/
+    from_D04/
+  configs/
+    session_naming_rules.csv
+    database_plan.csv
+    handoff_rules.csv
+  outputs/
+    session_catalog.csv
+    session_catalog.md
+    evidence_graph.csv
+    evidence_graph.md
+    database_write_plan.csv
+    database_read_plan.csv
+    db_session_manifest.csv
+    fmeda_bridge_seed.csv
+    d05_quality_gate.csv
+    d05_handoff_to_d06.csv
+    d05_handoff_to_d08.csv
+    d05_handoff_to_d15.csv
+    evidence_index.csv
+    demo_summary.md
+```
+
+The D05 demo should not depend on a hidden local path.
+
+It should read upstream locations from environment variables or default sibling paths:
+
+```text
+D01_ROOT
+D02_ROOT
+D03_ROOT
+D04_ROOT
+```
+
+The shell wrapper should remain simple:
 
 ```csh
-#!/bin/csh -f
-
-set DEMO = D05_structural_safety_model
-echo "Running $DEMO"
-
-safeic-structure \
-  --manifest manifest.yaml \
-  --output-dir outputs
+csh scripts/run_demo.csh
 ```
 
-Expected outputs:
+The underlying workflow is:
 
 ```text
-outputs/structure_summary.md
-outputs/startpoints.csv
-outputs/endpoints.csv
-outputs/cones.csv
-outputs/startpoint_usage.csv
-outputs/endpoint_to_sm_check.csv
-outputs/part_subpart_map_check.csv
-outputs/blackbox_boundary_report.csv
+collect upstream evidence
+normalize session references
+build session catalog
+build evidence graph
+validate database plan
+create handoff files
+summarize quality gate
 ```
+
+D05 is therefore a data-modeling and evidence-orchestration demo.
 
 ---
 
-## 26. Example Toy Design
+## 16. Example Session Catalog
 
-A small counter with parity remains useful for D05.
+A simplified D05 session catalog may look like this:
 
-```verilog
-module toy_counter (
-  input  logic clk,
-  input  logic rst_n,
-  input  logic en,
-  output logic [7:0] count,
-  output logic count_parity,
-  output logic alarm
-);
+| stage_id | session_name | role | status | producer | consumer |
+|---|---|---|---|---|---|
+| D01 | `D01_INPUT_CONTEXT` | input_context | existing | input package builder | D02, D03, D05 |
+| D02 | `D02_BASE_FIT` | base_fit | existing | analysis engine | D03, D05, D15 |
+| D03 | `D03_IEC62380_PASSENGER_65C` | fit_standard_variant | existing | analysis engine | D04, D05 |
+| D03 | `D03_SN29500_REFERENCE_65C` | fit_standard_variant | existing | analysis engine | D04, D05 |
+| D04 | `D04_STRUCTURAL_MODEL` | structural_model | existing | structural collector | D06, D08, D15 |
+| D06 | `D06_EXPLORATION_CANDIDATE_A` | safety_exploration | planned | analysis engine | D07, D08 |
+| D08 | `D08_FAULT_LIST` | fault_list | planned | analysis engine | D11, D12 |
+| D12 | `D12_FAULT_CAMPAIGN` | campaign_result | planned | fault campaign engine | D14 |
+| D14 | `D14_FINAL_METRICS` | final_metrics | planned | analysis engine | D15, D17 |
+| D15 | `D15_FMEDA_EXPORT` | fmeda | planned | FMEDA exporter | review |
 
-  logic expected_parity;
-
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      count <= 8'h00;
-      count_parity <= 1'b0;
-    end else if (en) begin
-      count <= count + 8'h01;
-      count_parity <= ^(count + 8'h01);
-    end
-  end
-
-  assign expected_parity = ^count;
-  assign alarm = (expected_parity != count_parity);
-
-endmodule
-```
-
-Structural interpretation:
-
-```text
-startpoints:
-  count
-  count_parity
-  en
-
-endpoints:
-  count
-  count_parity
-  alarm
-
-cone for alarm:
-  count
-  count_parity
-  expected_parity
-  parity compare
-```
-
-This design is small enough to inspect manually but still demonstrates:
-
-```text
-state endpoint
-diagnostic endpoint
-alarm path
-parity safety mechanism
-unprotected alarm path
-```
+This table is not a replacement for the database. It is a review-friendly index of the database strategy.
 
 ---
 
-## 27. Example `structure_summary.md`
+## 17. Example Evidence Graph
 
-A useful summary report:
+A simplified evidence graph can be represented as CSV:
 
-```md
-# D05 Structural Safety Model Summary
-
-Project: automotive_safeic_practice
-Demo: D05_structural_safety_model
-Top: toy_counter
-
-## Hierarchy
-
-- toy_counter
-
-## Startpoints
-
-Total startpoints: 3
-
-- toy_counter.count
-- toy_counter.count_parity
-- toy_counter.en
-
-## Endpoints
-
-Total endpoints: 3
-
-- toy_counter.count
-- toy_counter.count_parity
-- toy_counter.alarm
-
-## Cones
-
-Endpoint: toy_counter.count
-Startpoints:
-- toy_counter.count
-- toy_counter.en
-
-Endpoint: toy_counter.alarm
-Startpoints:
-- toy_counter.count
-- toy_counter.count_parity
-
-## Safety Mechanism Mapping
-
-- toy_counter.count → endpoint_parity → toy_counter.alarm
-- toy_counter.alarm → no protection modeled
-
-## Review Items
-
-- Alarm path is not protected.
-- Reset path excluded by policy.
-- Clock path excluded by policy.
+```csv
+source_node,edge_type,target_node
+D01_INPUT_CONTEXT,used_by,D02_BASE_FIT
+D02_BASE_FIT,used_by,D03_IEC62380_PASSENGER_65C
+D03_IEC62380_PASSENGER_65C,produces,D04_STRUCTURAL_MODEL
+D04_STRUCTURAL_MODEL,feeds,D06_EXPLORATION_CANDIDATE_A
+D04_STRUCTURAL_MODEL,feeds,D08_FAULT_LIST
+D08_FAULT_LIST,feeds,D12_FAULT_CAMPAIGN
+D12_FAULT_CAMPAIGN,feeds,D14_FINAL_METRICS
+D14_FINAL_METRICS,feeds,D15_FMEDA_EXPORT
 ```
 
-The goal is to make the structural assumptions visible.
-
----
-
-## 28. Validation Rules
-
-`safeic-structure` should validate:
-
-```text
-filelist exists
-top module exists
-RTL files exist
-endpoint names are syntactically valid
-startpoint policy is valid
-special signal policy is valid
-part/sub-part map references existing objects
-safety mechanism map references existing endpoints
-alarm signals exist
-black-box policy is explicit
-cones are generated for all endpoints
-unresolved endpoints are reported
-```
-
-Example messages:
-
-```text
-[PASS] top module toy_counter found
-[PASS] endpoint toy_counter.alarm found
-[PASS] safety mechanism endpoint_parity exists
-[WARN] endpoint toy_counter.alarm has no safety mechanism mapping
-[WARN] reset signal rst_n excluded from startpoints by policy
-[ERROR] endpoint top.u_ctrl.hidden_state not found in design
-```
-
-A structural tool should never silently drop unknown endpoints.
-
----
-
-## 29. Common Mistakes
-
-### 29.1 Treating Signal Lists as Structure
-
-A list of signals is not a structural model.
-
-Structure requires connectivity:
-
-```text
-who drives whom
-which nodes influence which endpoints
-which cones contain which startpoints
-```
-
-### 29.2 Ignoring Hierarchy
-
-Flat names are hard to review.
-
-Keep hierarchy where possible.
-
-### 29.3 Ignoring Black Boxes
-
-Black boxes should be explicitly marked and summarized.
-
-Do not silently assume they have no fault contribution.
-
-### 29.4 Treating All Endpoints as Equal
-
-Some endpoints are safety-critical outputs.
-
-Some endpoints are diagnostic alarms.
-
-Some endpoints are internal state.
-
-Their failure modes are different.
-
-### 29.5 Mixing Test Logic with Functional Safety Logic
-
-Scan/test logic may not be active in operational mode.
-
-It should be excluded or tagged according to policy.
-
-### 29.6 Assuming Coverage Without Scope
-
-A safety mechanism name is not enough.
-
-Always define whether it covers:
-
-```text
-endpoint
-cone
-path
-memory
-alarm path
-```
-
----
-
-## 30. How D05 Connects to Later Demos
-
-D05 produces structural artifacts that later stages consume.
+The same graph can be visualized:
 
 ```mermaid
 flowchart LR
-    A[D05 Structural Safety Model] --> B[D06 Diagnostic Coverage]
-    A --> C[D07 Safety Mechanism Selection]
-    A --> D[D08 Fault List Generation]
-    A --> E[D09 VCD Safety Context]
-    A --> F[D10 Fault Campaign]
-    A --> G[FMEDA Reporting]
+    D01[D01 Input Context] --> D02[D02 Base FIT]
+    D02 --> D03A[D03 IEC62380 Variant]
+    D02 --> D03B[D03 SN29500 Variant]
+    D03A --> D04[D04 Structural Model]
+    D03B --> D04
+    D04 --> D06[D06 Safety Exploration]
+    D04 --> D08[D08 Fault List]
+    D08 --> D12[D12 Fault Campaign]
+    D12 --> D14[D14 Final Metrics]
+    D14 --> D15[D15 FMEDA Export]
 ```
 
-**Figure 16. D05 creates the structural foundation for DC, fault generation, fault campaign, and FMEDA.**
-
-The output of D05 is not the final safety answer.
-
-It is the map that makes later answers meaningful.
+This graph should be built from real upstream artifacts and configured future sessions, not manually drawn after the fact.
 
 ---
 
-## 31. Recommended Implementation Stages
+## 18. Handling Overwrite Policy
 
-D05 should be implemented in stages.
+Overwrite policy is a deceptively important topic.
 
-### Stage 1: Hand-Written Toy Structure
+During active development, engineers often use:
 
-Use a manually defined graph for `toy_counter`.
-
-Deliverables:
-
-```text
-startpoints.csv
-endpoints.csv
-cones.csv
-structure_summary.md
+```ini
+overwrite_session = true
 ```
 
-### Stage 2: Simple RTL Extraction
+This keeps the demo easy to rerun.
 
-Parse modules, ports, assignments, and simple always blocks.
+However, in a reviewable flow, overwrite policy must be controlled.
 
-Deliverables:
+There are three common modes.
 
-```text
-hierarchy.json
-connectivity_graph.json
-```
-
-### Stage 3: Normalized IR Frontend
-
-Use a normalized synthesis representation to improve accuracy.
-
-Deliverables:
+### 18.1 Development Mode
 
 ```text
-normalized_design.json
+overwrite_session = true
+overwrite_fusa_db = true
 ```
 
-### Stage 4: Cone and Usage Reports
+This is convenient for local iteration.
 
-Generate:
+It is not ideal for long-term evidence retention.
+
+### 18.2 Append Mode
 
 ```text
-cones.csv
-startpoint_usage.csv
-blackbox_boundary_report.csv
+overwrite_session = false
+new session name per run
 ```
 
-### Stage 5: Mapping Validation
+This is safer for preserving historical evidence.
 
-Validate:
+The cost is that the session catalog must manage more sessions.
+
+### 18.3 Release Mode
 
 ```text
-ep_to_sm_map.csv
-part_subpart_map.yaml
-failure_modes.yaml
+immutable database snapshot
+frozen session catalog
+signed or hashed evidence index
 ```
 
-This staged path makes D05 practical while keeping future expansion clear.
+This is appropriate for review checkpoints, customer delivery, or certification-oriented archives.
+
+D05 should at least record which mode is being used.
+
+A demo may use development mode, but the methodology should explain how to move toward append or release mode.
 
 ---
 
-## 32. Summary
+## 19. Session Naming Rules
 
-A functional safety workflow cannot be built only on FIT numbers or raw fault lists.
+A session naming rule should be deterministic.
 
-It needs a structural safety model.
-
-The D05 demo:
+A good rule can be:
 
 ```text
-D05_structural_safety_model
+D<stage>_<purpose>[_<standard>][_<variant>]
 ```
 
-introduces the generic tool:
+Examples:
 
 ```text
-safeic-structure
+D02_BASE_FIT
+D03_IEC62380_PASSENGER_65C
+D03_SN29500_REFERENCE_65C
+D04_STRUCTURAL_MODEL
+D06_EXPLORATION_LOCKSTEP_A
+D08_FAULT_LIST_MAIN
+D12_CAMPAIGN_GOODMACHINE_A
+D14_FINAL_METRICS_MAIN
+D15_FMEDA_EXPORT_MAIN
 ```
 
-The tool converts design and safety mapping inputs into:
+Avoid:
 
 ```text
-hierarchy model
-connectivity graph
-startpoints
-endpoints
-cones
-startpoint usage
-part/sub-part validation
-endpoint-to-safety-mechanism validation
-black-box boundary report
+session1
+latest
+old
+try2
+abc
 ```
 
-The central lesson is:
-
-> FIT tells us how much random hardware failure exposure exists. Structural safety modeling tells us where that exposure can propagate and which endpoints require protection.
-
-This structural layer is the bridge between:
-
-```text
-BFR
-→ diagnostic coverage
-→ safety mechanism mapping
-→ fault list generation
-→ fault campaign
-→ FMEDA
-```
-
-Without this bridge, later safety metrics become disconnected from the actual design.
+Names should be machine-readable and review-readable at the same time.
 
 ---
 
-## 33. D05 Demo Checklist
+## 20. How D05 Supports D06 Safety Exploration
 
-For `D05_structural_safety_model`, the expected deliverables are:
+D06 will evaluate safety-mechanism candidates.
 
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/rtl/toy_counter.v
-[ ] inputs/filelist.f
-[ ] inputs/top.yaml
-[ ] inputs/endpoints.yaml
-[ ] inputs/startpoint_policy.yaml
-[ ] inputs/safety_mechanisms.yaml
-[ ] inputs/ep_to_sm_map.csv
-[ ] inputs/failure_modes.yaml
-[ ] inputs/part_subpart_map.yaml
-[ ] inputs/blackbox.yaml
-[ ] inputs/special_signals.yaml
-
-[ ] intermediate/normalized_design.json
-[ ] intermediate/hierarchy.json
-[ ] intermediate/connectivity_graph.json
-
-[ ] outputs/structure_summary.md
-[ ] outputs/startpoints.csv
-[ ] outputs/endpoints.csv
-[ ] outputs/cones.csv
-[ ] outputs/startpoint_usage.csv
-[ ] outputs/endpoint_to_sm_check.csv
-[ ] outputs/part_subpart_map_check.csv
-[ ] outputs/blackbox_boundary_report.csv
-```
-
-A successful D05 run should answer:
+It needs:
 
 ```text
-What hierarchy is being analyzed?
-Which objects are startpoints?
-Which objects are endpoints?
-Which startpoints can reach which endpoints?
-Which cones are safety-relevant?
-Which endpoints are protected by which safety mechanisms?
-Which endpoints have no protection modeled?
-Which objects map to FMEDA parts and sub-parts?
-Which black-box boundaries remain unresolved?
-Can the structural output feed DC, fault list generation, and FMEDA?
+structural endpoint inventory
+startpoint/cone relationships
+DCE artifacts
+Base FIT contribution
+standard-specific analysis context
+candidate safety mechanism assumptions
 ```
+
+D05 should provide a handoff table:
+
+```text
+outputs/d05_handoff_to_d06.csv
+```
+
+A useful schema is:
+
+| Column | Meaning |
+|---|---|
+| `source_session` | Session containing upstream metrics or structure |
+| `endpoint_catalog` | Endpoint inventory file |
+| `dce_catalog` | DCE catalog file |
+| `fit_context` | FIT standard and variant context |
+| `candidate_sm_map_seed` | Seed map for safety mechanism exploration |
+| `evidence_status` | PASS, WARN, FAIL |
+
+D06 should not have to rediscover D04 structure. It should consume D05 handoff.
+
+---
+
+## 21. How D05 Supports D08 Fault List Generation
+
+D08 will generate or organize the fault list for later fault campaigns.
+
+It needs:
+
+```text
+endpoint/startpoint/cone evidence
+selected safety mechanism assumptions
+fault model assumptions
+database write target for fault list
+future read target for fault campaign
+```
+
+D05 should provide:
+
+```text
+outputs/d05_handoff_to_d08.csv
+```
+
+A useful row may say:
+
+```text
+D04_STRUCTURAL_MODEL -> D08_FAULT_LIST -> D12_FAULT_CAMPAIGN
+```
+
+This makes the later fault campaign flow explicit before fault injection begins.
+
+---
+
+## 22. How D05 Supports D15 FMEDA
+
+D15 will build the FMEDA data model.
+
+It needs:
+
+```text
+part / sub-part mapping seed
+failure mode mapping seed
+safety mechanism mapping seed
+FIT contribution references
+DC references
+residual FIT references
+final metrics references
+```
+
+D05 can already prepare:
+
+```text
+outputs/fmeda_bridge_seed.csv
+```
+
+A useful schema is:
+
+| Column | Meaning |
+|---|---|
+| `part_name` | FMEDA part candidate |
+| `sub_part_name` | FMEDA sub-part candidate |
+| `design_scope` | RTL/module/hierarchy mapping |
+| `endpoint_group` | Related endpoint group |
+| `fit_session` | Session containing FIT evidence |
+| `structural_session` | Session containing DCE/endpoint evidence |
+| `future_metric_session` | Planned final metric source |
+
+This is not the final FMEDA. It is a bridge from analysis evidence to FMEDA structure.
+
+---
+
+## 23. Common Mistakes
+
+### 23.1 Treating Logs as the Main Evidence
+
+Logs are useful, but they are not the database model.
+
+A log tells us what happened during execution. A database session tells us which structured safety evidence is available for the next stage.
+
+A strong flow keeps both.
+
+### 23.2 Reusing a DCE Without Checking Its Context
+
+DCE artifacts may depend on design boundary, standard context, hierarchy assumptions, and tool configuration.
+
+D05 should not allow blind reuse.
+
+A good DCE catalog records:
+
+```text
+design_top
+source_stage
+source_session
+fit_standard
+variant_id
+generation_config
+quality_status
+```
+
+### 23.3 Mixing Experiment Variant and Standard Identity
+
+The true standard selector is not the same as an experiment variant.
+
+A standard identity might be:
+
+```text
+iec_62380
+sn_29500
+```
+
+A variant identity might be:
+
+```text
+iec62380_passenger_65c
+sn29500_reference_65c
+```
+
+D05 should store both fields separately.
+
+### 23.4 Overwriting Review Evidence
+
+Overwriting is convenient during development, but dangerous during review.
+
+D05 should make overwrite policy visible.
+
+### 23.5 Creating a Database Without a Session Catalog
+
+A database without a session catalog is hard to review.
+
+The session catalog is the human-readable contract for the database.
+
+---
+
+## 24. D05 Quality Summary
+
+At the end of D05, the demo should be able to answer:
+
+```text
+Which upstream artifacts were consumed?
+Which database file is the evidence center?
+Which sessions exist now?
+Which sessions are planned for later stages?
+Which stage produced each session?
+Which stage consumes each session?
+Are standard-specific results separated?
+Are DCE artifacts linked to the correct context?
+Are handoff files ready for D06, D08, and D15?
+```
+
+If these questions are answerable, D05 has done its job.
+
+D05 is not about producing the largest number of files. It is about making the safety flow reviewable.
+
+---
+
+## 25. Conclusion
+
+D05 turns the earlier practices into a coherent evidence system.
+
+D01 provides the input context. D02 provides Base FIT evidence. D03 provides standard-specific analysis evidence. D04 provides structural safety evidence. D05 binds them through a common database and explicit sessions.
+
+The key engineering idea is:
+
+```text
+A safety artifact is not complete until its provenance, session identity, producer, consumer, and review status are known.
+```
+
+The `.fdb::session` pattern is the backbone of that idea.
+
+Once D05 is in place, the later stages can become much cleaner:
+
+```text
+D06 can explore safety mechanisms using known structural and FIT evidence.
+D08 can generate fault lists with a clear database write target.
+D12 can read those fault lists and write campaign results.
+D14 can read campaign results and compute final metrics.
+D15 can export FMEDA evidence from traceable sessions.
+```
+
+That is why D05 is the evidence center of the Safe-IC practice flow.
