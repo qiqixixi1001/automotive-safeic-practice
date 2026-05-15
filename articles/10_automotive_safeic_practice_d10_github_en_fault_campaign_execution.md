@@ -1,1497 +1,1183 @@
-# [Automotive Safe-IC Practice 10] Fault Campaign Execution: From Fault List and VCD Context to Reproducible Injection Runs
-
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D10_fault_campaign_execution  
-**Tags**: Automotive Chip, Functional Safety, Fault Campaign, Fault Injection, Simulation, VCD Context, Golden Run, Faulted Run, Alarm, Observe Point, Diagnostic Coverage
-
----
-
-## 1. Why This Article Matters
-
-In the previous articles, we prepared the major inputs for functional safety fault injection:
-
-```text
-D08:
-  traceable fault list
-
-D09:
-  VCD safety context
-```
-
-Now we need to execute the campaign.
-
-The key question becomes:
-
-> How do we turn a fault list and waveform context into repeatable golden and faulted simulation runs?
-
-The tenth demo in this repository is:
-
-```text
-D10_fault_campaign_execution
-```
-
-The generic tool introduced in this article is:
-
-```text
-safeic-campaign
-```
-
-The purpose of `safeic-campaign` is to run or emulate a fault campaign from:
-
-```text
-fault_list.csv
-vcd_context.json
-injection_windows.csv
-detection_windows.csv
-RTL/testbench simulation command
-fault injection policy
-campaign execution policy
-```
-
-and generate:
-
-```text
-golden run result
-faulted run results
-raw fault logs
-alarm traces
-observe point traces
-run manifest
-campaign status report
-```
-
-The central idea is:
-
-> Fault campaign execution is not merely running simulations many times. It is a controlled experiment that compares a golden run against many faulted runs under a reproducible injection, observation, and logging policy.
+Title: Automotive Safe-IC Practice 10: Alarm List and Observe Point — Observation Boundaries for Fault Outcomes
+Author: Darren H. Chen
+Direction: Automotive Chip Functional Safety, Fault Campaign Preparation, Safety Verification Infrastructure
+Demo: D10_alarm_list_and_observe_point_fault_outcome_boundary
+Tags: ISO 26262, Safe-IC, Functional Safety, Fault Injection, Alarm List, Observe Point, FTTI, VCD, Fault Campaign, Diagnostic Coverage, FMEDA
 
 ---
 
-## 2. Where D10 Fits in the Flow
+## 1. From a Fault List to an Observable Safety Experiment
 
-D10 is the execution point of the early safety validation loop.
+D08 turns safety analysis outputs into a campaign-ready fault list. D09 then creates the simulation safety context: the good-machine waveform, candidate observation signals, activity windows, and FTTI windows. D10 is the stage where the flow decides **what it means to observe a fault correctly**.
 
-```mermaid
-flowchart LR
-    A[D08 Fault List] --> C[D10 Fault Campaign Execution]
-    B[D09 VCD Safety Context] --> C
-    C --> D[Raw Fault Results]
-    D --> E[D11 Fault Outcome Classification]
-    E --> F[Measured DC]
-    F --> G[FMEDA Update]
-```
-
-**Figure 1. D10 executes the campaign and produces raw results for later classification.**
-
-D10 does not yet finalize safety metrics.
-
-Its job is to produce high-quality raw evidence:
+A fault campaign is not just a large loop over fault nodes. Each injected fault must be interpreted under a controlled observation model:
 
 ```text
-which fault was injected
-when it was injected
-whether the run completed
-what alarm behavior was observed
-what observe point behavior was captured
-whether the run failed
-where logs are stored
+fault injected
+  -> design state may change
+  -> safety mechanism may detect it
+  -> alarm may fire
+  -> observe point may change
+  -> outcome can be classified
 ```
 
-D11 will classify the outcomes.
+D10 focuses on the boundary between raw fault propagation and meaningful classification. It defines two central artifacts:
 
-D10 must therefore focus on execution reproducibility and data integrity.
+```text
+alarm list
+observe point specification
+```
+
+These two artifacts are different but connected. The alarm list tells the fault campaign engine which signals represent successful detection by safety mechanisms. The observe point specification tells the campaign where to compare or monitor the machine state when deciding whether a fault affects safety-relevant behavior.
+
+Without D10, D11 can still build a fault campaign input package, but the campaign will be ambiguous. It may inject faults, replay a VCD, and produce reports, but the team cannot reliably answer:
+
+```text
+Was the fault detected?
+Was it safe?
+Was it unsafe?
+Was it unresolved?
+Was it merely unobservable within the selected context?
+```
+
+D10 is therefore the observation contract for later fault injection.
 
 ---
 
-## 3. Golden Run and Faulted Runs
+## 2. Position of D10 in the Evidence Flow
 
-A fault campaign usually has one golden run and many faulted runs.
-
-### 3.1 Golden Run
-
-The golden run is the reference simulation without injected faults.
-
-It provides:
-
-```text
-expected behavior
-golden waveform
-golden alarm baseline
-golden observe point values
-reference exit status
-reference log
-```
-
-### 3.2 Faulted Runs
-
-Each faulted run injects one or more faults.
-
-For early demos, use one fault per run.
-
-A faulted run provides:
-
-```text
-faulted waveform
-fault injection log
-faulted alarm trace
-faulted observe point trace
-simulation exit status
-runtime information
-raw comparison hints
-```
+D10 sits between simulation context preparation and fault campaign setup.
 
 ```mermaid
 flowchart TD
-    A[Golden Run] --> C[Comparison Baseline]
-    B[Faulted Run 1] --> D[Raw Fault Result 1]
-    B2[Faulted Run 2] --> E[Raw Fault Result 2]
-    B3[Faulted Run N] --> F[Raw Fault Result N]
-    C --> G[D11 Classification]
-    D --> G
-    E --> G
-    F --> G
+    D08[D08 Fault List Generation] --> D09[D09 Simulation Safety Context]
+    D07[D07 Safety Mechanism Map] --> D10[D10 Alarm List and Observe Point]
+    D09 --> D10
+    D10 --> D11[D11 Fault Campaign Setup]
+    D11 --> D12[D12 Fault Injection Execution]
+    D12 --> D13[D13 Fault Outcome Classification]
+    D13 --> D14[D14 Result Writeback and Final Metrics]
 ```
 
-**Figure 2. Golden and faulted runs are separated so raw results can later be classified consistently.**
+D10 receives:
 
-The campaign executor should never overwrite golden artifacts.
+```text
+D07 safety mechanism map
+D07 alarm binding plan
+D08 campaign fault list
+D09 VCD signal catalog
+D09 good-machine context
+D09 FTTI window plan
+D09 observe point candidates
+```
+
+D10 emits:
+
+```text
+alarm list
+observe point list
+alarm-to-SM map
+observe-point-to-failure-mode map
+FTTI-aware observation windows
+D11 fault campaign setup handoff
+D13 outcome-classification rules
+D15 FMEDA trace hooks
+```
+
+The important engineering point is that D10 does not merely generate another input file. It converts safety intent into machine-checkable observation rules.
 
 ---
 
-## 4. What Does “Execute a Fault” Mean?
+## 3. Alarm and Observe Point Are Not the Same Thing
 
-In simulation, fault execution can be implemented in different ways.
+An alarm is a signal that indicates a safety mechanism has detected an abnormal condition. It is usually driven by a checker, comparator, parity monitor, ECC decoder, watchdog, lockstep comparator, timeout monitor, protocol checker, or safety aggregator.
 
-Common approaches include:
+An observe point is a signal or state element used to judge whether machine behavior deviated from the good-machine reference.
+
+They often overlap, but they are not equivalent.
+
+| Concept | Main Question | Typical Example | Role in Fault Outcome |
+|---|---|---|---|
+| Alarm | Did a safety mechanism detect the fault? | `sm_alarm_o`, `ecc_error_o`, `lockstep_mismatch_o` | Supports detected classification |
+| Observe point | Did safety-relevant machine behavior change? | `safe_state_o`, `control_state_q`, `critical_data_o` | Supports safe / unsafe / unresolved classification |
+| Good-machine reference | What should the design do without a fault? | VCD golden trace | Baseline for comparison |
+| FTTI window | How long may the design take to detect/control the fault? | injection time + N cycles | Timing boundary for detection |
+
+A fault can propagate to an internal state element but never reach an alarm. A fault can trigger an alarm while the external output remains unchanged. A fault can affect an output but still be controlled by a safe-state transition. D10 must model these cases explicitly.
+
+---
+
+## 4. Fault Outcome Needs an Observation Boundary
+
+A fault outcome is meaningful only relative to a boundary.
+
+Consider a fault injected into an internal register:
 
 ```text
-force/release signal in simulator
-modify RTL or testbench wrapper
-insert fault injection hooks
-use simulator callback interface
-use DPI/VPI/PLI-based injection
-use gate-level fault simulator
-use emulation or acceleration environment
-use fault effect emulation from precomputed traces
+count_q[2] flips at cycle 12
 ```
 
-For a simple open demo, we can use a simplified model:
+Several things may happen:
 
 ```text
-testbench reads fault specification
-at injection time, force or perturb target signal
-after duration, release or restore signal
-dump waveform and trace
+Case A: parity checker fires at cycle 13
+Case B: state differs internally, but no safety-relevant output changes
+Case C: output changes and no alarm fires
+Case D: signal enters a black-box region and cannot be classified
 ```
 
-Conceptually:
+These cases correspond to different outcome families:
+
+```text
+detected
+safe
+unsafe
+unresolved
+```
+
+However, the campaign engine cannot classify them unless it knows:
+
+```text
+which signal is the alarm
+which signal is safety-relevant behavior
+which cycle range is allowed for detection
+which VCD signal names correspond to design objects
+which signals should be ignored during reset or initialization
+```
+
+D10 defines that boundary.
+
+---
+
+## 5. The Observation Model
+
+The observation model used in D10 can be written as a simple relation:
+
+```text
+Outcome = classify(
+    fault_site,
+    injected_fault_type,
+    good_machine_context,
+    alarm_observation,
+    state_observation,
+    observe_window,
+    FTTI_policy
+)
+```
+
+In practical terms:
+
+```text
+if alarm fires within the allowed window:
+    outcome candidate = detected
+elif observe point differs from golden and no alarm fires:
+    outcome candidate = unsafe
+elif observe point does not differ from golden:
+    outcome candidate = safe
+else:
+    outcome candidate = unresolved
+```
+
+Real tools apply additional details, but this model explains the essence.
+
+```mermaid
+flowchart TD
+    A[Inject Fault] --> B[Replay Good-Machine Context]
+    B --> C{Alarm Fires?}
+    C -- Yes within FTTI --> D[Detected Candidate]
+    C -- No --> E{Observe Point Differs?}
+    E -- No --> F[Safe Candidate]
+    E -- Yes --> G{Known Boundary?}
+    G -- Yes --> H[Unsafe Candidate]
+    G -- No --> I[Unresolved Candidate]
+```
+
+The word “candidate” is intentional. D13 performs the final outcome classification. D10 prepares the rules that make classification possible.
+
+---
+
+## 6. Alarm List as a Detection Contract
+
+An alarm list is the fault campaign input that declares which signals represent successful detection.
+
+A minimal alarm list may be as simple as:
+
+```text
+sm_alarm_o
+error_flag_o
+fatal_fault_o
+```
+
+A more structured alarm catalog may include:
+
+```text
+alarm_id
+alarm_signal
+alarm_source
+mapped_sm
+mapped_failure_mode
+mapped_endpoint
+latency_budget_cycles
+active_level
+mask_policy
+reset_behavior
+aggregation_level
+review_status
+```
+
+The list answers:
+
+```text
+What signal should be watched?
+What safety mechanism drives it?
+Which failure mode does it cover?
+Is the alarm direct or aggregated?
+Is it active-high or active-low?
+Can it be masked during reset?
+What is the expected detection latency?
+```
+
+This is why D10 should not treat the alarm list as a plain text afterthought. It should be generated from the safety mechanism map, checked against the VCD signal catalog, and tied back to failure modes and endpoints.
+
+---
+
+## 7. Observe Point as a Behavior Boundary
+
+An observe point specification declares where the campaign should judge machine behavior.
+
+An observe point may be:
+
+```text
+primary output
+safety-relevant state register
+protocol response signal
+safe-state indicator
+fault containment boundary
+black-box boundary output
+alarm aggregator output
+```
+
+A simple observe point list may look like:
+
+```text
+safe_state_o
+critical_output_o
+control_state_q
+status_valid_o
+```
+
+A structured observe-point catalog may include:
+
+```text
+observe_id
+observe_signal
+observe_role
+failure_mode_id
+endpoint_id
+comparison_policy
+window_start_cycle
+window_end_cycle
+reset_mask_cycles
+stability_requirement
+classification_use
+review_status
+```
+
+Observe points are not always the same as fault sites. A fault site is where the fault is injected. An observe point is where effect is judged.
+
+```mermaid
+flowchart LR
+    A[Fault Site: internal register or port] --> B[Propagation Cone]
+    B --> C[Safety Mechanism]
+    C --> D[Alarm Signal]
+    B --> E[Functional Output]
+    B --> F[State Register]
+    D --> G[Detection Boundary]
+    E --> H[Behavior Boundary]
+    F --> H
+```
+
+---
+
+## 8. Detection Boundary vs Behavior Boundary
+
+D10 should separate two boundaries:
+
+```text
+detection boundary: alarm signal set
+behavior boundary: observe point set
+```
+
+Detection boundary tells whether a safety mechanism responded. Behavior boundary tells whether the design behavior became safety-relevant.
+
+This separation prevents a common mistake:
+
+```text
+alarm did not fire -> automatically unsafe
+```
+
+That is not always true. If a fault never affects safety-relevant behavior under the selected stimulus, it may be safe. Conversely:
+
+```text
+alarm fired -> automatically acceptable
+```
+
+That is also too simplistic. If the alarm fires too late, or if the machine violates safety behavior before the alarm, the result may need further review.
+
+D10 makes these distinctions explicit.
+
+---
+
+## 9. FTTI as the Timing Contract
+
+FTTI means **Fault Tolerant Time Interval**. It is the time interval in which the system must detect, control, or transition to a safe state before a fault can cause a hazardous effect.
+
+For D10, FTTI is not just a documentation value. It affects whether alarm timing is acceptable.
+
+```text
+fault injection cycle = 100
+FTTI window          = 20 cycles
+alarm fires at cycle = 108
+result               = detection within FTTI
+```
+
+But:
+
+```text
+fault injection cycle = 100
+FTTI window          = 20 cycles
+alarm fires at cycle = 130
+result               = late detection review
+```
+
+D10 therefore needs a time-window model:
+
+```text
+observe_window_start
+observe_window_end
+alarm_window_start
+alarm_window_end
+reset_mask_window
+initialization_mask_window
+stable_context_window
+```
 
 ```mermaid
 sequenceDiagram
-    participant TB as Testbench
-    participant DUT as DUT
-    participant FI as Fault Injector
-    participant LOG as Run Log
-
-    TB->>DUT: start golden or faulted simulation
-    TB->>FI: load fault specification
-    FI->>DUT: inject fault at selected time
-    FI->>LOG: record injection event
-    DUT->>TB: produce signals and alarms
-    TB->>LOG: record observe and alarm traces
+    participant T as Time
+    participant F as Fault Injection
+    participant O as Observe Point
+    participant A as Alarm
+    T->>F: inject at t0
+    T->>O: compare after settle window
+    T->>A: alarm must fire before t0 + FTTI
+    A-->>T: detection credit if inside window
+    O-->>T: unsafe candidate if divergence occurs without valid detection
 ```
-
-**Figure 3. Fault execution injects a controlled perturbation into the DUT and records its effect.**
-
-D10 should define the execution contract even if the first implementation only emulates injection.
 
 ---
 
-## 5. Execution Contract
+## 10. Reset and Initialization Masking
 
-A campaign run should have a strict execution contract.
+A good fault campaign should not judge alarms and observe points during unstable initialization unless that is the intended test scenario.
 
-For each fault, the executor must know:
+Signals can be invalid during:
 
 ```text
-fault_id
-target node
-fault type
-injection mode
-injection time
-duration
-expected alarm
-observe points
-detection window
-simulation command
-output directory
-timeout
-retry policy
+reset assertion
+reset release
+clock warm-up
+memory initialization
+protocol training
+firmware boot
+scan-to-functional transition
 ```
 
-Example fault execution spec:
+D10 should define masks such as:
 
-```yaml
-fault_run:
-  fault_id: F001
-  node: toy_counter.count[0]
-  fault_type: transient_flip
-  injection_time: 60
-  duration_cycles: 1
-  expected_alarm: toy_counter.alarm
-  observe_points:
-    - toy_counter.count
-    - toy_counter.alarm
-  detection_window:
-    start: 60
-    end: 70
+```text
+reset_mask_cycles = 0..2
+init_mask_cycles  = 0..5
+observe_enable    = cycle >= 6
+alarm_enable      = cycle >= 6
 ```
 
-The executor should convert this into a simulator-specific command or a testbench configuration.
+Otherwise, an alarm that toggles during reset may be misinterpreted as fault detection, or a normal initialization mismatch may be classified as unsafe behavior.
+
+A robust D10 artifact includes mask policy fields.
 
 ---
 
-## 6. Campaign Manifest
+## 11. Alarm Active Level and Polarity
 
-A campaign manifest records the full execution context.
+Alarm signals can be active-high or active-low.
 
-Example:
-
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D10_fault_campaign_execution
-  top_module: toy_counter
-
-campaign:
-  name: d10_toy_counter_campaign
-  mode: simulation
-  one_fault_per_run: true
-  max_parallel_jobs: 4
-  timeout_seconds: 60
-
-inputs:
-  fault_list: inputs/fault_list.csv
-  vcd_context: inputs/vcd_context.json
-  injection_windows: inputs/injection_windows.csv
-  detection_windows: inputs/detection_windows.csv
-  sim_config: inputs/sim_config.yaml
-  campaign_policy: inputs/campaign_policy.yaml
-
-outputs:
-  run_dir: runs
-  raw_results: outputs/raw_fault_results.csv
-  campaign_status: outputs/campaign_status.csv
-  campaign_summary: outputs/campaign_summary.md
+```text
+active-high: alarm_o == 1 means alarm fired
+active-low:  alarm_n == 0 means alarm fired
 ```
 
-This manifest should be stored with the results so the campaign can be reproduced later.
+D10 should not infer polarity only from naming. Names such as `alarm_n`, `err_n`, or `fault_b` may suggest active-low behavior, but naming conventions are not proof.
+
+A structured alarm file should include:
+
+```text
+alarm_signal, active_level
+sm_alarm_o, 1
+fault_n, 0
+```
+
+This prevents false classification when a campaign engine interprets all alarms as active-high by default.
 
 ---
 
-## 7. Campaign Execution Modes
+## 12. Direct Alarm, Aggregated Alarm, and Safety Controller Alarm
 
-D10 can support multiple execution modes.
-
-```text
-dry-run
-emulation
-simulation
-batch simulation
-parallel simulation
-resume
-rerun-failed
-```
-
-### 7.1 Dry-Run Mode
-
-Dry-run mode validates the campaign without executing simulation.
-
-It checks:
+Not all alarms are generated at the same level.
 
 ```text
-fault list readability
-injection window availability
-signal mapping
-output directory creation
-command generation
-estimated number of runs
+local checker alarm
+    -> block-level alarm aggregator
+        -> subsystem safety interrupt
+            -> safety controller action
 ```
 
-### 7.2 Emulation Mode
+A fault campaign may credit detection at different levels depending on the validation target.
 
-Emulation mode creates synthetic raw results for demo and pipeline testing.
+For IP-level validation, local alarms may be acceptable:
 
-It is useful before a real simulator integration is complete.
+```text
+parity_error_o
+ecc_sbe_o
+lockstep_mismatch_o
+```
 
-### 7.3 Simulation Mode
+For subsystem-level validation, aggregated alarms may be more appropriate:
 
-Simulation mode actually runs the testbench and injects faults.
+```text
+subsys_fatal_alarm_o
+safety_irq_o
+```
 
-### 7.4 Resume Mode
+For SoC-level validation, the visible alarm may be routed into a safety controller:
 
-Resume mode continues a partially completed campaign without rerunning successful faults.
+```text
+safe_mgr_event_valid
+safe_mgr_event_id
+```
+
+D10 should encode the selected level.
 
 ```mermaid
 flowchart TD
-    A[Campaign Mode] --> B[Dry Run]
-    A --> C[Emulation]
-    A --> D[Simulation]
-    A --> E[Resume]
-    A --> F[Rerun Failed]
+    A[Local Safety Mechanism] --> B[Local Alarm]
+    B --> C[Block Alarm Aggregator]
+    C --> D[Subsystem Safety Event]
+    D --> E[Safety Controller / Safety Manager]
+    B --> F{IP-level campaign?}
+    C --> G{Subsystem-level campaign?}
+    D --> H{SoC-level campaign?}
 ```
-
-**Figure 4. Campaign execution should support staged modes so the flow can be developed safely.**
-
-For the first D10 demo, dry-run and emulation modes are sufficient. Simulation mode can be added when the RTL/testbench injection hook is ready.
 
 ---
 
-## 8. Why Dry-Run Mode Is Important
+## 13. Multi-Bit Alarm Buses
 
-Dry-run mode catches many errors before expensive simulation.
-
-It can report:
+Some designs do not expose one alarm bit per safety mechanism. They expose an alarm bus:
 
 ```text
-missing fault node
-missing observe point
-missing expected alarm
-invalid injection time
-detection window outside VCD range
-unsupported fault model
-output path conflict
-duplicate fault ID
+alarm_valid
+alarm_id[7:0]
+alarm_severity[1:0]
+alarm_source[15:0]
 ```
 
-Example output:
-
-```csv
-fault_id,status,comment
-F001,PASS,command generated
-F002,PASS,command generated
-F004,WARN,expected alarm is empty because this is alarm-path stuck-at test
-F099,ERROR,node not mapped to simulation name
-```
-
-Dry-run is a quality gate.
-
-A fault campaign should not start large-scale execution if basic inputs are inconsistent.
-
----
-
-## 9. Simulation Command Generation
-
-A campaign executor should generate simulation commands from templates.
-
-Example `sim_config.yaml`:
-
-```yaml
-simulator:
-  name: verilator_demo
-  mode: command_template
-
-commands:
-  build: "./build_sim.sh"
-  golden: "./simv +MODE=golden +VCD=golden.vcd"
-  faulted: "./simv +MODE=fault +FAULT_SPEC={fault_spec} +VCD={fault_vcd}"
-
-paths:
-  build_dir: build
-  run_dir: runs
-```
-
-For a commercial simulator, the command may look different.
-
-The key is to separate:
-
-```text
-campaign logic
-simulator command template
-fault specification file
-run output directory
-```
-
-Do not hardcode simulator commands inside the campaign engine.
-
----
-
-## 10. Fault Specification Files
-
-Each faulted run should have an explicit fault specification file.
+D10 should model this as a decoded alarm condition rather than a single bit.
 
 Example:
 
-```yaml
-fault:
-  id: F001
-  node: tb.dut.count[0]
-  original_name: toy_counter.count[0]
-  type: transient_flip
-  inject_time: 60
-  duration: 10
-  duration_unit: ns
-
-observation:
-  expected_alarm: tb.dut.alarm
-  observe_points:
-    - tb.dut.count
-    - tb.dut.alarm
-  detection_window:
-    start: 60
-    end: 70
+```text
+alarm_condition = alarm_valid == 1 && alarm_id == 8'h12
 ```
 
-The run command should reference this file:
+The D10 catalog can represent this with fields:
 
-```bash
-./simv +MODE=fault +FAULT_SPEC=runs/F001/fault_spec.yaml +VCD=runs/F001/faulted.vcd
+```text
+alarm_signal
+qualifier_signal
+qualifier_value
+encoded_id_signal
+encoded_id_value
 ```
 
-This makes each run independently reproducible.
+This is important for SoC-level safety systems where alarms are transported as events rather than simple wires.
 
 ---
 
-## 11. Run Directory Layout
+## 14. Protocol-Visible Observe Points
 
-A clean directory layout is essential.
+Observe points often include protocol signals.
 
-Suggested layout:
-
-```text
-D10_fault_campaign_execution/
-  runs/
-    golden/
-      command.sh
-      sim.log
-      golden.vcd
-      status.json
-
-    F001/
-      fault_spec.yaml
-      command.sh
-      sim.log
-      faulted.vcd
-      alarm_trace.csv
-      observe_trace.csv
-      status.json
-
-    F002/
-      fault_spec.yaml
-      command.sh
-      sim.log
-      faulted.vcd
-      alarm_trace.csv
-      observe_trace.csv
-      status.json
-```
-
-Each run directory should be self-contained.
-
-This makes debugging, rerun, and evidence review much easier.
-
----
-
-## 12. Run Status
-
-Each run should produce a `status.json`.
-
-Example:
-
-```json
-{
-  "fault_id": "F001",
-  "status": "PASS",
-  "mode": "simulation",
-  "start_time": "2026-05-01T10:00:00",
-  "end_time": "2026-05-01T10:00:03",
-  "runtime_seconds": 3.1,
-  "exit_code": 0,
-  "artifacts": {
-    "log": "runs/F001/sim.log",
-    "vcd": "runs/F001/faulted.vcd",
-    "alarm_trace": "runs/F001/alarm_trace.csv",
-    "observe_trace": "runs/F001/observe_trace.csv"
-  }
-}
-```
-
-Possible run statuses:
+Examples:
 
 ```text
-PASS
-FAIL
-TIMEOUT
-SKIPPED
-INVALID_INPUT
-UNSUPPORTED_FAULT
-SIM_ERROR
-NEEDS_RETRY
+valid
+ready
+req
+ack
+error
+response
+status
+interrupt
 ```
 
-Do not mix run status with fault outcome.
+Protocol-visible observe points are important because they define what the surrounding system can see. A fault that changes an internal register but does not change protocol-visible behavior may be safe under the current context. A fault that changes a protocol response may be unsafe if not detected.
 
-A run can pass execution but later classify as unsafe.
-
----
-
-## 13. Run Status Is Not Fault Outcome
-
-This distinction is critical.
-
-Run status answers:
+For simple ready/valid style protocols, D10 may define observe rules such as:
 
 ```text
-Did the simulation run complete correctly?
+observe valid only when ready is high
+observe data only when valid && ready
+observe response only during transaction window
+ignore idle cycles
 ```
-
-Fault outcome answers:
-
-```text
-Was the fault detected, safe, unsafe, or unresolved?
-```
-
-Example:
-
-| Run Status | Fault Outcome | Meaning |
-|---|---|---|
-| PASS | detected | Simulation completed; alarm detected fault |
-| PASS | unsafe | Simulation completed; fault caused deviation without alarm |
-| PASS | safe | Simulation completed; no relevant deviation |
-| PASS | unresolved | Simulation completed; insufficient evidence |
-| SIM_ERROR | not classified | Simulation failed; cannot classify |
-| TIMEOUT | not classified | Run did not complete |
-
-D10 only produces run status and raw traces.
-
-D11 classifies fault outcomes.
 
 ```mermaid
 flowchart LR
-    A[D10 Run Status] --> C[D11 Classification]
-    B[D10 Raw Traces] --> C
-    C --> D[Fault Outcome]
+    A[Internal Fault] --> B[Protocol Logic]
+    B --> C{valid && ready?}
+    C -- Yes --> D[Observe data / status / response]
+    C -- No --> E[Idle or masked cycle]
 ```
 
-**Figure 5. Run execution status and fault outcome classification must remain separate.**
+This avoids over-classifying harmless idle-cycle changes.
 
 ---
 
-## 14. Alarm Trace Extraction
+## 15. Observe Point Granularity
 
-For each faulted run, the executor should extract alarm traces.
+Observe points can be coarse or fine.
 
-Example:
-
-```csv
-time,alarm,value
-60,toy_counter.alarm,0
-65,toy_counter.alarm,1
-70,toy_counter.alarm,1
-```
-
-Or summarized:
-
-```csv
-fault_id,alarm,present,asserted,first_assert_time,within_detection_window
-F001,toy_counter.alarm,true,true,65,true
-F004,toy_counter.alarm,true,false,,false
-```
-
-Alarm traces are later used by D11.
-
-The executor should not decide final classification unless the campaign is intentionally running in quick-evaluate mode.
-
----
-
-## 15. Observe Trace Extraction
-
-Observe traces record selected observe point behavior.
-
-Example:
-
-```csv
-time,signal,value
-60,toy_counter.count,6
-70,toy_counter.count,7
-80,toy_counter.count,8
-```
-
-A summarized version:
-
-```csv
-fault_id,observe_point,changed_from_golden,first_deviation_time,last_deviation_time
-F001,toy_counter.count,true,60,70
-F001,toy_counter.alarm,true,65,70
-```
-
-Observe trace extraction can be implemented as:
+Coarse observe points:
 
 ```text
-waveform post-processing
-simulation-time logging
-testbench monitor logging
-lightweight event trace logging
+safe_state_o
+fatal_alarm_o
+system_error_o
 ```
 
-For a demo, simple CSV logs are enough.
-
----
-
-## 16. Golden Trace Storage
-
-D10 should preserve golden traces in a structured form.
-
-Example:
+Fine observe points:
 
 ```text
-runs/golden/
-  golden.vcd
-  golden_alarm_trace.csv
-  golden_observe_trace.csv
-  status.json
+state_q[3]
+counter_q[2]
+control_fsm.current_state
+protocol_rsp[1]
 ```
 
-The golden trace should be tied to the exact simulation command and input files.
+Coarse observe points reduce noise and align better with system safety goals. Fine observe points improve debug visibility but can produce many differences that are not safety-relevant.
 
-Why?
+D10 should choose observe granularity based on validation intent:
 
-Because faulted results are only meaningful relative to the same golden baseline.
-
-If the testbench or RTL changes, old faulted results may no longer be comparable.
-
----
-
-## 17. Fault Injection Implementation Strategies
-
-There are several ways to implement fault injection.
-
-### 17.1 Testbench-Based Injection
-
-The testbench reads fault specs and uses simulator force/release or procedural assignments.
-
-Advantages:
-
-```text
-simple
-transparent
-easy to demo
-works at RTL
-```
-
-Limitations:
-
-```text
-depends on simulator features
-name mapping can be tricky
-may not scale to optimized netlists
-```
-
-### 17.2 RTL Instrumentation
-
-The RTL is modified or wrapped with fault injection muxes.
-
-Advantages:
-
-```text
-portable
-works with simple simulators
-explicit
-```
-
-Limitations:
-
-```text
-intrusive
-may change design behavior
-requires generated wrappers
-```
-
-### 17.3 VPI/DPI/PLI-Based Injection
-
-A simulator interface is used to access and force signals.
-
-Advantages:
-
-```text
-powerful
-less RTL modification
-can support large campaigns
-```
-
-Limitations:
-
-```text
-simulator-specific
-more complex implementation
-```
-
-### 17.4 Fault Effect Emulation
-
-Instead of truly injecting into simulation, emulate fault effects using recorded traces.
-
-Advantages:
-
-```text
-fast
-useful for early pipeline testing
-```
-
-Limitations:
-
-```text
-not real validation evidence
-limited accuracy
-```
-
-D10 can start with emulation or testbench-based injection, then evolve.
-
----
-
-## 18. One Fault per Run vs Multiple Faults per Run
-
-For early safety campaigns, use one fault per run.
-
-Benefits:
-
-```text
-simple classification
-clear traceability
-easy rerun
-easy debugging
-clean mapping to fault ID
-```
-
-Multiple faults per run may be useful for stress testing or common-cause scenarios, but they complicate classification.
-
-D10 should default to:
-
-```yaml
-one_fault_per_run: true
-```
-
-Later demos can add:
-
-```text
-multi-fault scenarios
-common-cause fault campaigns
-dependent fault sequences
-diagnostic self-test sequences
-```
-
----
-
-## 19. Parallel Campaign Execution
-
-Fault campaigns can be parallelized because many faulted runs are independent.
-
-A simple scheduler can support:
-
-```text
-max_parallel_jobs
-job queue
-run status tracking
-timeout
-retry failed jobs
-resume campaign
-```
-
-```mermaid
-flowchart TD
-    A[Fault List] --> B[Job Queue]
-    B --> C[Worker 1]
-    B --> D[Worker 2]
-    B --> E[Worker N]
-    C --> F[Run Status]
-    D --> F
-    E --> F
-    F --> G[Campaign Status]
-```
-
-**Figure 6. Faulted runs are naturally parallelizable when each fault has an independent run directory.**
-
-For the first demo, parallel execution can be optional.
-
-But the directory and status model should be designed for it from the beginning.
-
----
-
-## 20. Timeout and Retry Policy
-
-Some simulations may hang or fail.
-
-Campaign policy should define:
-
-```text
-timeout seconds
-max retries
-retry only simulation errors
-do not retry invalid input
-mark unsupported faults
-preserve failed logs
-```
-
-Example:
-
-```yaml
-retry_policy:
-  timeout_seconds: 60
-  max_retries: 1
-  retry_status:
-    - SIM_ERROR
-    - TIMEOUT
-  no_retry_status:
-    - INVALID_INPUT
-    - UNSUPPORTED_FAULT
-```
-
-The executor should never delete failed evidence automatically.
-
-Failed runs can reveal real tool, model, or testbench problems.
-
----
-
-## 21. Campaign Status Table
-
-The campaign should generate a status table.
-
-Example:
-
-```csv
-fault_id,status,exit_code,runtime_seconds,log,vcd,comment
-GOLDEN,PASS,0,2.1,runs/golden/sim.log,runs/golden/golden.vcd,
-F001,PASS,0,3.0,runs/F001/sim.log,runs/F001/faulted.vcd,
-F002,PASS,0,3.1,runs/F002/sim.log,runs/F002/faulted.vcd,
-F004,PASS,0,2.9,runs/F004/sim.log,runs/F004/faulted.vcd,
-F099,INVALID_INPUT,,0.0,,,target node not mapped
-```
-
-This table is the main handoff from D10 to D11.
-
----
-
-## 22. Raw Fault Results
-
-Raw fault results are not final outcomes.
-
-They should contain execution facts and trace summaries.
-
-Example:
-
-```csv
-fault_id,node,fault_type,run_status,alarm_asserted,alarm_time,observe_deviation,first_deviation_time
-F001,toy_counter.count[0],transient_flip,PASS,true,65,true,60
-F002,toy_counter.count[1],transient_flip,PASS,true,75,true,70
-F004,toy_counter.alarm,stuck_at_0,PASS,false,,false,
-F005,toy_counter.alarm,stuck_at_1,PASS,true,30,true,30
-```
-
-D11 will use:
-
-```text
-expected alarm
-detection window
-golden baseline
-observe deviation
-run status
-```
-
-to classify these into outcomes.
-
----
-
-## 23. Campaign Summary
-
-A human-readable summary should include:
-
-```text
-total faults
-executed faults
-passed runs
-failed runs
-timeouts
-invalid inputs
-unsupported faults
-artifact locations
-next-step classification readiness
-```
-
-Example:
-
-```md
-# D10 Fault Campaign Execution Summary
-
-Project: automotive_safeic_practice
-Demo: D10_fault_campaign_execution
-Top: toy_counter
-
-## Run Summary
-
-Golden run: PASS  
-Faulted runs requested: 5  
-Faulted runs executed: 5  
-PASS: 5  
-FAIL: 0  
-TIMEOUT: 0  
-INVALID_INPUT: 0  
-
-## Artifacts
-
-- Golden run: runs/golden
-- Raw results: outputs/raw_fault_results.csv
-- Campaign status: outputs/campaign_status.csv
-
-## Next Step
-
-Use D11 to classify fault outcomes using:
-- raw_fault_results.csv
-- campaign_status.csv
-- vcd_context.json
-- fault_list.csv
-```
-
-This makes the campaign reviewable before classification.
-
----
-
-## 24. The `safeic-campaign` Tool Architecture
-
-The generic tool `safeic-campaign` can be implemented as a staged pipeline.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-campaign]
-    B[fault_list.csv] --> T
-    C[vcd_context.json] --> T
-    D[injection_windows.csv] --> T
-    E[sim_config.yaml] --> T
-    F[campaign_policy.yaml] --> T
-
-    T --> G[Dry Run Check]
-    G --> H[Golden Run]
-    H --> I[Faulted Run Queue]
-    I --> J[Execute / Emulate Runs]
-    J --> K[Extract Raw Traces]
-    K --> L[Campaign Status]
-    K --> M[Raw Fault Results]
-    L --> N[Campaign Summary]
-    M --> N
-```
-
-**Figure 7. `safeic-campaign` executes or emulates faulted runs and produces raw evidence for classification.**
-
-Suggested internal modules:
-
-```text
-safeic_campaign/
-  cli.py
-  manifest.py
-  load_inputs.py
-  dry_run.py
-  command_builder.py
-  fault_spec.py
-  scheduler.py
-  runner.py
-  trace_extract.py
-  status.py
-  resume.py
-  report.py
-```
-
-Responsibilities:
-
-| Module | Responsibility |
+| Intent | Recommended Observe Boundary |
 |---|---|
-| `dry_run.py` | Validate campaign readiness |
-| `command_builder.py` | Generate simulator commands |
-| `fault_spec.py` | Create per-fault spec files |
-| `scheduler.py` | Manage run queue and parallelism |
-| `runner.py` | Execute or emulate runs |
-| `trace_extract.py` | Extract alarm and observe traces |
-| `status.py` | Write per-run status and campaign status |
-| `resume.py` | Skip completed runs and rerun failed ones |
-| `report.py` | Generate CSV and Markdown outputs |
+| IP early debug | Fine state and local outputs |
+| Safety mechanism validation | Alarms and mechanism outputs |
+| Subsystem safety validation | Aggregated alarms and protocol-visible outputs |
+| FMEDA evidence | Failure-mode-linked safety outputs |
 
 ---
 
-## 25. D10 Directory Structure
+## 16. Mapping Alarm to Safety Mechanism
 
-Suggested directory:
+D07 creates a safety mechanism map. D10 turns it into alarm bindings.
+
+A typical mapping chain is:
 
 ```text
-D10_fault_campaign_execution/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    fault_list.csv
-    vcd_context.json
-    injection_windows.csv
-    detection_windows.csv
-    sim_config.yaml
-    campaign_policy.yaml
-
-  runs/
-    golden/
-    F001/
-    F002/
-    F003/
-
-  outputs/
-    dry_run_report.csv
-    campaign_status.csv
-    raw_fault_results.csv
-    campaign_summary.md
-    campaign_warnings.csv
+failure mode
+  -> endpoint
+    -> safety mechanism
+      -> alarm signal
+        -> FTTI window
+          -> fault outcome rule
 ```
-
-D10 is execution-heavy, so separating inputs, runs, and outputs is very important.
-
----
-
-## 26. D10 Manifest
 
 Example:
 
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D10_fault_campaign_execution
-  top_module: toy_counter
-
-inputs:
-  fault_list: inputs/fault_list.csv
-  vcd_context: inputs/vcd_context.json
-  injection_windows: inputs/injection_windows.csv
-  detection_windows: inputs/detection_windows.csv
-  sim_config: inputs/sim_config.yaml
-  campaign_policy: inputs/campaign_policy.yaml
-
-execution:
-  mode: emulation
-  run_golden: true
-  one_fault_per_run: true
-  max_parallel_jobs: 2
-  resume: true
-
-outputs:
-  run_dir: runs
-  dry_run_report: outputs/dry_run_report.csv
-  campaign_status: outputs/campaign_status.csv
-  raw_fault_results: outputs/raw_fault_results.csv
-  summary: outputs/campaign_summary.md
+```text
+FM_STATE_CORRUPTION
+  -> counter_state_q
+    -> endpoint parity
+      -> counter_parity_error_o
+        -> 3 cycles
+          -> detected if alarm fires within 3 cycles
 ```
 
-For the initial GitHub demo, use:
+This mapping should be explicit because later reports may only show alarm behavior. Without the chain, a reviewer cannot determine which failure mode received detection credit.
+
+---
+
+## 17. Mapping Observe Point to Failure Mode
+
+D10 also maps observe points back to failure modes.
+
+Example:
 
 ```text
-execution.mode = emulation
+FM_OUTPUT_DATA_CORRUPTION
+  -> observe point: data_o
+  -> compare policy: golden mismatch during valid transaction
 ```
 
-This allows the pipeline to run without requiring a commercial simulator.
+```text
+FM_PROTOCOL_HANDSHAKE_CORRUPTION
+  -> observe point: valid_o, ready_i, error_o
+  -> compare policy: transaction-level semantic mismatch
+```
+
+This mapping helps D13 decide whether a mismatch is safety-relevant.
+
+Not every mismatch is equal. A data mismatch during invalid protocol cycles may be irrelevant. A status mismatch during a safety-critical transaction may be unsafe.
 
 ---
 
-## 27. Campaign Policy
+## 18. Name Mapping Between RTL, Gate, and VCD
 
-Example `campaign_policy.yaml`:
+D10 must consider name consistency.
 
-```yaml
-campaign_policy:
-  require_golden_run: true
-  one_fault_per_run: true
-  preserve_run_artifacts: true
+The same logical signal may have different names in different artifacts:
 
-  execution:
-    mode: emulation
-    timeout_seconds: 60
-    max_retries: 1
-
-  validation:
-    require_injection_window: true
-    require_observe_points: true
-    require_expected_alarm_if_defined: true
-    warn_on_missing_expected_alarm: true
-
-  outputs:
-    dump_alarm_trace: true
-    dump_observe_trace: true
-    dump_run_status: true
-    keep_logs: true
+```text
+RTL name
+VCD hierarchical name
+gate-level netlist name
+fault-list node name
+report name
+FMEDA object name
 ```
 
-The policy makes execution assumptions explicit.
+A signal mapping table is often needed:
+
+```text
+logical_signal, rtl_path, vcd_path, gate_path, role
+counter_state, top.u_counter.count_q, tb.dut.count_q, U_COUNTER/count_reg[0], observe
+counter_alarm, top.u_counter.parity_error_o, tb.dut.parity_error_o, U_COUNTER/parity_error, alarm
+```
+
+D10 should produce or consume such a mapping so that D11 can configure the campaign without path ambiguity.
 
 ---
 
-## 28. D10 Execution Flow
+## 19. Black Boxes and Unresolved Outcomes
+
+If a fault propagates into a black box, analog block, encrypted IP, or unmodeled boundary, the campaign may not be able to classify it fully.
+
+D10 can reduce unresolved results by placing observe points at boundaries:
+
+```text
+blackbox_input
+blackbox_output
+wrapper_status
+boundary_alarm
+interface_error
+```
+
+However, an observe point at a black-box boundary may not prove internal behavior. It only proves whether the effect became visible at the selected boundary.
+
+The D10 review should classify such observe points as:
+
+```text
+boundary observe point
+not internal proof
+requires design-owner review
+```
+
+---
+
+## 20. Alarm List File Model
+
+A public demo can use a simple alarm list file:
+
+```text
+# alarm.list
+sm_alarm_o
+counter_parity_error_o
+protocol_error_o
+```
+
+A stronger demo should also generate a structured CSV:
+
+```csv
+alarm_id,alarm_signal,active_level,sm_id,failure_mode_id,endpoint_id,latency_cycles,mask_policy,review_status
+A001,counter_parity_error_o,1,SM_ENDPOINT_PARITY,FM_STATE_CORRUPTION,EP_COUNT_Q,3,after_reset,reviewed
+A002,protocol_error_o,1,SM_PROTOCOL_PARITY,FM_PROTOCOL_HANDSHAKE,EP_VALID_READY,5,transaction_window,reviewed
+```
+
+The plain list feeds tools. The CSV supports review, traceability, and article explanation.
+
+---
+
+## 21. Observe Point File Model
+
+A public observe point file may look like:
+
+```text
+# observe_points.list
+safe_state_o
+critical_output_o
+count_q
+status_valid_o
+```
+
+A structured observe catalog may look like:
+
+```csv
+observe_id,observe_signal,role,failure_mode_id,endpoint_id,compare_policy,window_policy,review_status
+O001,safe_state_o,safe_state,FM_STATE_CORRUPTION,EP_COUNT_Q,compare_to_golden,ftti_window,reviewed
+O002,critical_output_o,primary_output,FM_OUTPUT_DATA_CORRUPTION,EP_DATA_OUT,valid_transaction_only,active_window,reviewed
+O003,status_valid_o,protocol,FM_PROTOCOL_HANDSHAKE,EP_VALID_READY,semantic_compare,transaction_window,reviewed
+```
+
+Again, D10 should keep both:
+
+```text
+machine-consumable simple list
+human-reviewable structured catalog
+```
+
+---
+
+## 22. FTTI Window File Model
+
+FTTI should be represented separately from signal lists.
+
+Example:
+
+```csv
+rule_id,failure_mode_id,alarm_id,observe_id,injection_offset_cycle,latency_budget_cycles,settle_cycles,window_policy
+T001,FM_STATE_CORRUPTION,A001,O001,0,3,1,alarm_before_observe_violation
+T002,FM_OUTPUT_DATA_CORRUPTION,A002,O002,0,5,1,detect_or_safe_state
+```
+
+This makes it clear that a signal appearing in the alarm list is not enough. Its timing must also be acceptable.
+
+---
+
+## 23. Observation Windows and Activity Windows
+
+D09 provides activity information. D10 should use it.
+
+If a signal never toggles in the good-machine VCD, it may not be a good observe point for the current campaign. If a protocol transaction occurs only between cycles 20 and 30, observing the signal outside that window may be misleading.
+
+D10 therefore combines:
+
+```text
+VCD signal catalog
+activity window report
+observe point candidates
+FTTI window policy
+```
+
+The resulting observe plan should avoid:
+
+```text
+signals absent from VCD
+signals inactive during injection window
+signals valid only during reset
+signals unrelated to selected failure modes
+signals that are internal debug-only artifacts
+```
+
+---
+
+## 24. Late Alarm and Early Violation
+
+A subtle case is late alarm.
+
+```text
+fault changes critical output at cycle 10
+alarm fires at cycle 15
+FTTI budget is 8 cycles
+```
+
+If the critical output changed at cycle 10 but the alarm fired at cycle 15, the result may still be acceptable if the hazard is not realized before cycle 18. But if the output causes immediate unsafe behavior, the alarm may be too late.
+
+D10 cannot solve system-level hazard timing by itself, but it can expose the evidence:
+
+```text
+first observe mismatch time
+first alarm time
+latency between mismatch and alarm
+latency between injection and alarm
+FTTI budget
+review classification
+```
+
+D13 can then classify the outcome more accurately.
+
+---
+
+## 25. Spurious Alarm
+
+A spurious alarm is an alarm that fires even though no fault effect reaches a safety-relevant boundary.
+
+In some designs, spurious alarms are acceptable but costly. In others, they may trigger unnecessary safe shutdown.
+
+D10 can prepare fields for this:
+
+```text
+alarm_without_observe_mismatch
+alarm_during_reset
+alarm_during_idle
+alarm_persistence_cycles
+alarm_clear_behavior
+```
+
+This helps distinguish useful detection from noisy or poorly timed alarm behavior.
+
+---
+
+## 26. Persistent vs Pulse Alarms
+
+Alarms may be level-style or pulse-style.
+
+```text
+persistent alarm: stays high until cleared
+pulse alarm: high for one or more cycles
+encoded event: valid/id handshake
+```
+
+D10 should define sampling expectations:
+
+```text
+minimum_pulse_width
+sample_clock
+event_valid_signal
+clear_condition
+```
+
+If a campaign samples only at coarse intervals, a one-cycle alarm pulse may be missed. If a design uses event handshakes, the alarm cannot be judged by a single bit alone.
+
+---
+
+## 27. D10 Demo Architecture
+
+The D10 demo should not call a fault campaign engine by default. Its role is to prepare the alarm and observation boundary.
 
 ```mermaid
 flowchart TD
-    A[Load Manifest] --> B[Load Fault List]
-    B --> C[Load VCD Context]
-    C --> D[Load Injection Windows]
-    D --> E[Dry-Run Validation]
-    E --> F{Dry Run Pass?}
-    F -- No --> G[Report Errors]
-    F -- Yes --> H[Run Golden Simulation]
-    H --> I[Generate Per-Fault Specs]
-    I --> J[Execute Faulted Runs]
-    J --> K[Extract Alarm / Observe Traces]
-    K --> L[Write Run Status]
-    L --> M[Generate Campaign Summary]
+    A[D07 Alarm Binding Plan] --> E[D10 Builder]
+    B[D08 Campaign Fault List] --> E
+    C[D09 VCD Signal Catalog] --> E
+    D[D09 FTTI Window Plan] --> E
+    F[D04 Endpoint Inventory] --> E
+    E --> G[Alarm Catalog]
+    E --> H[Observe Point Catalog]
+    E --> I[Alarm List]
+    E --> J[Observe Points List]
+    E --> K[Outcome Boundary Rules]
+    E --> L[D11 Handoff]
+    E --> M[D13 Handoff]
 ```
 
-**Figure 8. D10 execution flow: validate, run golden, run faulted simulations, extract traces, and report status.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-campaign \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D10_fault_campaign_execution
-echo "Running $DEMO"
-
-safeic-campaign \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
+Expected D10 outputs:
 
 ```text
-outputs/dry_run_report.csv
-outputs/campaign_status.csv
-outputs/raw_fault_results.csv
-outputs/campaign_summary.md
-outputs/campaign_warnings.csv
+outputs/alarm_catalog.csv
+outputs/alarm_list.list
+outputs/observe_point_catalog.csv
+outputs/observe_points.list
+outputs/alarm_to_sm_trace.csv
+outputs/observe_to_failure_mode_trace.csv
+outputs/ftti_observation_rules.csv
+outputs/outcome_boundary_rules.csv
+outputs/d10_handoff_to_d11.csv
+outputs/d10_handoff_to_d13.csv
+outputs/d10_handoff_to_d15.csv
+outputs/d10_quality_gate.csv
+outputs/evidence_index.csv
+outputs/demo_summary.md
 ```
 
 ---
 
-## 29. Emulation Mode for the Demo
+## 28. Quality Gates for D10
 
-The first D10 demo can use emulation mode.
-
-In emulation mode, the tool does not run a real simulator. Instead, it creates synthetic but structured raw results based on fault type and expected alarm rules.
-
-Example:
+D10 quality gates should check both completeness and consistency.
 
 ```text
-fault on toy_counter.count[0]
-  -> observe deviation true
-  -> expected alarm asserted
-
-fault on toy_counter.alarm stuck_at_0
-  -> alarm asserted false
-  -> observe deviation depends on alarm signal
+Every reviewed alarm must exist in VCD signal catalog.
+Every alarm should map to a safety mechanism or review reason.
+Every observe point should map to a failure mode or endpoint.
+Every selected fault scope should have at least one observation route.
+Every FTTI rule should reference valid alarm and observe IDs.
+No reset-only signal should be used as final observe point.
+No unknown polarity alarm should be treated as reviewed.
+No duplicate alarm ID should exist.
+No duplicate observe ID should exist.
 ```
 
-This is not final safety validation evidence.
-
-But it is valuable for:
+A strong D10 quality gate does not require all alarms to be final. It may allow review-status rows such as:
 
 ```text
-testing file formats
-testing campaign orchestration
-testing D11 classification
-testing report generation
-demonstrating the methodology without simulator dependency
+reviewed
+needs_rtl_signal_confirmation
+needs_vcd_presence
+needs_alarm_owner_review
+not_applicable
 ```
 
-The report must clearly label emulated results:
+But it should not silently pass missing observation boundaries.
+
+---
+
+## 29. Configuration Philosophy
+
+D10 should use configuration files for policies that are design-dependent:
+
+```text
+alarm naming rules
+alarm active-level rules
+observe point selection rules
+FTTI default rules
+protocol signal semantic rules
+reset mask rules
+activity window thresholds
+review severity policy
+```
+
+This prevents hard-coding assumptions into scripts.
+
+A typical directory layout is:
+
+```text
+configs/
+  alarm_selection_policy.csv
+  observe_point_policy.csv
+  ftti_policy.csv
+  signal_role_rules.csv
+  outcome_boundary_policy.csv
+
+outputs/
+  alarm_catalog.csv
+  observe_point_catalog.csv
+  ftti_observation_rules.csv
+  outcome_boundary_rules.csv
+```
+
+The script should be deterministic. Given the same D07, D08, and D09 inputs, it should produce the same D10 artifacts.
+
+---
+
+## 30. Boundary Rules for D13
+
+D10 should prepare rules for D13 fault outcome classification.
+
+Example rule set:
+
+```text
+R1: If mapped alarm fires within FTTI and no earlier unsafe observe violation occurs, classify as detected candidate.
+R2: If observe point remains equivalent to good-machine behavior throughout the relevant window, classify as safe candidate.
+R3: If observe point differs from good-machine behavior and no valid alarm fires within the allowed window, classify as unsafe candidate.
+R4: If signal coverage is missing, VCD context is insufficient, or effect reaches an unmodeled boundary, classify as unresolved candidate.
+R5: If alarm fires only during masked reset/init window, do not credit detection.
+R6: If alarm polarity is unknown, require review before credit.
+```
+
+These rules should be exported as data, not buried in prose.
 
 ```csv
-fault_id,run_status,result_source,comment
-F001,PASS,emulated,not real simulator evidence
+rule_id,condition,classification_candidate,review_required
+R1,alarm_within_ftti_and_no_prior_violation,detected,no
+R2,no_observe_mismatch,safe,no
+R3,observe_mismatch_without_valid_alarm,unsafe,no
+R4,missing_context_or_unknown_boundary,unresolved,yes
+R5,alarm_only_in_mask_window,no_credit,yes
+R6,unknown_alarm_polarity,no_credit,yes
 ```
-
-This avoids overclaiming.
 
 ---
 
-## 30. Simulation Mode Later
+## 31. Database and Session Hooks
 
-After emulation mode works, simulation mode can be added.
+D10 is still mostly file-oriented, but it should prepare database session metadata.
 
-For open-source demo implementation, possible integration choices include:
+A trace hook can be expressed as:
 
 ```text
-Verilator-based RTL testbench
-Icarus Verilog for simple Verilog demos
-cocotb-based Python testbench
-VPI-based signal force for supported simulators
-testbench instrumentation with fault-spec reader
+common_db_file
+session_name
+artifact_type
+source_stage
+downstream_stage
+trace_key
 ```
 
-Simulation mode should keep the same output schema as emulation mode.
-
-That way, D11 classification does not need to know whether the raw results came from real simulation or emulation.
-
----
-
-## 31. Validation Rules
-
-`safeic-campaign` should validate:
-
-```text
-fault_list.csv exists
-vcd_context.json exists
-injection_windows.csv exists
-fault IDs are unique
-each selected fault has an injection window
-each expected alarm is available or explicitly missing
-each observe point is available or explicitly missing
-execution mode is supported
-run directory is writable
-golden run artifacts are preserved
-per-fault output paths are unique
-timeout and retry policy are valid
-```
-
-Example messages:
-
-```text
-[PASS] fault list loaded: 5 faults
-[PASS] VCD context loaded
-[PASS] injection windows loaded for all selected faults
-[PASS] run directory is writable
-[WARN] F004 has no expected alarm because it is an alarm stuck-at test
-[WARN] execution mode is emulation; results are not final validation evidence
-[ERROR] duplicate fault_id F001 found
-[ERROR] no injection window found for fault F099
-```
-
-A campaign executor should fail before running if the campaign is inconsistent.
-
----
-
-## 32. Common Mistakes
-
-### 32.1 Mixing Execution Status with Safety Outcome
-
-A simulation passing does not mean the fault was safe.
-
-It only means the run completed.
-
-### 32.2 Overwriting Golden Artifacts
-
-Golden run artifacts must be preserved and versioned.
-
-### 32.3 Running Faults Without Injection Windows
-
-Fault timing must be meaningful.
-
-Do not inject blindly at arbitrary time zero.
-
-### 32.4 Losing Per-Fault Logs
-
-Every fault should have its own run directory and logs.
-
-### 32.5 Ignoring Failed Runs
-
-Failed runs should be reported and debugged, not silently dropped.
-
-### 32.6 Overclaiming Emulation Results
-
-Emulation mode validates the pipeline, not the design safety.
-
-### 32.7 Hardcoding Simulator Commands
-
-Simulator command templates should be configurable.
-
----
-
-## 33. How D10 Connects to Later Demos
-
-D10 produces raw run evidence.
+D10 may not write the final campaign results, but it should tell D11 and D13 where alarm and observe definitions came from.
 
 ```mermaid
 flowchart LR
-    A[D10 Campaign Execution] --> B[D11 Fault Outcome Classification]
-    B --> C[D12 Measured DC]
-    C --> D[D13 FMEDA Update]
-    D --> E[Safety Report]
+    A[D10 Alarm Catalog] --> DB[(Common Safety DB)]
+    B[D10 Observe Point Catalog] --> DB
+    C[D10 Outcome Rules] --> DB
+    DB --> D[D11 Campaign Setup]
+    DB --> E[D13 Classification]
+    DB --> F[D15 FMEDA Model]
 ```
 
-**Figure 9. D10 produces raw evidence; later stages classify, measure, and report safety metrics.**
-
-D10 output must be clean enough for D11 to classify outcomes without guessing.
+The database is useful only if the file artifacts carry stable identifiers.
 
 ---
 
-## 34. Recommended Implementation Stages
+## 32. A Minimal Example
 
-D10 can be implemented in stages.
-
-### Stage 1: Dry-Run Campaign Validator
-
-Validate inputs and generate per-fault run specs.
-
-Deliverables:
+Suppose D07 selected endpoint parity for a counter register and D09 generated a good-machine VCD containing:
 
 ```text
-dry_run_report.csv
-runs/Fxxx/fault_spec.yaml
+clk
+rst_n
+count[3:0]
+counter_parity_error_o
+safe_state_o
 ```
 
-### Stage 2: Emulated Execution
+D10 can generate:
 
-Generate synthetic raw results for pipeline testing.
+```csv
+alarm_id,alarm_signal,active_level,sm_id,failure_mode_id,latency_cycles
+A001,counter_parity_error_o,1,SM_ENDPOINT_PARITY,FM_STATE_CORRUPTION,3
+```
 
-Deliverables:
+And:
+
+```csv
+observe_id,observe_signal,role,failure_mode_id,compare_policy
+O001,count,state,FM_STATE_CORRUPTION,compare_to_golden_after_reset
+O002,safe_state_o,safe_state,FM_STATE_CORRUPTION,asserted_on_controlled_fault
+```
+
+Then D11 can package:
 
 ```text
-raw_fault_results.csv
-campaign_status.csv
-campaign_summary.md
+fault list
+VCD
+alarm list
+observe point list
+campaign config
 ```
 
-### Stage 3: Testbench-Based Simulation
-
-Integrate a simple RTL testbench and inject faults.
-
-Deliverables:
+And D13 can later interpret:
 
 ```text
-faulted.vcd
-sim.log
-alarm_trace.csv
-observe_trace.csv
+alarm fired within 3 cycles -> detected candidate
+count differs without alarm -> unsafe candidate
+count unchanged -> safe candidate
+missing signal -> unresolved candidate
 ```
-
-### Stage 4: Parallel Execution and Resume
-
-Support queue-based parallel jobs and resume.
-
-Deliverables:
-
-```text
-campaign_state.json
-rerun_failed mode
-```
-
-### Stage 5: Simulator Adapter Layer
-
-Add adapter interface for different simulators.
-
-Deliverables:
-
-```text
-sim_adapter.py
-sim_config.yaml templates
-```
-
-This staged path makes D10 practical and avoids overdependence on a simulator from day one.
 
 ---
 
-## 35. Summary
+## 33. Engineering Pitfalls
 
-Fault campaign execution is the point where analysis becomes experimental evidence.
-
-The D10 demo:
+Common mistakes in D10 include:
 
 ```text
-D10_fault_campaign_execution
+using every output as an observe point
+using no observe point and relying only on alarms
+treating active-low alarms as active-high
+using alarm signals that are absent from VCD
+ignoring reset and initialization windows
+failing to distinguish local and aggregated alarms
+not mapping alarms back to safety mechanisms
+not mapping observe points back to failure modes
+using internal debug signals as signoff boundaries without review
+mixing generated files and hand-written review decisions without provenance
 ```
 
-introduces the generic tool:
-
-```text
-safeic-campaign
-```
-
-The tool consumes:
-
-```text
-fault_list.csv
-vcd_context.json
-injection_windows.csv
-detection_windows.csv
-sim_config.yaml
-campaign_policy.yaml
-```
-
-and generates:
-
-```text
-dry_run_report.csv
-campaign_status.csv
-raw_fault_results.csv
-campaign_summary.md
-campaign_warnings.csv
-per-fault run directories
-```
-
-The central lesson is:
-
-> A fault campaign is a controlled experiment. It must preserve the golden run, isolate each faulted run, record injection intent, capture alarm and observe traces, and separate execution status from safety outcome.
-
-D10 does not prove safety by itself.
-
-It produces the raw evidence that later classification and metric computation depend on.
+The purpose of D10 is to remove these ambiguities before D11 builds the campaign package.
 
 ---
 
-## 36. D10 Demo Checklist
+## 34. What D10 Should Hand Off to D11
 
-For `D10_fault_campaign_execution`, the expected deliverables are:
-
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/fault_list.csv
-[ ] inputs/vcd_context.json
-[ ] inputs/injection_windows.csv
-[ ] inputs/detection_windows.csv
-[ ] inputs/sim_config.yaml
-[ ] inputs/campaign_policy.yaml
-
-[ ] runs/golden/status.json
-[ ] runs/golden/command.sh
-[ ] runs/golden/sim.log
-[ ] runs/golden/golden.vcd
-
-[ ] runs/F001/fault_spec.yaml
-[ ] runs/F001/command.sh
-[ ] runs/F001/status.json
-[ ] runs/F001/alarm_trace.csv
-[ ] runs/F001/observe_trace.csv
-
-[ ] outputs/dry_run_report.csv
-[ ] outputs/campaign_status.csv
-[ ] outputs/raw_fault_results.csv
-[ ] outputs/campaign_summary.md
-[ ] outputs/campaign_warnings.csv
-```
-
-A successful D10 run should answer:
+D11 needs campaign setup inputs. D10 should hand off:
 
 ```text
-Was the campaign input valid?
-Was the golden run completed or emulated?
-Which faults were executed?
-Which faults failed to execute and why?
-Where are per-fault logs stored?
-Which alarms and observe traces were captured?
-Which runs are ready for D11 classification?
-Are any results emulated rather than simulated?
-Can the campaign be resumed or rerun?
+alarm list path
+observe point list path
+alarm catalog path
+observe point catalog path
+FTTI rules path
+outcome boundary rules path
+VCD signal catalog reference
+fault list reference
+review status summary
 ```
+
+A handoff row may look like:
+
+```csv
+artifact,role,path,required_by,review_status
+alarm_list,detection_boundary,outputs/alarm_list.list,D11,reviewed
+observe_points,behavior_boundary,outputs/observe_points.list,D11,reviewed
+ftti_rules,timing_boundary,outputs/ftti_observation_rules.csv,D11,reviewed
+outcome_rules,classification_boundary,outputs/outcome_boundary_rules.csv,D13,reviewed
+```
+
+D11 should not rediscover these files by convention. It should read the handoff.
+
+---
+
+## 35. What D10 Should Hand Off to D15
+
+D15 is the FMEDA data model stage. It needs to know which diagnostic mechanism covers which failure mode and how that coverage will be justified.
+
+D10 contributes:
+
+```text
+alarm-to-SM trace
+observe-to-failure-mode trace
+FTTI rule trace
+classification rule trace
+review status
+```
+
+This is the bridge from simulation evidence to FMEDA rows.
+
+```text
+Failure Mode -> Safety Mechanism -> Alarm -> Fault Campaign Evidence -> Diagnostic Coverage Credit
+```
+
+Without D10 traceability, a later FMEDA row may claim diagnostic coverage without a clear path to the fault campaign evidence.
+
+---
+
+## 36. Summary
+
+D10 transforms fault campaign preparation from a file collection task into an observation-boundary definition task.
+
+The main outputs are:
+
+```text
+alarm list
+observe point list
+alarm catalog
+observe point catalog
+FTTI observation rules
+outcome boundary rules
+D11 handoff
+D13 handoff
+D15 trace hooks
+```
+
+The core method is:
+
+```text
+D07 tells what should detect.
+D08 tells what should be injected.
+D09 tells what can be observed in time.
+D10 defines how detection and behavior will be judged.
+```
+
+This is why D10 is a critical step before fault campaign setup. A campaign without a well-defined alarm list and observe point model may still run, but its results will be difficult to classify, audit, and connect to FMEDA evidence.
