@@ -1,1576 +1,1313 @@
-# [Automotive Safe-IC Practice 08] Fault List Generation: Turning Safety Analysis into a Targeted Fault Campaign
-
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D08_fault_list_generation  
-**Tags**: Automotive Chip, Functional Safety, Fault List, Fault Injection, Fault Campaign, Diagnostic Coverage, Residual FIT, Startpoint, Endpoint, Cone, FMEDA, Safety Mechanism
+# Automotive Safe-IC Practice 08: Fault List Generation — From Safety Analysis to Fault Campaign Input
+Author: Darren H. Chen  
+Direction: Automotive chip functional safety analysis and fault injection practice  
+Demo: D08_fault_list_generation_from_safety_analysis_to_fault_campaign_input  
+Tags: ISO 26262, Functional Safety, Fault List, Fault Injection, Diagnostic Coverage, Safety Mechanism, FMEDA, VCD, Fault Campaign, Evidence Traceability
 
 ---
 
-## 1. Why This Article Matters
+## 1. The Place Where Safety Analysis Becomes Executable Verification
 
-In the previous articles, we built the analysis side of the functional safety workflow:
+A safety analysis flow can tell us which structures contribute to FIT, which endpoints are safety-relevant, and which safety mechanisms are expected to improve diagnostic coverage. But fault injection needs something more concrete: it needs a list of specific fault targets that can be injected, simulated, classified, and traced back to the safety argument.
+
+That is the purpose of D08.
+
+D08 is not another FIT calculation step. It is the point where the analysis-side view of the design is transformed into a campaign-side input population:
 
 ```text
-Input package
-→ FIT model
-→ Base FIT Rate
-→ Structural safety model
-→ Diagnostic Coverage
-→ Safety Mechanism Selection
+analysis evidence
+  -> structural safety model
+  -> safety mechanism map
+  -> prioritized fault population
+  -> fault campaign input package
 ```
 
-Now we need to convert that analysis into validation work.
+A fault list is the bridge between “this endpoint matters” and “inject a fault here under this safety context and observe the outcome.”
 
-The key question becomes:
+In a mature automotive safety flow, fault list generation should not be treated as a file-format conversion. It is an engineering decision layer. It decides what fault space is represented, which nodes are safety-critical, how permanent and transient faults are encoded, how sampling is controlled, how fault targets are connected back to failure modes, and how the next stages can reproduce the campaign.
 
-> Which faults should we actually inject?
+---
 
-A fault campaign cannot be effective if the fault list is random, too broad, too small, or disconnected from the safety argument.
+## 2. D08 in the 20-Demo Flow
 
-The eighth demo in this repository is:
+D08 is the eighth demo in this Safe-IC functional safety practice sequence. Its specific theme is:
 
 ```text
-D08_fault_list_generation
+Fault List Generation: from safety analysis to fault campaign input
 ```
 
-The generic tool introduced in this article is:
+The upstream stages already established the required context:
 
 ```text
-safeic-faultgen
+D01: analysis input package
+D02: base FIT rate and FIT contribution
+D03: FIT standard selection and mission-profile variants
+D04: endpoint, startpoint, cone, and DCE structural model
+D05: common evidence database/session organization
+D06: what-if safety mechanism exploration and DC estimation
+D07: failure mode to safety mechanism / endpoint mapping
 ```
 
-The purpose of `safeic-faultgen` is to generate a traceable, prioritized fault list from:
+D08 consumes these artifacts and prepares the fault population that will later be used by:
 
 ```text
-structural safety model
-startpoints
+D09: simulation safety context
+D10: alarm list and observe point boundary
+D11: fault campaign setup package
+D12: fault injection execution
+D13: fault outcome classification
+D14: result write-back and final metrics
+```
+
+This placement is important. A fault list generated too early is often structurally correct but safety-blind. A fault list generated too late is difficult to trace back to FIT contribution, structural endpoints, and FMEDA assumptions. D08 sits in the middle.
+
+---
+
+## 3. What a Fault List Actually Represents
+
+A fault list is a machine-readable representation of a fault population.
+
+At minimum, it describes:
+
+```text
+where a fault is injected
+what fault model is used
+when the fault is injected
+how long the fault lasts
+how the fault relates to safety mechanisms and failure modes
+```
+
+For a permanent stuck-at fault, the list may describe:
+
+```text
+target node: u_ctrl.state[2]
+fault type: stuck-at-0
+injection time: 100 ns
+duration: permanent
+```
+
+For a transient fault, the list may describe:
+
+```text
+target node: u_pipe.valid_q
+fault type: bit flip or transient value override
+injection time: 250 ns
+duration: 2 cycles or a time window
+```
+
+In practice, fault lists can exist in multiple levels of maturity:
+
+```text
+analysis-native fault list
+reviewable fault candidate table
+campaign-ready fault list
+sampled fault subset
+collapsed primary-fault list
+fault-list manifest
+fault-to-FMEDA trace table
+```
+
+D08 should produce more than one file, because different consumers need different views.
+
+---
+
+## 4. Fault List Is Not Diagnostic Coverage
+
+A common misunderstanding is to treat a generated fault list as evidence of safety coverage.
+
+It is not.
+
+A fault list is only the test population. It does not prove that a safety mechanism detects anything. Diagnostic coverage becomes credible only after the fault campaign classifies each fault outcome or after an accepted analytical model supports the credit.
+
+The distinction is:
+
+```text
+Fault list:
+  what will be tested
+
+Fault campaign:
+  what happened when faults were injected
+
+Fault classification:
+  detected / safe / unsafe / unresolved
+
+Final metric calculation:
+  what coverage and residual risk can be credited
+```
+
+D08 therefore should not claim final DC. It should provide a clean, traceable, reviewable fault population.
+
+---
+
+## 5. Inputs Consumed by D08
+
+A robust D08 implementation reads from the preceding stages rather than inventing a new design boundary.
+
+Typical D08 inputs include:
+
+```text
+D01 design filelist and clock definition
+D02 base FIT and FIT contribution summary
+D03 selected FIT standard and run identity
+D04 endpoint inventory, startpoint inventory, cone map, DCE catalog
+D05 common database/session manifest
+D06 safety exploration scenario and candidate SM assignments
+D07 failure-mode-to-endpoint map and EP-to-SM map
+```
+
+This means D08 should be able to answer:
+
+```text
+Which design version is this fault list based on?
+Which FIT standard and mission profile are associated with it?
+Which endpoints and cones are included?
+Which failure modes justify each fault target?
+Which safety mechanism is expected to detect or control the fault?
+Which later campaign will consume the list?
+```
+
+Without these answers, a fault list may run, but it is weak as safety evidence.
+
+---
+
+## 6. Outputs Produced by D08
+
+D08 should produce outputs for both humans and tools.
+
+A practical D08 output set can include:
+
+```text
+outputs/fault_scope_inventory.csv
+outputs/fault_target_candidates.csv
+outputs/permanent_fault_candidates.csv
+outputs/transient_fault_candidates.csv
+outputs/campaign_fault_list_permanent.list
+outputs/campaign_fault_list_transient.list
+outputs/campaign_fault_list_all.list
+outputs/fault_priority_matrix.csv
+outputs/fault_sampling_plan.csv
+outputs/fault_list_manifest.csv
+outputs/fault_to_failure_mode_trace.csv
+outputs/fault_to_sm_trace.csv
+outputs/d08_handoff_to_d09.csv
+outputs/d08_handoff_to_d10.csv
+outputs/d08_handoff_to_d11.csv
+outputs/d08_quality_gate.csv
+outputs/evidence_index.csv
+outputs/demo_summary.md
+```
+
+The file names are less important than the separation of concerns:
+
+```text
+candidate generation
+fault encoding
+sampling
+traceability
+campaign handoff
+quality gate
+evidence index
+```
+
+---
+
+## 7. The Two Worlds: Analysis Fault Space and Campaign Fault Space
+
+Safety analysis and fault campaign execution do not always use the same representation.
+
+Analysis-side fault space is usually tied to:
+
+```text
 endpoints
-cones
-failure modes
-diagnostic coverage gaps
-residual FIT
-safety mechanism mappings
-fault model policy
-campaign budget
+startpoints
+logic cones
+FIT contribution
+diagnostic coverage elements
+safety mechanism assumptions
 ```
 
-The central idea is:
+Campaign-side fault space is tied to:
 
-> A fault list is not merely a list of nodes. It is the bridge between safety analysis and fault injection validation.
+```text
+simulation hierarchy
+fault injection object
+fault type
+injection time
+duration
+safety context
+alarm and observe boundary
+```
+
+D08 maps between them.
+
+```text
+Endpoint / cone evidence
+  -> concrete injectability target
+    -> campaign fault row
+      -> traceable fault ID
+```
+
+This mapping is not trivial. A single endpoint may imply multiple internal fault sites. A single net may have multiple ports. A permanent stuck-at model may be enough for one analysis goal, while a transient model may be needed for architectural vulnerability or software-visible effects.
 
 ---
 
-## 2. Why Fault List Generation Comes After Safety Analysis
+## 8. Permanent Faults
 
-A naive approach is:
+A permanent fault is a fault that remains active after injection.
 
-```text
-Inject faults into all nodes.
-```
-
-This may sound complete, but it is often inefficient and sometimes misleading.
-
-A better approach is:
+The most common permanent digital models are:
 
 ```text
-Inject faults where safety evidence is needed.
+SA0: stuck-at-0
+SA1: stuck-at-1
 ```
 
-Safety analysis tells us where evidence is needed:
+A stuck-at fault models a node being forced to a constant logic value. This is useful for random hardware faults that behave like persistent defects or stuck conditions.
+
+A campaign-ready row may look like:
 
 ```text
-high residual FIT
-weak diagnostic coverage
-safety-critical endpoints
-unprotected cones
-diagnostic path weakness
-important failure modes
-high-impact startpoints
-black-box boundaries
+# fault_target                         fault_type   injection_time   duration
+u_top.u_ctrl.state_q[2]                SA0          100              -1
+u_top.u_ctrl.state_q[2]                SA1          100              -1
 ```
 
-```mermaid
-flowchart LR
-    A[Structural Model] --> D[Fault List Generation]
-    B[Residual FIT] --> D
-    C[Weak Coverage] --> D
-    E[Failure Modes] --> D
-    F[Safety Mechanism Map] --> D
-    D --> G[Prioritized Fault List]
-    G --> H[Fault Campaign]
+A duration of `-1` is commonly used in campaign-oriented list formats to indicate a permanent fault. The exact convention should be documented in the D08 manifest.
+
+Permanent fault lists are especially important for:
+
+```text
+register state corruption
+control path stuck values
+protocol signal stuck values
+alarm path stuck values
+configuration bit faults
 ```
-
-**Figure 1. Fault list generation converts analysis artifacts into validation targets.**
-
-This is why D08 consumes D05, D06, and D07 outputs.
 
 ---
 
-## 3. What Is a Fault List?
+## 9. Transient Faults
 
-At the simplest level, a fault list defines:
+A transient fault is active only during a limited time window.
+
+Transient faults model effects such as:
 
 ```text
-where to inject
-what fault type to inject
-how to inject it
-when to inject it
-how to observe the result
-why this fault matters
+single-event upset
+temporary value corruption
+soft error in a state element
+short-lived logic disturbance
+timing-window-dependent failure
 ```
 
-A minimal fault entry may look like:
+A campaign-ready row may look like:
 
 ```text
-toy_counter.count[0] stuck_at_0
-toy_counter.count[0] stuck_at_1
-toy_counter.alarm stuck_at_0
+# fault_target                         fault_type   injection_time   duration
+u_top.u_pipe.valid_q                   1:0          250              2
+u_top.u_pipe.data_q[7]                 SA1          310              1
 ```
 
-But this is too weak for a safety workflow.
+For transient campaigns, the injection time and duration are not secondary details. They define the workload phase under which the fault is tested.
 
-A safety-oriented fault entry should also include:
+That is why D08 does not fully close transient campaign setup by itself. It prepares the target population and hands it to D09, where VCD, good-machine behavior, time windows, and observe context are formalized.
+
+---
+
+## 10. Net Faults and Port Faults
+
+Fault list generation must distinguish net faults from port faults.
+
+A net fault injects on a net or node. Conceptually, it drives the entire net to a value. This can be useful for certain structural analyses, but it may over-constrain the simulation because all connected loads see the forced value.
+
+A port fault injects at a specific port boundary. It is more localized. In many fault simulation flows, port fault injection is preferred because it avoids forcing an entire net and better isolates the effect at a particular driver/load boundary.
+
+The engineering distinction is:
 
 ```text
-fault_id
-node
+Net fault:
+  target is a net
+  effect can cover the whole connected node
+
+Port fault:
+  target is a port
+  effect is localized to an instance/interface boundary
+```
+
+For D08, this means the target table should explicitly track:
+
+```text
+fault_target_kind = net | port | endpoint | instance_port | register_bit
+```
+
+Do not hide this distinction. It affects campaign runtime, fault equivalence, and interpretation.
+
+---
+
+## 11. Fault Modes and Fault Types
+
+A fault list row should not be just a string. It should carry a normalized fault model.
+
+Typical fault types include:
+
+```text
+SA0
+SA1
+SA0/SA1 pair
+transient 0-to-1
+transient 1-to-0
+bit-flip
+transition fault
+time-delay fault
+path-delay fault
+user-defined fault model
+```
+
+D08 should at least support the core permanent and transient digital models:
+
+```text
+permanent stuck-at faults
+transient fault windows
+```
+
+Other models can be staged for later enhancement. The important part is to make the model explicit and traceable:
+
+```text
+fault_model_id
 fault_type
-fault_model
-injection_scope
-related_endpoint
+fault_value
+injection_time_policy
+duration_policy
+campaign_support_status
+```
+
+---
+
+## 12. Safety-Critical Node Selection
+
+A full design may contain too many potential fault targets.
+
+D08 should not blindly generate everything unless the purpose is exhaustive analysis on a very small design. For realistic SoCs, the initial fault population should be guided by safety relevance.
+
+Possible selection signals include:
+
+```text
+endpoint criticality
+FIT contribution
+DCE association
+failure mode severity
+protocol visibility
+safety mechanism coverage intent
+D06 risk score
+D07 failure-mode-to-endpoint mapping
+FMEDA part/sub-part relevance
+```
+
+A simple scoring formula can be:
+
+```text
+fault_priority =
+    normalized_fit_contribution
+  * failure_mode_severity_weight
+  * endpoint_observability_weight
+  * uncoveredness_weight
+  * protocol_visibility_weight
+```
+
+This is not a replacement for formal safety metrics. It is a prioritization method for constructing a useful campaign population.
+
+---
+
+## 13. Endpoint-Driven Fault Scope
+
+An endpoint-driven fault scope starts from the endpoint inventory:
+
+```text
+endpoint_id
+endpoint_signal
+endpoint_class
+owning_instance
+bit_index
 related_failure_mode
 related_safety_mechanism
-expected_alarm
-observe_points
-priority
-reason
 ```
 
-Example:
-
-```csv
-fault_id,node,fault_type,endpoint,failure_mode,expected_alarm,priority,reason
-F001,toy_counter.count[0],stuck_at_0,toy_counter.count,FM_DATA_CORRUPTION,toy_counter.alarm,HIGH,residual FIT and endpoint parity validation
-F002,toy_counter.alarm,stuck_at_0,toy_counter.alarm,FM_ALARM_NOT_ASSERTED,,HIGH,alarm path unprotected
-```
-
-The extra columns are not decoration. They make the fault list traceable.
-
----
-
-## 4. Fault List as a Contract
-
-A fault list is a contract between safety analysis and fault injection.
-
-Safety analysis says:
-
-```text
-These structures and failure modes require evidence.
-```
-
-Fault injection says:
-
-```text
-I will inject these faults and classify the outcomes.
-```
-
-```mermaid
-flowchart TD
-    A[Safety Analysis] --> B[Fault List]
-    B --> C[Fault Campaign]
-    C --> D[Fault Outcomes]
-    D --> E[Measured DC / Report]
-    E --> A
-```
-
-**Figure 2. The fault list is the contract between analysis assumptions and validation evidence.**
-
-If the fault list is not traceable, the fault campaign result cannot easily be mapped back to:
-
-```text
-FMEDA
-diagnostic coverage
-residual FIT
-safety mechanism validation
-failure mode review
-```
-
-Therefore, D08 emphasizes traceability from the beginning.
-
----
-
-## 5. Fault Models
-
-A fault model defines how a fault behaves.
-
-Common digital fault models include:
-
-```text
-stuck-at-0
-stuck-at-1
-transient bit flip
-pulse
-delay fault
-open fault abstraction
-bridging fault abstraction
-memory bit upset
-register corruption
-force/release fault
-```
-
-For early functional safety demos, we can start with:
-
-```text
-stuck_at_0
-stuck_at_1
-transient_flip
-```
-
-These are enough to demonstrate the methodology.
-
-A practical fault model library:
-
-```yaml
-fault_models:
-  stuck_at_0:
-    type: permanent
-    description: Force the target node to logic 0.
-    applies_to:
-      - net
-      - reg
-      - output
-      - alarm
-    campaign_use:
-      - permanent_fault_validation
-
-  stuck_at_1:
-    type: permanent
-    description: Force the target node to logic 1.
-    applies_to:
-      - net
-      - reg
-      - output
-      - alarm
-    campaign_use:
-      - permanent_fault_validation
-
-  transient_flip:
-    type: transient
-    description: Flip a state element or sampled value for a bounded time.
-    applies_to:
-      - flip_flop
-      - memory_bit
-      - register_bit
-    campaign_use:
-      - soft_error_validation
-```
-
-The fault list generator should not blindly apply every fault model to every node.
-
-It should check whether the fault model is meaningful for the target node.
-
----
-
-## 6. Permanent vs Transient Fault List Generation
-
-Permanent and transient faults require different campaign logic.
-
-### 6.1 Permanent Faults
-
-Permanent faults persist after injection.
-
-Examples:
-
-```text
-node stuck at 0
-node stuck at 1
-alarm output stuck inactive
-configuration bit permanently corrupted
-```
-
-Permanent faults are useful for validating:
-
-```text
-stuck-at behavior
-diagnostic tests
-BIST assumptions
-alarm path robustness
-persistent logic corruption
-```
-
-### 6.2 Transient Faults
-
-Transient faults exist for a limited duration.
-
-Examples:
-
-```text
-flip a register bit for one cycle
-corrupt memory bit during active window
-inject pulse on control signal
-temporarily corrupt bus payload
-```
-
-Transient faults are useful for validating:
-
-```text
-soft error response
-ECC behavior
-parity detection
-temporal monitors
-state recovery
-```
-
-```mermaid
-flowchart TD
-    A[Fault Models] --> B[Permanent]
-    A --> C[Transient]
-    B --> D[stuck_at_0 / stuck_at_1]
-    C --> E[bit_flip / pulse]
-    D --> F[Persistent Fault Campaign]
-    E --> G[Time-Window Fault Campaign]
-```
-
-**Figure 3. Permanent and transient fault models require different generation and campaign strategies.**
-
-D08 should generate both types, but keep the first demo small.
-
----
-
-## 7. Structural Sources of Fault Candidates
-
-The primary source of fault candidates is the structural safety model.
-
-Candidate nodes may come from:
-
-```text
-startpoints
-endpoints
-cone internal nodes
-alarm signals
-safety mechanism signals
-diagnostic state
-configuration state
-memory bits
-black-box outputs
-```
-
-Each source has different meaning.
-
-| Candidate Source | Why It Matters |
-|---|---|
-| Startpoint | Fault effect origin |
-| Endpoint | Safety-relevant observation point |
-| Cone internal node | Propagation logic |
-| Alarm signal | Diagnostic reporting path |
-| Safety mechanism state | Protection logic may fail |
-| Configuration register | May affect many endpoints |
-| Memory bit | High transient fault relevance |
-| Black-box output | Unknown internal structure boundary |
-
-```mermaid
-flowchart TD
-    A[Structural Model] --> B[Startpoints]
-    A --> C[Endpoints]
-    A --> D[Cone Nodes]
-    A --> E[Alarm Signals]
-    A --> F[Safety Mechanism Signals]
-    A --> G[Memory Bits]
-    A --> H[Black-box Boundaries]
-    B --> I[Fault Candidates]
-    C --> I
-    D --> I
-    E --> I
-    F --> I
-    G --> I
-    H --> I
-```
-
-**Figure 4. Fault candidates are generated from multiple safety-relevant structural sources.**
-
-A good fault list generator should tag the source of each candidate.
-
----
-
-## 8. Endpoint-Driven Fault Selection
-
-Endpoint-driven selection starts from safety-relevant endpoints.
-
-It asks:
-
-```text
-Which nodes can affect this endpoint?
-Which fault models should be injected?
-Which safety mechanism is expected to detect the effect?
-Which failure mode is being validated?
-```
-
-Example:
-
-```text
-endpoint:
-  toy_counter.count
-
-failure mode:
-  FM_DATA_CORRUPTION
-
-candidate startpoints:
-  toy_counter.count_reg
-  toy_counter.en
-  next_count_logic
-
-expected safety mechanism:
-  endpoint_parity
-```
-
-Generated faults:
-
-```csv
-fault_id,node,fault_type,endpoint,failure_mode,expected_alarm,reason
-F001,toy_counter.count[0],transient_flip,toy_counter.count,FM_DATA_CORRUPTION,toy_counter.alarm,validate endpoint parity
-F002,toy_counter.count[1],transient_flip,toy_counter.count,FM_DATA_CORRUPTION,toy_counter.alarm,validate endpoint parity
-```
-
-Endpoint-driven generation keeps the campaign aligned with safety review.
-
----
-
-## 9. Residual-FIT-Driven Fault Selection
-
-Residual FIT tells us where risk remains after estimated coverage.
-
-A residual-FIT-driven generator prioritizes fault candidates that contribute to residual risk.
-
-Example input:
-
-```csv
-endpoint,failure_mode,base_fit,dc,residual_fit
-toy_counter.alarm,FM_ALARM_NOT_ASSERTED,0.010,0.00,0.010
-toy_counter.count_parity,FM_DIAGNOSTIC_STATE_CORRUPTION,0.004,0.00,0.004
-toy_counter.count,FM_DATA_CORRUPTION,0.064,0.90,0.0064
-```
-
-Priority result:
-
-```text
-1. alarm path faults
-2. counter state faults
-3. diagnostic state faults
-```
-
-This ordering may surprise people because `toy_counter.count` has high base FIT but lower residual risk after parity.
-
-```mermaid
-flowchart LR
-    A[Base FIT] --> B[Apply DC]
-    B --> C[Residual FIT]
-    C --> D[Fault Priority]
-```
-
-**Figure 5. Residual FIT is often a better prioritization signal than raw base FIT.**
-
-Fault generation should allow ranking by residual risk, not only structural size.
-
----
-
-## 10. Weak-Coverage-Driven Fault Selection
-
-Weak coverage means:
-
-```text
-low DC
-unprotected endpoint
-unprotected alarm path
-uncovered cone
-unmapped failure mode
-unverified safety mechanism
-```
-
-Weak-coverage-driven generation focuses on validating or exposing these gaps.
-
-Example:
-
-```csv
-endpoint,weakness,recommended_faults
-toy_counter.alarm,alarm path unprotected,stuck_at_0;stuck_at_1
-toy_counter.count_parity,diagnostic state unprotected,transient_flip;stuck_at_0
-toy_counter.count,cone not covered,cone_internal_stuck_at;transient_flip
-```
-
-This style is important because safety engineering is often about finding the weakest link.
-
----
-
-## 11. Safety-Mechanism-Driven Fault Selection
-
-Sometimes the goal is to validate a safety mechanism.
+Then it expands each endpoint into candidate fault targets.
 
 For example:
 
 ```text
-Validate endpoint parity.
-Validate ECC.
-Validate CRC.
-Validate lockstep comparator.
-Validate watchdog timeout.
-Validate alarm path monitor.
+endpoint: u_ctrl.state_q[2]
+failure mode: state corruption
+safety mechanism: endpoint parity
+fault candidates:
+  u_ctrl.state_q[2] SA0 permanent
+  u_ctrl.state_q[2] SA1 permanent
+  u_ctrl.state_q[2] transient bit flip
 ```
 
-The fault list should include faults that are expected to trigger the mechanism.
-
-Example:
+Endpoint-driven scoping works well when:
 
 ```text
-Safety mechanism:
-  endpoint_parity
-
-Expected alarm:
-  toy_counter.alarm
-
-Target nodes:
-  toy_counter.count[0]
-  toy_counter.count[1]
-  toy_counter.count_parity
-```
-
-Generated entries:
-
-```csv
-fault_id,node,fault_type,safety_mechanism,expected_alarm,expected_outcome
-F010,toy_counter.count[0],transient_flip,endpoint_parity,toy_counter.alarm,detected
-F011,toy_counter.count_parity,stuck_at_0,endpoint_parity,toy_counter.alarm,detected_or_unsafe
-```
-
-The second case is interesting because corrupting the diagnostic state may either trigger an alarm or break detection.
-
-This is why the expected outcome can be:
-
-```text
-detected
-safe
-unsafe
-unresolved
-needs_review
+the endpoint is directly safety-visible
+a safety mechanism is attached to the endpoint
+the fault campaign intends to validate detection of endpoint corruption
 ```
 
 ---
 
-## 12. Diagnostic Path Faults
+## 14. Cone-Driven Fault Scope
 
-A common mistake is to inject faults only into functional logic and ignore diagnostic logic.
+A cone-driven fault scope starts from the logic cone between startpoints and endpoints.
 
-But diagnostic logic can fail too.
+This is useful when a fault inside combinational logic can corrupt an endpoint even if the endpoint storage itself is protected.
 
-Diagnostic path targets include:
+A cone record may include:
 
 ```text
-alarm signal
-alarm latch
-alarm enable
-alarm mask
-diagnostic status register
-safety controller input
-interrupt output
-error aggregation logic
+cone_id
+endpoint_id
+startpoint_id
+intermediate_nodes
+logic_depth
+estimated_fit_weight
+safety_mechanism
 ```
 
-Example:
+A cone-driven fault list may target:
 
-```csv
-fault_id,node,fault_type,failure_mode,reason
-F020,toy_counter.alarm,stuck_at_0,FM_ALARM_NOT_ASSERTED,alarm path can be blocked
-F021,toy_counter.alarm,stuck_at_1,FM_FALSE_ALARM,alarm path can falsely assert
+```text
+selected internal cone nets
+instance input/output ports
+primary startpoints
+endpoint fan-in boundary
 ```
 
-```mermaid
-flowchart LR
-    A[Fault Effect] --> B[Detector]
-    B --> C[Alarm Logic]
-    C --> D[Alarm Output]
-    D --> E[Safety Response]
-    C --> F[Diagnostic Path Fault Injection]
+Cone-driven scoping is especially useful for mechanisms such as:
+
+```text
+cone duplication
+cone startpoint duplication
+triplication
+protocol-level protection
 ```
 
-**Figure 6. Diagnostic path faults validate whether the safety mechanism reporting chain can fail.**
-
-A safety campaign that ignores alarm-path faults may overestimate diagnostic coverage.
+A practical campaign may not inject every internal cone net. It may choose a representative, weighted, collapsed, or sampled subset.
 
 ---
 
-## 13. Configuration and Masking Faults
+## 15. Failure-Mode-Driven Fault Scope
 
-Many safety mechanisms have configuration or enable signals.
+D07 links failure modes to endpoints and safety mechanisms. D08 should preserve that trace.
 
-Examples:
-
-```text
-alarm_mask
-ecc_enable
-parity_enable
-watchdog_enable
-safe_mode_enable
-fault_response_enable
-interrupt_enable
-```
-
-A fault on these signals may disable the safety mechanism.
-
-Example fault entries:
-
-```csv
-fault_id,node,fault_type,failure_mode,reason
-F030,toy_counter.alarm_mask,stuck_at_1,FM_DIAGNOSTIC_MASKED,alarm may be masked
-F031,toy_counter.parity_enable,stuck_at_0,FM_DETECTION_DISABLED,parity mechanism disabled
-```
-
-These are important because a safety mechanism is only useful if it remains enabled and observable.
-
-D08 should support a policy:
-
-```yaml
-include_configuration_faults: true
-include_diagnostic_masking_faults: true
-```
-
----
-
-## 14. Sampling Strategy
-
-A full fault list can become very large.
-
-Even a modest RTL block can contain:
+For every generated fault, D08 should be able to answer:
 
 ```text
-thousands of signals
-many bits per bus
-multiple fault types per bit
-many injection time points
+Which failure mode does this fault exercise?
+Which endpoint or cone does it affect?
+Which safety mechanism is expected to detect or control it?
+Which FMEDA row will later receive the result?
 ```
 
-Therefore, fault list generation often needs sampling.
-
-Sampling policies may include:
-
-```text
-all bits
-representative bits
-random sample
-FIT-weighted sample
-endpoint-priority sample
-cone-size-weighted sample
-failure-mode-priority sample
-safety-mechanism-validation sample
-```
-
-```mermaid
-flowchart TD
-    A[All Fault Candidates] --> B{Sampling Policy}
-    B --> C[All]
-    B --> D[Representative]
-    B --> E[Random]
-    B --> F[FIT Weighted]
-    B --> G[Weak Coverage Priority]
-    B --> H[SM Validation Priority]
-```
-
-**Figure 7. Sampling policy controls campaign size while preserving safety intent.**
-
-For D08, the demo can use:
-
-```text
-representative bits
-high residual FIT endpoints
-alarm path faults
-one or two safety mechanism validation faults
-```
-
-This makes the campaign small but meaningful.
-
----
-
-## 15. Fault Campaign Budget
-
-A fault campaign may be constrained by:
-
-```text
-simulation runtime
-license availability
-machine resources
-CI time
-schedule
-review scope
-demo simplicity
-```
-
-Therefore, `safeic-faultgen` should support a campaign budget.
-
-Example:
-
-```yaml
-campaign_budget:
-  max_faults_total: 50
-  max_faults_per_endpoint: 10
-  max_faults_per_failure_mode: 15
-  max_alarm_path_faults: 5
-  include_high_priority_first: true
-```
-
-A budget makes the generated fault list realistic.
-
-The tool should report what was included and what was excluded.
-
-Example:
-
-```csv
-category,total_candidates,selected,excluded,policy
-endpoint_faults,120,20,100,max_faults_per_endpoint
-alarm_path_faults,6,5,1,max_alarm_path_faults
-diagnostic_state_faults,12,8,4,priority
-```
-
-This avoids pretending that a small demo fault list is exhaustive.
-
----
-
-## 16. Injection Timing
-
-Fault list entries may require timing information.
-
-Permanent stuck-at faults may be injected at time zero or after reset.
-
-Transient faults need a time or time window.
-
-Timing should be tied to VCD safety context.
-
-Examples:
-
-```text
-inject after reset release
-inject during active operation
-inject when bus valid is high
-inject when memory read occurs
-inject when watchdog is counting
-inject during safety-critical state
-```
-
-Example timing policy:
-
-```yaml
-injection_timing:
-  default:
-    start_after_reset: true
-    active_window: [30, 200]
-
-  transient_flip:
-    mode: active_window_sample
-    cycles_per_fault: 1
-
-  stuck_at:
-    mode: persistent_after_reset
-```
-
-Fault list output:
-
-```csv
-fault_id,node,fault_type,injection_time,injection_window
-F001,toy_counter.count[0],transient_flip,60,30:200
-F002,toy_counter.alarm,stuck_at_0,30,30:200
-```
-
-D08 can generate timing placeholders; D09 will focus on VCD context in more detail.
-
----
-
-## 17. Expected Alarm and Observe Points
-
-A safety-oriented fault list should include expected alarm and observe points.
-
-Example:
-
-```csv
-fault_id,node,fault_type,expected_alarm,observe_points
-F001,toy_counter.count[0],transient_flip,toy_counter.alarm,toy_counter.count;toy_counter.alarm
-F020,toy_counter.alarm,stuck_at_0,,toy_counter.alarm
-```
-
-Why?
-
-Because fault classification needs to know:
-
-```text
-what alarm should fire
-what behavior should be compared
-which signal proves propagation
-which signal proves detection
-```
-
-This connects fault generation to later result classification.
-
-```mermaid
-flowchart LR
-    A[Fault Entry] --> B[Expected Alarm]
-    A --> C[Observe Points]
-    B --> D[Detected Classification]
-    C --> E[Safe / Unsafe / Unresolved Classification]
-```
-
-**Figure 8. Expected alarms and observe points make fault classification traceable.**
-
----
-
-## 18. Traceability Columns
-
-A good fault list should contain enough traceability columns.
-
-Recommended columns:
+A trace table can look like:
 
 ```text
 fault_id
-node
-bit
+fault_target
 fault_type
-fault_model
-fault_class
-injection_mode
-injection_time
-injection_window
-source
-related_startpoint
-related_endpoint
-related_cone
-related_failure_mode
-related_safety_mechanism
-expected_alarm
-observe_points
-priority
+failure_mode_id
+endpoint_id
+mechanism_id
+expected_alarm_group
+fmda_part
+fmda_sub_part
+```
+
+This avoids a common weakness in fault injection flows: thousands of faults are simulated, but the results are difficult to connect back to FMEDA.
+
+---
+
+## 16. From Safety Mechanism Map to Fault Population
+
+D07 produces a safety mechanism map. D08 uses it to decide fault generation scope.
+
+A simplified mapping is:
+
+```text
+EP-to-SM row:
+  endpoint = u_ctrl.state_q[2]
+  safety mechanism = endpoint parity
+  alarm = sm_alarm_state
+
+D08 expansion:
+  generate SA0 and SA1 permanent faults on u_ctrl.state_q[2]
+  generate transient bit-flip candidates if transient campaign is enabled
+  associate all rows with sm_alarm_state as the expected alarm group
+```
+
+For cone-level mechanisms:
+
+```text
+EP-to-SM row:
+  endpoint = u_pipe.result_q[7]
+  safety mechanism = cone duplication
+  alarm = sm_alarm_cone
+
+D08 expansion:
+  include selected fan-in cone targets
+  include endpoint boundary targets
+  associate rows with the same failure mode and mechanism
+```
+
+The safety mechanism map therefore acts as a policy input, not merely as annotation.
+
+---
+
+## 17. Campaign-Ready Fault List Format
+
+A campaign-ready fault list often needs more columns than an analysis-generated native list.
+
+A practical normalized format is:
+
+```text
+fault_target fault_type injection_time duration
+```
+
+Example:
+
+```text
+u_top.u_ctrl.state_q[0] SA0 100 -1
+u_top.u_ctrl.state_q[0] SA1 100 -1
+u_top.u_ctrl.state_q[1] 1:0 250 2
+```
+
+The first column identifies the injection target.
+
+The second column identifies the fault type or value.
+
+The third column identifies the injection time.
+
+The fourth column identifies the duration. A negative duration can represent permanent injection, while a positive duration represents a transient window.
+
+D08 can generate both:
+
+```text
+analysis-native list:
+  target only, or target + fault model
+
+campaign-ready list:
+  target + type + injection time + duration
+```
+
+This distinction is crucial because analysis outputs may not contain timing information. D09 and D11 will complete or refine time-window settings based on simulation context.
+
+---
+
+## 18. Injection-Time Policy
+
+D08 may not know the final VCD time windows yet, but it should define an injection-time policy.
+
+Typical policies are:
+
+```text
+fixed_time
+phase_relative_time
+random_time_with_seed
+per_fault_window
+defer_to_D09
+defer_to_D11
+```
+
+For example:
+
+```text
+fault_id,target,type,injection_time_policy,duration_policy
+F0001,u_ctrl.state_q[0],SA0,fixed_time_100,permanent
+F0002,u_pipe.valid_q,TRANSIENT,defer_to_D09,one_cycle
+```
+
+The policy is more important than the placeholder value. It tells downstream stages how to finalize the list.
+
+D08 should not pretend that transient timing is final unless it has access to the simulation safety context.
+
+---
+
+## 19. Permanent and Transient List Separation
+
+Even if a unified list is produced, D08 should preserve separate permanent and transient lists.
+
+Recommended outputs:
+
+```text
+campaign_fault_list_permanent.list
+campaign_fault_list_transient.list
+campaign_fault_list_all.list
+```
+
+The separation helps because permanent and transient campaigns usually differ in:
+
+```text
+fault duration
+fault model
+simulation time window
+classification interpretation
+runtime cost
+sampling policy
+report grouping
+```
+
+It also helps D13 classification later. Permanent and transient faults may map to different diagnostic coverage evidence.
+
+---
+
+## 20. Fault Collapsing
+
+Fault collapsing reduces a fault population by grouping equivalent faults.
+
+For example, in simple logic:
+
+```text
+buffer input SA0 may be equivalent to output SA0
+inverter input SA0 may be equivalent to output SA1
+AND output SA0 may be equivalent to an input SA0
+```
+
+The goal is not to hide faults. The goal is to avoid simulating many faults that are equivalent under the selected model.
+
+A collapsed fault record should preserve:
+
+```text
+primary_fault_id
+equivalent_fault_id
+equivalence_rule
+collapsing_scope
+collapsing_status
+```
+
+The campaign may simulate only primary faults, but the evidence trace must still know which equivalent faults are represented.
+
+A safe D08 design should never collapse faults silently.
+
+---
+
+## 21. Primary Faults and Equivalent Faults
+
+After collapsing, the flow distinguishes:
+
+```text
+primary fault:
+  the representative fault actually selected for campaign
+
+equivalent fault:
+  a fault represented by the primary fault under the collapsing rule
+```
+
+The campaign-ready list may contain only primary faults, while an audit-friendly equivalence table stores:
+
+```text
+primary_fault_id
+primary_target
+primary_type
+equivalent_target
+equivalent_type
 reason
-selection_policy
+```
+
+This is important for explaining why some original fault candidates were not directly injected.
+
+---
+
+## 22. Statistical Sampling
+
+For large designs, exhaustive fault injection may be impractical.
+
+D08 can define a statistical sampling plan:
+
+```text
+sample size
+coverage goal
+confidence interval
+random seed
+sampling domain
+sampling exclusions
+repeatability constraints
+```
+
+A sampling record should include:
+
+```text
+sampling_plan_id
+input_fault_count
+selected_fault_count
+coverage_goal
+confidence_interval
+random_seed
+selection_algorithm
+```
+
+The seed matters. Without it, a sampled campaign cannot be reproduced.
+
+Sampling is not merely a runtime trick. It is part of the safety argument, because it affects how campaign results are interpreted.
+
+---
+
+## 23. AVF-Oriented Fault Lists
+
+Architectural Vulnerability Factor, or AVF, estimates the portion of transient faults that can affect architectural or program-visible behavior.
+
+An AVF-oriented fault list typically requires:
+
+```text
+transient fault targets
+random or workload-relative injection time
+simulation start time
+simulation end time
+repeatable random seed
+```
+
+D08 can prepare the population and sampling plan, but D09 must provide the simulation safety context, and D11 must package the final campaign.
+
+AVF-oriented lists are useful when:
+
+```text
+the target is transient error masking
+the workload matters
+software-visible behavior matters
+architectural state propagation matters
+```
+
+D08 should mark AVF lists as a specialized transient campaign input, not as a generic permanent fault list.
+
+---
+
+## 24. Exclusion Rules
+
+Not every structural node should become a campaign fault.
+
+D08 may apply exclusions such as:
+
+```text
+test-only logic
+debug-only signals
+constant-tied nets
+clock and reset distribution
+unreachable logic
+black-box internals
+non-safety-relevant diagnostic-only plumbing
+unsupported fault injection targets
+```
+
+Every exclusion should be logged.
+
+Recommended file:
+
+```text
+outputs/fault_exclusion_report.csv
+```
+
+Fields:
+
+```text
+target
+reason
+source_rule
 review_status
 ```
 
-This may look large, but it prevents later ambiguity.
+An exclusion without reason weakens traceability.
+
+---
+
+## 25. Inclusion Rules
+
+D08 should also record why targets are included.
+
+Inclusion reasons can include:
+
+```text
+high FIT contribution
+mapped failure mode
+D06 selected scenario
+D07 EP-to-SM binding
+protocol-visible endpoint
+FMEDA critical sub-part
+manual review override
+```
+
+A good fault target table includes:
+
+```text
+fault_id
+target
+include_reason
+source_artifact
+source_row_id
+review_status
+```
+
+This makes the list defensible.
+
+---
+
+## 26. Alarm and Observe-Point Awareness
+
+D08 does not finalize alarm list and observe points. That is D10.
+
+However, D08 should preserve expected alarm groups and observe intent.
+
+For example:
+
+```text
+fault target: u_ctrl.state_q[2]
+expected mechanism: endpoint parity
+expected alarm group: sm_alarm_state
+observe intent: state corruption should reach alarm or safety-visible endpoint
+```
+
+This handoff helps D10 build:
+
+```text
+alarm list
+observe point specification
+alarm-to-fault mapping
+fault outcome observation boundary
+```
+
+Without D08 preserving alarm intent, D10 would have to infer it again.
+
+---
+
+## 27. Safety Context Awareness
+
+Fault injection is meaningful only under a safety context.
+
+A fault injected during inactive reset may not test the intended safety function. A transient injected when the relevant pipeline is idle may be safe for reasons unrelated to the safety mechanism.
+
+D08 therefore should tag faults with context requirements:
+
+```text
+requires_post_reset_context
+requires_active_protocol_phase
+requires_valid_data_phase
+requires_error_response_window
+requires_software_observable_state
+```
+
+D09 will later translate these requirements into VCD and good-machine context.
+
+D08 should not over-specify timing. It should specify intent.
+
+---
+
+## 28. Filelist and Hierarchical Name Stability
+
+Fault list targets are fragile if hierarchy names are unstable.
+
+A reliable D08 flow should capture:
+
+```text
+design top module
+filelist hash
+RTL snapshot hash
+DCE source
+selected FIT standard
+selected design boundary
+naming normalization rule
+```
+
+If synthesis or hierarchy changes later, the fault list may no longer be valid.
+
+A D08 quality gate should check:
+
+```text
+all target names are non-empty
+target names are unique or intentionally duplicated
+target paths match the current design boundary
+port/net classification is present
+bit indices are normalized
+```
+
+Name stability is an engineering requirement, not a cosmetic issue.
+
+---
+
+## 29. Common Database Session Strategy
+
+D08 can work with files, database sessions, or both.
+
+A file-based flow is transparent:
+
+```text
+CSV tables
+fault list files
+manifest
+handoff files
+quality gates
+```
+
+A database-based flow is useful for cross-tool continuity:
+
+```text
+analysis metrics
+fault lists
+fault simulation results
+safety mechanism maps
+alarm / observe settings
+FMEDA mapping
+```
+
+A practical D08 strategy is:
+
+```text
+files for review and GitHub demo evidence
+database/session links for tool flow continuity
+```
+
+D08 should preserve `.fdb::session` identity when available, but the public article and demo can describe it as a common safety database session rather than exposing tool-specific invocation details.
+
+---
+
+## 30. D08 Execution Architecture
+
+A vendor-neutral D08 implementation can be organized into four layers.
+
+```text
+Layer 1: upstream evidence loader
+Layer 2: fault scope builder
+Layer 3: fault list encoder
+Layer 4: evidence and handoff publisher
+```
+
+### Layer 1: Upstream Evidence Loader
+
+Reads:
+
+```text
+D04 endpoint / cone / DCE evidence
+D06 scenario and SM assignment
+D07 failure-mode / EP-to-SM map
+```
+
+### Layer 2: Fault Scope Builder
+
+Builds:
+
+```text
+candidate targets
+inclusion/exclusion reason
+priority score
+failure-mode trace
+mechanism trace
+```
+
+### Layer 3: Fault List Encoder
+
+Writes:
+
+```text
+permanent list
+transient list
+combined list
+sampled list
+collapsed list
+```
+
+### Layer 4: Evidence Publisher
+
+Writes:
+
+```text
+manifest
+quality gate
+handoff to D09 / D10 / D11
+evidence index
+summary
+```
+
+This structure keeps D08 extensible.
+
+---
+
+## 31. Reviewable Command Model
+
+A D08 demo can expose commands through neutral environment variables and wrapper names.
 
 Example:
-
-```csv
-fault_id,node,bit,fault_type,source,endpoint,failure_mode,safety_mechanism,expected_alarm,priority,reason
-F001,toy_counter.count,0,transient_flip,endpoint,toy_counter.count,FM_DATA_CORRUPTION,endpoint_parity,toy_counter.alarm,HIGH,validate parity detection on counter state
-```
-
-For GitHub demos, the CSV can be simplified. But the data model should already anticipate industrial traceability.
-
----
-
-## 19. Priority Assignment
-
-Fault priority can be derived from:
-
-```text
-residual FIT
-failure mode criticality
-low diagnostic coverage
-endpoint criticality
-cone size
-startpoint usage
-alarm path involvement
-safety mechanism validation need
-manual override
-```
-
-A simple priority model:
-
-```text
-priority_score =
-  residual_fit_weight × normalized_residual_fit
-+ dc_gap_weight × (1 - dc)
-+ criticality_weight × endpoint_criticality
-+ usage_weight × normalized_startpoint_usage
-+ alarm_path_weight × alarm_path_flag
-```
-
-Example policy:
-
-```yaml
-priority_policy:
-  weights:
-    residual_fit: 0.35
-    dc_gap: 0.25
-    endpoint_criticality: 0.15
-    startpoint_usage: 0.10
-    alarm_path: 0.15
-
-  thresholds:
-    high: 0.75
-    medium: 0.40
-    low: 0.00
-```
-
-Priority labels:
-
-```text
-HIGH
-MEDIUM
-LOW
-DEFERRED
-```
-
-The scoring should be transparent and reported.
-
----
-
-## 20. Avoiding Duplicate Faults
-
-When candidates come from multiple sources, duplicates can occur.
-
-Example:
-
-```text
-toy_counter.alarm
-```
-
-may appear as:
-
-```text
-endpoint
-alarm signal
-diagnostic path
-observe point
-failure mode target
-```
-
-The fault generator should deduplicate entries while preserving reasons.
-
-Example output:
-
-```csv
-fault_id,node,fault_type,sources,reasons
-F020,toy_counter.alarm,stuck_at_0,endpoint;alarm_path;failure_mode,alarm path unprotected;FM_ALARM_NOT_ASSERTED
-```
-
-This is better than generating duplicate fault entries with no explanation.
-
----
-
-## 21. Black-Box Fault Candidates
-
-Black boxes require special handling.
-
-If internal structure is unknown, fault candidates may be generated at:
-
-```text
-black-box outputs
-black-box inputs
-interface signals
-summary model pins
-supplier-provided fault points
-```
-
-Example:
-
-```yaml
-blackbox_fault_policy:
-  treat_outputs_as_startpoints: true
-  inject_on_interface_only: true
-  require_supplier_fault_model: false
-```
-
-Example fault entries:
-
-```csv
-fault_id,node,fault_type,source,reason
-F100,top.u_sram.rdata[0],transient_flip,blackbox_output,memory macro internal faults abstracted at output
-F101,top.u_pll.lock,stuck_at_1,blackbox_output,PLL lock false indication
-```
-
-The report should clearly state that internal black-box faults are abstracted.
-
----
-
-## 22. Fault List Output Formats
-
-D08 should produce several output files.
-
-Suggested outputs:
-
-```text
-outputs/fault_candidates.csv
-outputs/fault_list.csv
-outputs/fault_list_by_endpoint.csv
-outputs/fault_list_by_failure_mode.csv
-outputs/fault_selection_summary.md
-outputs/faultgen_warnings.csv
-```
-
-`fault_candidates.csv` contains all candidates before sampling.
-
-`fault_list.csv` contains selected faults for the campaign.
-
-`fault_selection_summary.md` explains selection logic.
-
-This separation is important:
-
-```text
-candidate generation
-selection / sampling
-campaign execution
-```
-
-should not be mixed.
-
----
-
-## 23. The `safeic-faultgen` Tool Architecture
-
-The generic tool `safeic-faultgen` can be implemented as a staged pipeline.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-faultgen]
-    B[structure artifacts] --> T
-    C[residual_fit.csv] --> T
-    D[endpoint_dc.csv / cone_dc.csv] --> T
-    E[failure_modes.yaml] --> T
-    F[safety_mechanisms.yaml] --> T
-    G[fault_model_library.yaml] --> T
-    H[faultgen_policy.yaml] --> T
-
-    T --> I[fault_candidates.csv]
-    T --> J[fault_list.csv]
-    T --> K[fault_list_by_endpoint.csv]
-    T --> L[fault_selection_summary.md]
-    T --> M[faultgen_warnings.csv]
-```
-
-**Figure 9. `safeic-faultgen` converts safety analysis artifacts into traceable campaign-ready fault lists.**
-
-Suggested internal modules:
-
-```text
-safeic_faultgen/
-  cli.py
-  manifest.py
-  load_structure.py
-  load_dc.py
-  load_failure_modes.py
-  load_fault_models.py
-  candidate_generator.py
-  priority.py
-  sampler.py
-  deduplicate.py
-  timing.py
-  report.py
-```
-
-Responsibilities:
-
-| Module | Responsibility |
-|---|---|
-| `load_structure.py` | Load startpoints, endpoints, cones, alarms |
-| `load_dc.py` | Load DC and residual FIT |
-| `load_fault_models.py` | Load supported fault models |
-| `candidate_generator.py` | Generate raw candidates |
-| `priority.py` | Assign priority scores |
-| `sampler.py` | Select candidates under campaign budget |
-| `deduplicate.py` | Merge duplicate fault requests |
-| `timing.py` | Attach injection timing policy |
-| `report.py` | Generate CSV and Markdown outputs |
-
----
-
-## 24. D08 Directory Structure
-
-Suggested directory:
-
-```text
-D08_fault_list_generation/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    fault_model_library.yaml
-    faultgen_policy.yaml
-    failure_modes.yaml
-    safety_mechanisms.yaml
-
-  intermediate/
-    startpoints.csv
-    endpoints.csv
-    cones.csv
-    startpoint_usage.csv
-    endpoint_dc.csv
-    cone_dc.csv
-    residual_fit.csv
-    selected_sm_map.csv
-
-  outputs/
-    fault_candidates.csv
-    fault_list.csv
-    fault_list_by_endpoint.csv
-    fault_list_by_failure_mode.csv
-    fault_selection_summary.md
-    faultgen_warnings.csv
-```
-
-D08 should consume previous artifacts and not recompute everything.
-
----
-
-## 25. D08 Manifest
-
-Example:
-
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D08_fault_list_generation
-  top_module: toy_counter
-
-inputs:
-  fault_model_library: inputs/fault_model_library.yaml
-  faultgen_policy: inputs/faultgen_policy.yaml
-  failure_modes: inputs/failure_modes.yaml
-  safety_mechanisms: inputs/safety_mechanisms.yaml
-
-analysis_inputs:
-  startpoints: intermediate/startpoints.csv
-  endpoints: intermediate/endpoints.csv
-  cones: intermediate/cones.csv
-  startpoint_usage: intermediate/startpoint_usage.csv
-  endpoint_dc: intermediate/endpoint_dc.csv
-  cone_dc: intermediate/cone_dc.csv
-  residual_fit: intermediate/residual_fit.csv
-  selected_sm_map: intermediate/selected_sm_map.csv
-
-outputs:
-  candidates: outputs/fault_candidates.csv
-  selected_faults: outputs/fault_list.csv
-  by_endpoint: outputs/fault_list_by_endpoint.csv
-  by_failure_mode: outputs/fault_list_by_failure_mode.csv
-  summary: outputs/fault_selection_summary.md
-  warnings: outputs/faultgen_warnings.csv
-```
-
-The manifest keeps the generation context reviewable.
-
----
-
-## 26. D08 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load Structural Artifacts]
-    B --> C[Load DC / Residual FIT]
-    C --> D[Load Fault Models]
-    D --> E[Generate Fault Candidates]
-    E --> F[Assign Traceability]
-    F --> G[Assign Priority]
-    G --> H[Apply Sampling / Budget]
-    H --> I[Deduplicate]
-    I --> J[Attach Timing and Observability]
-    J --> K[Generate Fault List and Reports]
-```
-
-**Figure 10. D08 execution flow: generate, trace, prioritize, sample, deduplicate, and report.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-faultgen \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
 
 ```csh
 #!/bin/csh -f
 
-set DEMO = D08_fault_list_generation
-echo "Running $DEMO"
+set ROOT = `cd "$0:h/.." && pwd`
+cd "$ROOT"
 
-safeic-faultgen \
-  --manifest manifest.yaml \
-  --output-dir outputs
+if ( ! $?SAFEIC_ANALYSIS_ENGINE ) then
+    echo "[WARN] SAFEIC_ANALYSIS_ENGINE is not configured."
+    echo "[WARN] Running file-based fault-list preparation only."
+else
+    echo "[INFO] Analysis engine is configured."
+endif
+
+python3 tools/build_d08_fault_list_package.py \
+    --d07-root "$D07_ROOT" \
+    --d06-root "$D06_ROOT" \
+    --d05-root "$D05_ROOT" \
+    --d04-root "$D04_ROOT" \
+    --output outputs
 ```
 
-Expected outputs:
+When a real analysis engine is available, a generated review command can use the engine to produce native fault-list artifacts. The public script should keep that engine behind an environment variable and preserve the command as evidence.
+
+The point is not to hide execution. The point is to keep the demo portable while still supporting a real tool environment.
+
+---
+
+## 32. Fault List Manifest
+
+The manifest is the central identity file for D08.
+
+Recommended fields:
 
 ```text
-outputs/fault_candidates.csv
-outputs/fault_list.csv
-outputs/fault_list_by_endpoint.csv
-outputs/fault_list_by_failure_mode.csv
-outputs/fault_selection_summary.md
-outputs/faultgen_warnings.csv
+demo_id
+top_module
+design_boundary_id
+input_filelist_hash
+fit_standard
+mission_profile_id
+source_d03_session
+source_d04_structural_model
+source_d06_scenario
+source_d07_sm_map
+fault_list_type
+fault_count
+permanent_fault_count
+transient_fault_count
+sampled_fault_count
+collapsed_fault_count
+random_seed
+generation_timestamp
+```
+
+The manifest answers:
+
+```text
+What is this fault list?
+Where did it come from?
+What does it represent?
+How can it be reproduced?
 ```
 
 ---
 
-## 27. Example `faultgen_policy.yaml`
+## 33. Quality Gate
 
-```yaml
-faultgen_policy:
-  candidate_sources:
-    include_startpoints: true
-    include_endpoints: true
-    include_cone_nodes: true
-    include_alarm_paths: true
-    include_safety_mechanism_signals: true
-    include_configuration_faults: true
-    include_blackbox_outputs: true
+A D08 quality gate should catch structural and traceability problems before D09/D10/D11 consume the list.
 
-  fault_models:
-    default:
-      - stuck_at_0
-      - stuck_at_1
-    state_elements:
-      - transient_flip
-      - stuck_at_0
-      - stuck_at_1
-    alarm_paths:
-      - stuck_at_0
-      - stuck_at_1
+Suggested checks:
 
-  priority:
-    use_residual_fit: true
-    use_dc_gap: true
-    use_alarm_path_boost: true
-
-  campaign_budget:
-    max_faults_total: 50
-    max_faults_per_endpoint: 10
-    max_alarm_path_faults: 5
-
-  timing:
-    default_window: [30, 200]
-    transient_duration_cycles: 1
-    stuck_at_mode: persistent_after_reset
-
-  output:
-    include_candidates: true
-    include_reasons: true
-    include_traceability: true
+```text
+D07 SM map exists
+selected D06 scenario exists
+endpoint inventory exists
+fault target count > 0
+permanent fault list generated
+transient fault list generated or explicitly disabled
+all fault IDs unique
+all targets non-empty
+all faults trace to endpoint or failure mode
+all campaign rows have valid fault type
+all campaign rows have injection-time policy
+all permanent faults use permanent duration
+all transient faults use non-permanent duration policy
+sampling seed recorded if sampling enabled
+handoff files generated
 ```
 
-The policy makes generation repeatable.
+The quality gate should distinguish:
+
+```text
+FAIL: unsafe to continue
+WARN: review required but downstream can inspect
+PASS: ready for handoff
+```
 
 ---
 
-## 28. Example `fault_list.csv`
+## 34. Handoff to D09, D10, and D11
 
-```csv
-fault_id,node,bit,fault_type,endpoint,failure_mode,safety_mechanism,expected_alarm,observe_points,priority,reason
-F001,toy_counter.count,0,transient_flip,toy_counter.count,FM_DATA_CORRUPTION,endpoint_parity,toy_counter.alarm,toy_counter.count;toy_counter.alarm,HIGH,validate endpoint parity on counter state
-F002,toy_counter.count,1,transient_flip,toy_counter.count,FM_DATA_CORRUPTION,endpoint_parity,toy_counter.alarm,toy_counter.count;toy_counter.alarm,HIGH,representative counter state bit
-F003,toy_counter.count_parity,,stuck_at_0,toy_counter.count_parity,FM_DIAGNOSTIC_STATE_CORRUPTION,none,,toy_counter.count_parity;toy_counter.alarm,HIGH,diagnostic state unprotected
-F004,toy_counter.alarm,,stuck_at_0,toy_counter.alarm,FM_ALARM_NOT_ASSERTED,none,,toy_counter.alarm,HIGH,alarm path unprotected
-F005,toy_counter.alarm,,stuck_at_1,toy_counter.alarm,FM_FALSE_ALARM,none,,toy_counter.alarm,MEDIUM,false alarm behavior review
+D08 does not end the campaign preparation. It produces structured handoff.
+
+### D08 to D09
+
+```text
+fault targets requiring simulation context
+transient timing policies
+workload phase requirements
+good-machine context requirements
 ```
 
-This list is small, but it is traceable.
+### D08 to D10
+
+```text
+expected alarm groups
+observe intent
+fault-to-alarm association hints
+faults requiring explicit observe points
+```
+
+### D08 to D11
+
+```text
+campaign-ready fault lists
+fault list manifest
+fault population summary
+quality gate result
+tool-native and reviewable list paths
+```
+
+This keeps each later demo focused.
 
 ---
 
-## 29. Example `fault_selection_summary.md`
+## 35. Typical Mistakes in Fault List Generation
 
-```md
-# D08 Fault List Generation Summary
+Several mistakes appear repeatedly in safety flows.
 
-Project: automotive_safeic_practice
-Demo: D08_fault_list_generation
-Top: toy_counter
+### Mistake 1: Treating All Nodes as Equally Important
 
-## Candidate Summary
+Exhaustive generation may be possible for small demos, but large designs require prioritization and traceability.
 
-Total candidates: 42
-Selected faults: 5
+### Mistake 2: Losing Failure-Mode Trace
 
-## Selection Strategy
+A fault without failure-mode context is difficult to use in FMEDA.
 
-- Prioritize residual FIT and weak coverage.
-- Include alarm path stuck-at faults.
-- Include representative transient flips for counter state.
-- Include diagnostic state fault.
-- Respect max_faults_total = 50.
+### Mistake 3: Mixing Permanent and Transient Faults Without Tags
 
-## High-Priority Reasons
+Permanent and transient models require different campaign handling.
 
-1. toy_counter.alarm has no alarm-path protection.
-2. toy_counter.count_parity is diagnostic state and unprotected.
-3. toy_counter.count is protected by endpoint parity but requires validation.
+### Mistake 4: Treating Analysis-Native Lists as Campaign-Ready Lists
 
-## Excluded Candidates
+Analysis-native lists may not contain injection time or duration.
 
-- Some cone internal nodes excluded by campaign budget.
-- Reset and clock signals excluded by special signal policy.
-```
+### Mistake 5: Sampling Without Seed
 
-This report helps reviewers understand why the campaign contains these faults.
+Sampling without seed is not reproducible.
+
+### Mistake 6: Ignoring Port vs Net Semantics
+
+Port and net faults can behave differently in simulation.
+
+### Mistake 7: Hiding Exclusions
+
+Every excluded target should have a reason.
 
 ---
 
-## 30. Validation Rules
+## 36. Example Directory Structure
 
-`safeic-faultgen` should validate:
-
-```text
-all structural input files exist
-fault model library exists
-faultgen policy exists
-fault models are valid for node types
-endpoints referenced by faults exist
-failure modes referenced by faults exist
-expected alarms exist if specified
-observe points exist or are explicitly unresolved
-campaign budget is valid
-priority policy is valid
-timing window is valid
-duplicate faults are merged
-black-box abstraction is explicit
-```
-
-Example messages:
+A clean D08 demo directory can look like:
 
 ```text
-[PASS] endpoint toy_counter.count found
-[PASS] fault model transient_flip applies to state element toy_counter.count
-[WARN] alarm toy_counter.alarm is expected but alarm path is unprotected
-[WARN] cone internal nodes sampled due to campaign budget
-[WARN] black-box output fault generated using interface abstraction
-[ERROR] fault model transient_flip cannot be applied to constant net top.const_zero
+D08_fault_list_generation_from_safety_analysis_to_fault_campaign_input/
+  README.md
+  scripts/
+    run_demo.csh
+    run_demo.sh
+  tools/
+    build_d08_fault_list_package.py
+    normalize_fault_targets.py
+    build_fault_manifest.py
+  configs/
+    fault_generation_policy.csv
+    fault_sampling_policy.csv
+    fault_exclusion_rules.csv
+  inputs/
+    from_D07/
+    from_D06/
+    from_D05/
+    from_D04/
+  outputs/
+    fault_scope_inventory.csv
+    fault_target_candidates.csv
+    permanent_fault_candidates.csv
+    transient_fault_candidates.csv
+    campaign_fault_list_permanent.list
+    campaign_fault_list_transient.list
+    campaign_fault_list_all.list
+    fault_priority_matrix.csv
+    fault_sampling_plan.csv
+    fault_list_manifest.csv
+    fault_to_failure_mode_trace.csv
+    fault_to_sm_trace.csv
+    d08_handoff_to_d09.csv
+    d08_handoff_to_d10.csv
+    d08_handoff_to_d11.csv
+    d08_quality_gate.csv
+    evidence_index.csv
+    demo_summary.md
+  logs/
 ```
 
-A fault generator should never silently generate meaningless faults.
+This makes D08 understandable as a standalone engineering artifact while keeping it connected to the full flow.
 
 ---
 
-## 31. Common Mistakes
+## 37. Methodology Summary
 
-### 31.1 Generating Faults Without Traceability
+D08 turns safety analysis output into fault campaign input.
 
-Bad:
-
-```text
-node1 stuck_at_0
-node2 stuck_at_1
-```
-
-Better:
+Its core method is:
 
 ```text
-node, fault type, endpoint, failure mode, expected alarm, observe points, priority, reason
+1. Load structural and safety evidence from D04-D07.
+2. Build a fault target population from endpoints, cones, failure modes, and SM maps.
+3. Separate permanent and transient models.
+4. Encode campaign-ready rows.
+5. Preserve fault-to-failure-mode and fault-to-SM traceability.
+6. Apply exclusion, prioritization, collapsing, or sampling policies.
+7. Publish manifest, quality gate, and handoff files.
 ```
 
-### 31.2 Injecting Everywhere Without Priority
+D08 is successful when it can produce a fault population that is:
 
-A huge campaign is not automatically a good campaign.
+```text
+traceable
+reviewable
+reproducible
+campaign-ready
+connected to FMEDA evidence
+```
 
-Priority should come from safety analysis.
-
-### 31.3 Ignoring Diagnostic Logic
-
-Safety mechanisms can fail.
-
-Alarm paths, mask signals, and diagnostic states should be considered.
-
-### 31.4 Ignoring Timing
-
-Transient faults require meaningful injection windows.
-
-A fault injected during reset may not validate the intended safety behavior.
-
-### 31.5 Ignoring Campaign Budget
-
-If the generated list is too large to run, it is not useful.
-
-Sampling and budgeting should be explicit.
-
-### 31.6 Confusing Candidate List with Final Campaign List
-
-Candidate generation and campaign selection are different steps.
-
-Both should be reported.
+A good fault list is not just something the fault engine can read. It is a safety evidence object that explains why each injected fault exists in the campaign.
 
 ---
 
-## 32. How D08 Connects to Later Demos
+## 38. Demo Deliverables
 
-D08 produces the fault list consumed by fault campaign execution.
-
-```mermaid
-flowchart LR
-    A[D08 Fault List Generation] --> B[D09 VCD Safety Context]
-    A --> C[D10 Fault Campaign Execution]
-    C --> D[Fault Classification]
-    D --> E[Measured DC]
-    E --> F[FMEDA Update]
-```
-
-**Figure 11. D08 prepares the campaign-ready fault list for simulation context and fault injection.**
-
-D09 will refine timing and observability using VCD context.
-
-D10 will execute or emulate the fault campaign.
-
-Later demos will classify outcomes and compare measured coverage with estimated DC.
-
----
-
-## 33. Recommended Implementation Stages
-
-D08 can be implemented in stages.
-
-### Stage 1: Manual Fault List from Toy Structure
-
-Generate a small traceable fault list for `toy_counter`.
-
-Deliverables:
+The D08 demo should deliver:
 
 ```text
-fault_list.csv
-fault_selection_summary.md
+[ ] fault scope inventory
+[ ] permanent fault candidate table
+[ ] transient fault candidate table
+[ ] campaign-ready permanent fault list
+[ ] campaign-ready transient fault list
+[ ] combined fault list
+[ ] fault priority matrix
+[ ] sampling plan
+[ ] fault-to-failure-mode trace table
+[ ] fault-to-SM trace table
+[ ] fault list manifest
+[ ] D09 handoff
+[ ] D10 handoff
+[ ] D11 handoff
+[ ] evidence index
+[ ] quality gate
+[ ] summary
 ```
 
-### Stage 2: Candidate Generation from D05 Artifacts
+Once these are in place, the flow is ready to move from structural safety preparation into simulation safety context and fault campaign setup.
 
-Generate candidates from startpoints, endpoints, cones, and alarms.
+D09 will define the safety context. D10 will define observation boundaries. D11 will package the campaign. D12 will execute fault injection. D13 will classify outcomes. D14 will feed those outcomes back into final metrics.
 
-Deliverables:
-
-```text
-fault_candidates.csv
-```
-
-### Stage 3: Priority and Residual FIT Ranking
-
-Use D06 residual FIT and DC gaps.
-
-Deliverables:
-
-```text
-prioritized_fault_candidates.csv
-```
-
-### Stage 4: Campaign Budget and Sampling
-
-Apply campaign budget.
-
-Deliverables:
-
-```text
-fault_list.csv
-excluded_faults.csv
-```
-
-### Stage 5: Timing and Observability
-
-Attach injection window, expected alarm, and observe points.
-
-Deliverables:
-
-```text
-fault_list_campaign_ready.csv
-```
-
-This staged implementation makes D08 practical and extensible.
-
----
-
-## 34. Summary
-
-Fault list generation is the bridge between safety analysis and fault injection validation.
-
-The D08 demo:
-
-```text
-D08_fault_list_generation
-```
-
-introduces the generic tool:
-
-```text
-safeic-faultgen
-```
-
-The tool consumes:
-
-```text
-structural safety artifacts
-diagnostic coverage results
-residual FIT reports
-failure mode library
-safety mechanism mapping
-fault model library
-fault generation policy
-campaign budget
-```
-
-and generates:
-
-```text
-fault_candidates.csv
-fault_list.csv
-fault_list_by_endpoint.csv
-fault_list_by_failure_mode.csv
-fault_selection_summary.md
-faultgen_warnings.csv
-```
-
-The central lesson is:
-
-> A useful fault list is not large because it contains many nodes. It is useful because each fault is traceable to a safety question, failure mode, endpoint, expected alarm, and validation purpose.
-
-This is what turns functional safety analysis into executable fault campaign evidence.
-
----
-
-## 35. D08 Demo Checklist
-
-For `D08_fault_list_generation`, the expected deliverables are:
-
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/fault_model_library.yaml
-[ ] inputs/faultgen_policy.yaml
-[ ] inputs/failure_modes.yaml
-[ ] inputs/safety_mechanisms.yaml
-
-[ ] intermediate/startpoints.csv
-[ ] intermediate/endpoints.csv
-[ ] intermediate/cones.csv
-[ ] intermediate/startpoint_usage.csv
-[ ] intermediate/endpoint_dc.csv
-[ ] intermediate/cone_dc.csv
-[ ] intermediate/residual_fit.csv
-[ ] intermediate/selected_sm_map.csv
-
-[ ] outputs/fault_candidates.csv
-[ ] outputs/fault_list.csv
-[ ] outputs/fault_list_by_endpoint.csv
-[ ] outputs/fault_list_by_failure_mode.csv
-[ ] outputs/fault_selection_summary.md
-[ ] outputs/faultgen_warnings.csv
-```
-
-A successful D08 run should answer:
-
-```text
-Which fault candidates were generated?
-Which candidates were selected for the campaign?
-Which endpoint and failure mode does each fault target?
-Which safety mechanism is expected to detect it?
-Which alarm and observe points are used?
-Which faults are high priority and why?
-Which candidates were excluded by budget or policy?
-Can the generated list be consumed by VCD context extraction and fault campaign execution?
-```
+D08 is the point where that future campaign first becomes a concrete list of faults.
