@@ -1,1393 +1,944 @@
-# [Automotive Safe-IC Practice 14] Safety Evidence Package: From FMEDA Tables to Reviewable Safety Artifacts
+# [Automotive Safe-IC Practice 14] Fault Campaign Result Write-Back and Final Metrics
 
 **Author**: Darren H. Chen  
 **Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D14_safety_evidence_package  
-**Tags**: Automotive Chip, Functional Safety, Safety Evidence, FMEDA, Fault Injection, Diagnostic Coverage, Residual FIT, Traceability, Review Package, Safety Case
+**Demo**: `D14_fault_campaign_result_writeback_final_metrics`  
+**Tags**: Automotive Chip, Functional Safety, ISO 26262, Fault Campaign, Fault Outcome, Diagnostic Coverage, FIT, SPFM, LFM, PMHF, Common FuSa Database, FMEDA, Evidence Flow
 
 ---
 
-## 1. Why This Article Matters
+## 1. From fault outcomes to safety metrics
 
-In the previous article, we updated FMEDA-style tables using measured diagnostic coverage, residual FIT, unsafe fault evidence, and review policy.
+A fault campaign does not end when the last injected fault has finished running.
 
-D13 generated outputs such as:
+The campaign only becomes useful when its result is written back into the safety analysis evidence chain and converted into metrics that can be reviewed by system, hardware, safety, and FMEDA stakeholders.
 
-```text
-fmeda_table.csv
-fmeda_delta.csv
-fmeda_review_items.csv
-safety_metric_summary.csv
-residual_fit_by_failure_mode.csv
-residual_fit_by_part.csv
-fmeda_summary.md
-fmeda_warnings.csv
-```
-
-These outputs are useful for engineering analysis.
-
-However, a safety workflow needs more than individual CSV files.
-
-The next question is:
-
-> How do we package all evidence into a coherent, reviewable, traceable safety evidence package?
-
-The fourteenth demo in this repository is:
+D13 classified each fault as one of several outcome types:
 
 ```text
-D14_safety_evidence_package
+detected
+safe
+unsafe
+unresolved
 ```
 
-The generic tool introduced in this article is:
+D14 asks the next question:
 
 ```text
-safeic-evidence
+How do these outcomes modify diagnostic coverage, residual FIT, and final hardware safety metrics?
 ```
 
-The purpose of `safeic-evidence` is to collect and organize safety artifacts from previous steps into a structured evidence package:
+This is the point where the flow changes from “fault simulation result management” to “metric closure.”
 
-```text
-input assumptions
-FIT model evidence
-structure extraction evidence
-diagnostic coverage estimates
-safety mechanism decisions
-fault list generation evidence
-VCD context evidence
-fault campaign execution evidence
-fault outcome classification evidence
-measured diagnostic coverage evidence
-FMEDA update evidence
-review items
-traceability index
-package manifest
-```
-
-The central idea is:
-
-> Safety evidence is not a pile of files. It is a traceable argument package that connects assumptions, design structure, fault injection results, metrics, FMEDA rows, and review decisions.
+D14 is therefore not a reporting afterthought. It is the bridge between fault injection evidence and final safety argumentation.
 
 ---
 
-## 2. Where D14 Fits in the Flow
+## 2. D14 in the complete evidence chain
 
-D14 is the first packaging and review-preparation step.
-
-```mermaid
-flowchart LR
-    A[D01-D05 Analysis Artifacts] --> D[D14 Evidence Package]
-    B[D06-D13 Metric and FMEDA Artifacts] --> D
-    C[Fault Campaign Logs and Results] --> D
-    D --> E[Traceability Index]
-    D --> F[Review Package]
-    D --> G[Evidence Summary]
-    D --> H[Open Review Items]
-```
-
-**Figure 1. D14 packages analysis artifacts, campaign artifacts, metric artifacts, and review items into a safety evidence package.**
-
-Earlier demos answered:
-
-```text
-What was analyzed?
-What assumptions were used?
-Which faults were injected?
-Which outcomes were observed?
-What metrics were computed?
-Which FMEDA rows were updated?
-```
-
-D14 answers:
-
-```text
-Can a reviewer trace each safety claim back to evidence?
-Are all required artifacts present?
-Which assumptions remain unvalidated?
-Which results are measured and which are estimated?
-Which review items remain open?
-Can the package be archived or shared?
-```
-
-This changes the flow from analysis generation to evidence management.
-
----
-
-## 3. What Is a Safety Evidence Package?
-
-A safety evidence package is a structured folder or archive that contains:
-
-```text
-data files
-reports
-logs
-configuration files
-policies
-manifests
-traceability tables
-review notes
-warnings
-checksums
-summary documents
-```
-
-It should allow another engineer to understand:
-
-```text
-what was run
-which design was used
-which assumptions were used
-which tools were used
-which inputs and outputs were generated
-which evidence supports each metric
-which issues remain open
-```
-
-A minimal evidence package might look like:
-
-```text
-evidence_package/
-  package_manifest.yaml
-  evidence_index.csv
-  traceability_matrix.csv
-  review_items.csv
-  summaries/
-  metrics/
-  fmeda/
-  campaigns/
-  assumptions/
-  logs/
-```
-
-The package does not replace safety review.
-
-It prepares the evidence for review.
-
----
-
-## 4. Evidence Package Is Not the Same as Final Safety Case
-
-A safety evidence package is not automatically a final safety case.
-
-A final safety case usually includes structured arguments, claims, reasoning, independent review, and project-specific compliance mapping.
-
-The evidence package is the artifact foundation.
+The earlier demos built the flow step by step:
 
 ```mermaid
 flowchart TD
-    A[Raw Artifacts] --> B[Evidence Package]
-    B --> C[Review]
-    C --> D[Safety Argument]
-    D --> E[Safety Case]
+    D01[D01 Analysis Input Package] --> D02[D02 Base FIT Rate]
+    D02 --> D03[D03 FIT Standard and Mission Profile]
+    D03 --> D04[D04 Structural Building Blocks]
+    D04 --> D05[D05 Common FuSa Database]
+    D05 --> D06[D06 Safety Exploration]
+    D06 --> D07[D07 Safety Mechanism Map]
+    D07 --> D08[D08 Fault List Generation]
+    D08 --> D09[D09 Simulation Safety Context]
+    D09 --> D10[D10 Alarm and Observe Point Boundary]
+    D10 --> D11[D11 Fault Campaign Setup]
+    D11 --> D12[D12 Fault Injection Execution]
+    D12 --> D13[D13 Fault Outcome Classification]
+    D13 --> D14[D14 Result Write-Back and Final Metrics]
+    D14 --> D15[D15 FMEDA Data Model]
+    D14 --> D17[D17 Diagnostic Coverage Closure]
 ```
 
-**Figure 2. The evidence package organizes artifacts; review and argumentation turn them into a safety case.**
+D14 consumes D13 classification and produces metric-oriented evidence for D15 and D17.
 
-D14 focuses on:
-
-```text
-artifact completeness
-traceability
-evidence indexing
-review readiness
-reproducibility
-```
-
-Later reporting demos can build more formal safety arguments on top of this package.
+It is also where the shared database becomes more than a storage detail. The database session allows analysis evidence, fault-list evidence, campaign evidence, and final metric evidence to refer to the same design boundary and the same safety context.
 
 ---
 
-## 5. Why Packaging Matters
+## 3. Why write-back matters
 
-Without packaging, safety work becomes hard to trust.
+A raw fault campaign report usually contains many fault-level records.
 
-Common problems include:
+A final safety metric report needs block-level, failure-mode-level, or part-level evidence.
 
-```text
-metrics without source data
-FMEDA rows without evidence links
-fault outcomes without campaign logs
-measured DC without classification policy
-campaign results without VCD context
-review items separated from unsafe faults
-scripts without input manifests
-reports generated from unknown versions
-```
+These two views are not the same.
 
-A good evidence package prevents this by recording:
+Fault-level data answers:
 
 ```text
-artifact origin
-artifact type
-generation step
-input dependencies
-output dependencies
-file hash
-review status
-evidence role
+For this injected fault, what happened?
 ```
 
-This makes safety analysis reproducible and reviewable.
-
----
-
-## 6. Evidence Types
-
-D14 should classify evidence by type.
-
-Suggested evidence types:
+Metric-level data answers:
 
 ```text
-input_package
-assumption
-configuration
-structural_model
-fit_model
-diagnostic_coverage
-safety_mechanism_selection
-fault_list
-waveform_context
-campaign_execution
-fault_classification
-measured_metric
-fmeda_table
-review_item
-summary_report
-log
-warning
+For this safety-relevant function or diagnostic coverage element,
+how much random hardware failure contribution remains insufficiently covered?
 ```
 
-Example:
+Write-back is the transformation from individual observed fault behavior into reusable safety analysis evidence.
 
-```csv
-evidence_id,evidence_type,file,source_demo,review_status
-E001,input_package,D01/outputs/input_inventory.csv,D01,reviewed
-E020,structural_model,D05/outputs/structure_graph.json,D05,auto_generated
-E050,fault_classification,D11/outputs/fault_outcomes.csv,D11,review_required
-E070,fmeda_table,D13/outputs/fmeda_table.csv,D13,review_required
-```
-
-Evidence type helps reviewers know how to use each artifact.
-
----
-
-## 7. Evidence Roles
-
-A file can have a specific role in the safety workflow.
-
-Suggested roles:
-
-```text
-source_input
-derived_artifact
-metric_input
-metric_output
-review_basis
-traceability_link
-warning_record
-decision_record
-execution_log
-reproducibility_record
-```
-
-Example:
-
-```csv
-file,role
-fault_outcomes.csv,metric_input
-measured_dc_by_failure_mode.csv,metric_output
-fmeda_review_items.csv,review_basis
-manifest.yaml,reproducibility_record
-campaign_status.csv,execution_log
-```
-
-This prevents a reviewer from treating all files equally.
-
-Some files are inputs.  
-Some are outputs.  
-Some are evidence.  
-Some are warnings.  
-Some are decisions.
-
----
-
-## 8. Package Manifest
-
-The package manifest is the top-level description of the evidence package.
-
-Example:
-
-```yaml
-package:
-  name: automotive_safeic_practice_d14_evidence_package
-  demo: D14_safety_evidence_package
-  top_module: toy_counter
-  created_by: safeic-evidence
-  package_version: 0.1
-
-scope:
-  design: toy_counter
-  safety_scope: functional safety analysis and fault injection practice
-  artifact_range:
-    from_demo: D01
-    to_demo: D13
-
-inputs:
-  fmeda_table: ../D13_fmeda_update/outputs/fmeda_table.csv
-  fault_outcomes: ../D11_fault_outcome_classification/outputs/fault_outcomes.csv
-  measured_dc: ../D12_measured_diagnostic_coverage/outputs/measured_dc_summary.md
-  campaign_status: ../D10_fault_campaign_execution/outputs/campaign_status.csv
-
-outputs:
-  evidence_index: outputs/evidence_index.csv
-  traceability_matrix: outputs/traceability_matrix.csv
-  package_summary: outputs/evidence_package_summary.md
-```
-
-The manifest defines the evidence package boundary.
-
----
-
-## 9. Evidence Index
-
-The evidence index is the core file list.
-
-Recommended columns:
-
-```text
-evidence_id
-file_path
-artifact_name
-artifact_type
-evidence_role
-source_demo
-source_tool
-input_or_output
-review_status
-hash
-description
-```
-
-Example:
-
-```csv
-evidence_id,file_path,artifact_type,evidence_role,source_demo,review_status,description
-E001,D03/outputs/base_fit_report.csv,fit_model,metric_input,D03,reviewed,base FIT contribution table
-E002,D06/outputs/endpoint_dc.csv,diagnostic_coverage,metric_input,D06,review_required,estimated endpoint diagnostic coverage
-E003,D11/outputs/fault_outcomes.csv,fault_classification,metric_input,D11,review_required,classified fault outcomes
-E004,D13/outputs/fmeda_table.csv,fmeda_table,review_basis,D13,review_required,updated FMEDA table
-```
-
-This file answers:
-
-```text
-What evidence exists?
-Where is it?
-What is it for?
-Where did it come from?
-Has it been reviewed?
-```
-
----
-
-## 10. Traceability Matrix
-
-The traceability matrix connects claims, metrics, and evidence.
-
-Example trace chain:
-
-```text
-FMEDA row R003
-→ failure mode FM_ALARM_NOT_ASSERTED
-→ unsafe fault F004
-→ fault outcome D11
-→ campaign run D10
-→ fault list D08
-→ VCD context D09
-→ structure model D05
-```
-
-A matrix row could look like:
-
-```csv
-trace_id,claim_or_row,evidence_id,dependency_type,description
-T001,R003,E004,defines_row,FMEDA row for alarm not asserted
-T002,R003,E003,supported_by_fault_outcome,unsafe fault F004 linked
-T003,F004,E010,executed_by_campaign,D10 campaign run produced raw result
-T004,F004,E008,defined_by_fault_list,D08 fault list defined target and expected alarm
-T005,F004,E009,context_from_vcd,D09 VCD context provided injection window
-```
+Without write-back, the flow has a broken link:
 
 ```mermaid
 flowchart LR
-    A[FMEDA Row] --> B[Measured DC]
-    B --> C[Fault Outcomes]
-    C --> D[Campaign Runs]
-    D --> E[Fault List]
-    E --> F[Structure / VCD Context]
+    A[Fault Campaign Results] -. manual copy .-> B[Spreadsheet]
+    B -. weak traceability .-> C[FMEDA]
+    C -. hard to audit .-> D[Safety Case]
 ```
 
-**Figure 3. Traceability links FMEDA rows and metrics back to fault outcomes, campaign runs, fault lists, and structural context.**
+With write-back, the chain becomes structured:
 
-This is one of the most important D14 outputs.
+```mermaid
+flowchart LR
+    A[Fault Campaign Results] --> B[(Common Safety DB Session)]
+    B --> C[Final Metric Calculation]
+    C --> D[FMEDA Evidence]
+    C --> E[Closure Actions]
+```
 
 ---
 
-## 11. Claim-Oriented Traceability
+## 4. Inputs consumed by D14
 
-Instead of tracing only files, D14 should also trace engineering claims.
+D14 is downstream of D13, but it should not rely only on D13.
 
-Example claims:
-
-```text
-C001: toy_counter.count data corruption is protected by endpoint parity.
-C002: toy_counter.alarm path remains weak and requires review.
-C003: measured DC for FM_ALARM_NOT_ASSERTED is low.
-C004: diagnostic state corruption remains unsafe.
-```
-
-Claim table:
-
-```csv
-claim_id,claim,claim_type,status,primary_evidence,review_status
-C001,toy_counter.count data corruption is protected by endpoint parity,coverage_claim,supported,E012,low_confidence
-C002,toy_counter.alarm path remains weak,risk_claim,supported,E030,review_required
-C003,FM_ALARM_NOT_ASSERTED measured DC is 0.0,metric_claim,supported,E025,review_required
-```
-
-Claims are more review-friendly than raw files.
-
-A reviewer usually asks:
+A robust D14 input package should include:
 
 ```text
-What are you claiming?
-What evidence supports it?
-What remains uncertain?
+D13 classified fault outcomes
+D13 unresolved resolution plan
+D12 execution manifest
+D11 campaign input package manifest
+D10 observation boundary contract
+D09 VCD / Good Machine / FTTI context
+D08 campaign-ready fault list
+D07 endpoint-to-safety-mechanism map
+D05 common database session manifest
+D03 FIT standard and reliability setup identity
+D02 Base FIT / FIT contribution evidence
 ```
 
-D14 should help answer this.
+The central principle is:
+
+> A final metric is only meaningful if it can be traced back to design boundary, FIT standard, fault list, campaign setup, observation boundary, and outcome classification.
 
 ---
 
-## 12. Evidence Completeness Check
+## 5. Outputs produced by D14
 
-The package should check whether required artifacts are present.
+D14 should produce both machine-readable and human-readable artifacts.
 
-Example required artifacts:
+Typical output families are:
 
 ```text
-input inventory
-FIT report
-structure graph
-estimated DC
-safety mechanism selection
-fault list
-VCD context
-campaign status
-fault outcomes
-measured DC
-FMEDA table
-review items
+fault_result_writeback_manifest.csv
+fault_outcome_metric_input.csv
+final_diagnostic_coverage.csv
+residual_fit_summary.csv
+spfm_lfm_pmhf_estimate.csv
+final_metric_by_failure_mode.csv
+final_metric_by_endpoint.csv
+final_metric_by_safety_mechanism.csv
+common_db_writeback_plan.csv
+common_db_session_registry.json
+d14_handoff_to_d15.csv
+d14_handoff_to_d17.csv
+d14_quality_gate.csv
+evidence_index.csv
+demo_summary.md
 ```
 
-Completeness output:
-
-```csv
-required_artifact,expected_file,present,status
-base_fit_report,D03/outputs/base_fit_report.csv,true,PASS
-structure_graph,D05/outputs/structure_graph.json,true,PASS
-fault_outcomes,D11/outputs/fault_outcomes.csv,true,PASS
-fmeda_table,D13/outputs/fmeda_table.csv,true,PASS
-campaign_logs,D10/runs,false,WARN
-```
-
-Completeness is not enough for safety, but missing artifacts immediately weaken the package.
+The point is not to hide raw campaign data. The point is to summarize it while preserving traceability.
 
 ---
 
-## 13. Evidence Quality Check
+## 6. Core data model
 
-Completeness answers:
+D14 can be viewed as a relational join problem.
 
-```text
-Does the file exist?
+The following entities need to meet:
+
+```mermaid
+erDiagram
+    FAULT ||--o{ OUTCOME : produces
+    FAULT ||--o{ ENDPOINT : targets
+    ENDPOINT ||--o{ SAFETY_MECHANISM : protected_by
+    SAFETY_MECHANISM ||--o{ ALARM : triggers
+    OUTCOME ||--o{ METRIC_CONTRIBUTION : contributes_to
+    METRIC_CONTRIBUTION ||--o{ FINAL_METRIC : aggregates_into
+    FINAL_METRIC ||--o{ FMEDA_ROW : supports
 ```
 
-Evidence quality asks:
-
-```text
-Is the evidence usable and strong enough?
-```
-
-Quality factors include:
-
-```text
-review status
-confidence
-sample size
-unresolved ratio
-not-classified ratio
-warnings
-scope mismatch
-missing signals
-low evidence coverage
-open review items
-```
-
-Example:
-
-```csv
-evidence_area,status,reason
-fault_classification,PASS,no unresolved faults in demo sample
-measured_dc,LOW_CONFIDENCE,sample size is too small
-fmeda_update,REVIEW_REQUIRED,unsafe faults linked to two rows
-campaign_execution,PASS,all demo runs executed or emulated
-```
-
-Evidence quality should be visible in the package summary.
+A clean D14 flow should avoid treating metrics as disconnected formulas. Metrics are aggregations over categorized fault behavior under known reliability assumptions.
 
 ---
 
-## 14. Review Items Integration
+## 7. Terminology checkpoint
 
-D13 generated review items.
+Before discussing formulas, it is useful to align on key terms.
 
-D14 should include them and connect each review item to evidence.
+| Term | Meaning in D14 |
+|---|---|
+| Fault outcome | Result of an injected fault after observation and classification |
+| Diagnostic coverage | Fraction of relevant faults detected or controlled by safety mechanisms |
+| Residual fault | A fault not sufficiently covered and still safety-relevant |
+| Safe fault | A fault that does not violate the safety goal under the observed context |
+| Unsafe fault | A fault that propagates into unsafe behavior without adequate detection/control |
+| Unresolved fault | A fault whose outcome cannot yet be confidently classified |
+| Write-back | Recording classified campaign result into the analysis evidence store |
+| Final metric | Metric recomputed from validated or measured campaign evidence |
 
-Example:
-
-```csv
-item_id,severity,row_id,issue,evidence_id,recommended_action,status
-I001,HIGH,R003,alarm path has unsafe fault,E030,add redundant alarm or alarm path monitor,open
-I002,MEDIUM,R002,diagnostic state unprotected,E031,add protection or justify residual risk,open
-I003,LOW,R001,measured DC confidence low,E025,increase campaign sample size,open
-```
-
-This turns the evidence package into a practical engineering handoff.
-
-The package should not hide open issues.
-
-Open issues are exactly what reviewers need to see.
+The word “final” does not mean “certification is automatically complete.” It means the metric is based on the post-campaign evidence set rather than only on early estimation.
 
 ---
 
-## 15. Assumption Register
+## 8. Estimated DC vs measured DC
 
-A safety evidence package should include assumptions.
+D06 used what-if exploration to estimate diagnostic coverage.
 
-Examples:
+D13 classified observed campaign outcomes.
+
+D14 compares these two worlds.
+
+```mermaid
+flowchart LR
+    A[D06 Estimated DC] --> C[Comparison]
+    B[D13 Observed Outcomes] --> C
+    C --> D[D14 Final DC]
+    D --> E[FMEDA Evidence]
+```
+
+Estimated DC is useful early because it guides safety mechanism selection.
+
+Measured or validated DC is stronger because it uses fault campaign evidence.
+
+A practical safety flow needs both:
 
 ```text
-fault model set is limited to stuck-at and transient flip
-toy design is representative only for methodology
-measured DC is count-based unless otherwise configured
-safe faults are excluded from primary DC
-unresolved faults are reported separately
-emulation mode results are not final validation evidence
+estimated DC -> architecture planning
+validated DC -> metric evidence
 ```
-
-Assumption register example:
-
-```csv
-assumption_id,assumption,source,status,impact
-A001,fault models are limited to stuck_at_0/stuck_at_1/transient_flip,D08,active,limits coverage scope
-A002,primary measured DC uses detected/(detected+unsafe),D12,active,affects measured DC value
-A003,D10 demo campaign may run in emulation mode,D10,active,not final validation evidence
-A004,measured DC with low sample size does not replace estimated DC,D13,active,keeps FMEDA conservative
-```
-
-Assumptions are not weaknesses by themselves.
-
-Unstated assumptions are the real problem.
 
 ---
 
-## 16. Configuration and Policy Archive
+## 9. Outcome-to-metric mapping
 
-D14 should archive configuration and policy files.
+D14 should define explicit mapping rules.
 
-Examples:
+A simplified rule table is:
+
+| Outcome | Metric interpretation |
+|---|---|
+| detected | Can contribute diagnostic coverage credit |
+| safe | Can reduce dangerous residual contribution, depending on safety goal relevance |
+| unsafe | Contributes residual / single-point risk unless resolved by analysis |
+| unresolved | Must not be silently credited as covered |
+
+Unresolved is especially important.
+
+A flow that treats unresolved as detected will overstate coverage.
+
+A flow that treats unresolved as unsafe may be too pessimistic.
+
+The correct approach is to keep unresolved as a separate bucket and drive D17 closure.
+
+---
+
+## 10. Fault weight and FIT contribution
+
+Not all faults contribute equally.
+
+A simple count-based view says:
 
 ```text
-dc_policy.yaml
-selection_policy.yaml
-faultgen_policy.yaml
-vcd_policy.yaml
-campaign_policy.yaml
-classification_policy.yaml
-measurement_policy.yaml
-fmeda_update_policy.yaml
+DC = detected_faults / total_faults
 ```
 
-Why archive policies?
+That can be useful for sanity checks, but final metrics usually need weighting by reliability contribution, structural relevance, or failure-mode mapping.
 
-Because metrics cannot be interpreted without knowing policy.
+A more meaningful view is:
+
+```text
+weighted DC = detected_or_safe_relevant_FIT / total_relevant_FIT
+```
+
+D14 therefore keeps both views:
+
+```text
+count-based coverage
+FIT-weighted coverage
+failure-mode-weighted coverage
+endpoint-weighted coverage
+```
+
+This prevents a campaign with many low-risk detected faults from hiding a few high-risk unsafe faults.
+
+---
+
+## 11. Residual FIT
+
+Residual FIT is the remaining failure-rate contribution after diagnostic coverage is applied.
+
+A simplified conceptual formula is:
+
+```text
+residual_fit = base_fit * (1 - diagnostic_coverage)
+```
+
+Real flows may break this down by:
+
+```text
+permanent faults
+transient faults
+failure mode
+endpoint
+logic cone
+safety mechanism
+part / sub-part
+```
+
+D14 should avoid reporting only one global number. A global residual FIT is useful, but reviewers usually need to know where it comes from.
+
+---
+
+## 12. Permanent and transient result lanes
+
+D14 should keep permanent and transient lanes separate.
+
+Permanent fault evidence and transient fault evidence may differ in:
+
+```text
+fault model
+fault duration
+injection semantics
+activity dependence
+diagnostic latency
+recovery behavior
+FIT source
+metric interpretation
+```
+
+A clean D14 data model has columns such as:
+
+```text
+fault_kind
+lambda_perm
+lambda_tran
+dc_perm
+dc_tran
+residual_fit_perm
+residual_fit_tran
+```
+
+This matches how safety analysis reports commonly separate permanent and transient contributions.
+
+---
+
+## 13. SPFM, LFM, and PMHF
+
+D14 should prepare the final metric bridge to three familiar ISO 26262-style hardware metrics:
+
+```text
+SPFM
+LFM
+PMHF
+```
+
+Conceptually:
+
+- **SPFM** reflects robustness against single-point and residual faults.
+- **LFM** reflects robustness against latent multi-point faults.
+- **PMHF** estimates residual probabilistic risk from random hardware failures.
+
+D14 does not reduce these metrics to marketing percentages. It treats them as aggregations over lambda categories, diagnostic coverage, and fault outcome evidence.
+
+---
+
+## 14. Lambda categories
+
+Final metrics depend on how failure-rate contribution is classified.
+
+A practical implementation may maintain categories such as:
+
+```text
+lambda_total
+lambda_safe
+lambda_detected
+lambda_residual
+lambda_single_point
+lambda_latent
+lambda_unresolved
+```
+
+The exact naming can vary, but the engineering idea is stable:
+
+```text
+failure-rate mass must be conserved or explicitly justified
+```
+
+D14 should be able to answer:
+
+```text
+Where did each part of the original FIT go after the fault campaign?
+```
+
+---
+
+## 15. Conservation checks
+
+A good D14 quality gate should include conservation checks.
 
 For example:
 
 ```text
-measured DC = 0.60
+lambda_total_from_D02 ~= lambda_safe + lambda_detected + lambda_residual + lambda_unresolved + exclusions
 ```
 
-means little unless we know:
+If the difference is large, something is wrong:
 
 ```text
-safe faults excluded?
-unresolved faults excluded?
-count-based or FIT-weighted?
-late alarms counted?
-secondary alarms allowed?
-low confidence update allowed?
+fault list scope mismatch
+FIT standard mismatch
+classification join failure
+missing endpoint mapping
+incorrect fault weight
+incorrect campaign subset selection
 ```
 
-The policy archive makes the package reproducible.
+D14 should make these mismatches visible instead of hiding them in a final summary number.
 
 ---
 
-## 17. Artifact Hashes
+## 16. Common database session layout
 
-For review and reproducibility, D14 can compute file hashes.
-
-Example:
-
-```csv
-evidence_id,file_path,sha256
-E001,D13/outputs/fmeda_table.csv,9e2a...
-E002,D12/outputs/measured_dc_by_failure_mode.csv,4a17...
-E003,D11/outputs/fault_outcomes.csv,bb09...
-```
-
-Hashes help detect accidental changes after packaging.
-
-For an early demo, hashes are optional but recommended.
-
----
-
-## 18. Evidence Dependency Graph
-
-A dependency graph shows how artifacts depend on each other.
-
-Example:
-
-```mermaid
-flowchart TD
-    D05[Structure Model] --> D06[Estimated DC]
-    D05 --> D08[Fault List]
-    D06 --> D12[Measured DC Comparison]
-    D08 --> D10[Campaign Execution]
-    D09[VCD Context] --> D10
-    D10 --> D11[Fault Classification]
-    D11 --> D12
-    D12 --> D13[FMEDA Update]
-    D13 --> D14[Evidence Package]
-```
-
-**Figure 4. Evidence dependency graph shows how earlier analysis and campaign artifacts feed FMEDA and the evidence package.**
-
-D14 can generate this graph as Markdown Mermaid text.
-
-This is useful for documentation and GitHub presentation.
-
----
-
-## 19. Package Summary Report
-
-The evidence package summary should be readable by engineers.
-
-A good summary includes:
+A practical database-oriented flow can use session naming like:
 
 ```text
-package scope
-design under analysis
-artifact completeness
-key metrics
-key unsafe findings
-key open review items
-assumptions
-evidence quality
-next recommended actions
+design.fdb::D02_BFR
+design.fdb::D08_FAULT_LIST
+design.fdb::D12_FAULT_CAMPAIGN
+design.fdb::D13_OUTCOME_CLASSIFICATION
+design.fdb::D14_FINAL_METRICS
+design.fdb::D15_FMEDA_EXPORT
 ```
 
-Example summary:
-
-```md
-# D14 Safety Evidence Package Summary
-
-Design: toy_counter  
-Scope: functional safety analysis and fault injection practice  
-Evidence range: D01 to D13  
-
-## Key Metrics
-
-Total base FIT: 0.078  
-Total residual FIT: 0.0204  
-Weighted selected DC: 0.738  
-
-## Key Findings
-
-1. Counter state data corruption is protected by endpoint parity.
-2. Diagnostic state corruption remains unsafe.
-3. Alarm-not-asserted failure mode remains unsafe.
-4. Measured DC sample size is low.
-
-## Review Items
-
-- Add or justify alarm path protection.
-- Add protection for diagnostic state.
-- Expand fault campaign sample size.
-
-## Evidence Quality
-
-Package completeness: PASS  
-Metric confidence: LOW for demo sample  
-Open high-severity review items: 1
-```
-
-The summary is not just a cover page.
-
-It is the entry point for review.
-
----
-
-## 20. Review Readiness Criteria
-
-D14 can define review readiness criteria.
-
-Example:
-
-```yaml
-review_readiness:
-  required:
-    - fmeda_table_present
-    - fault_outcomes_present
-    - measured_dc_present
-    - review_items_present
-    - assumptions_present
-
-  quality_gates:
-    max_missing_required_artifacts: 0
-    max_high_severity_open_items_for_release: 0
-    max_unresolved_ratio_for_measured_update: 0.10
-    require_policy_archive: true
-```
-
-Output:
-
-```csv
-criterion,status,reason
-fmeda_table_present,PASS,file found
-fault_outcomes_present,PASS,file found
-measured_dc_present,PASS,file found
-high_severity_open_items,FAIL,1 high severity review item open
-policy_archive_present,PASS,policy files indexed
-```
-
-This makes review readiness explicit.
-
----
-
-## 21. Evidence Package Structure
-
-Suggested directory structure:
-
-```text
-D14_safety_evidence_package/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    package_config.yaml
-    review_readiness_policy.yaml
-
-  package/
-    package_manifest.yaml
-    evidence_index.csv
-    traceability_matrix.csv
-    claim_traceability.csv
-    assumption_register.csv
-    review_items.csv
-    completeness_check.csv
-    evidence_quality.csv
-    artifact_hashes.csv
-
-    summaries/
-      evidence_package_summary.md
-      metric_summary.md
-      fmeda_summary.md
-
-    metrics/
-      measured_dc_by_endpoint.csv
-      measured_dc_by_failure_mode.csv
-      measured_residual_fit.csv
-      safety_metric_summary.csv
-
-    fmeda/
-      fmeda_table.csv
-      fmeda_delta.csv
-      fmeda_review_items.csv
-
-    campaign/
-      campaign_status.csv
-      raw_fault_results.csv
-      fault_outcomes.csv
-
-    policies/
-      measurement_policy.yaml
-      classification_policy.yaml
-      fmeda_update_policy.yaml
-
-    logs/
-      warnings.csv
-      package_build.log
-
-  outputs/
-    package_status.csv
-    evidence_package_summary.md
-```
-
-The package folder can later be archived as:
-
-```text
-automotive_safeic_practice_d14_evidence_package.zip
-```
-
----
-
-## 22. Package Configuration
-
-Example `package_config.yaml`:
-
-```yaml
-package:
-  name: automotive_safeic_practice_d14_evidence_package
-  top_module: toy_counter
-  include_hashes: true
-  copy_artifacts: true
-  preserve_relative_paths: true
-
-artifact_sources:
-  D03_base_fit:
-    path: ../D03_base_fit_rate/outputs/base_fit_report.csv
-    type: fit_model
-    role: metric_input
-
-  D11_fault_outcomes:
-    path: ../D11_fault_outcome_classification/outputs/fault_outcomes.csv
-    type: fault_classification
-    role: metric_input
-
-  D12_measured_dc:
-    path: ../D12_measured_diagnostic_coverage/outputs/measured_dc_summary.md
-    type: measured_metric
-    role: summary_report
-
-  D13_fmeda_table:
-    path: ../D13_fmeda_update/outputs/fmeda_table.csv
-    type: fmeda_table
-    role: review_basis
-```
-
-This file tells `safeic-evidence` what to package.
-
----
-
-## 23. Main Output: `evidence_index.csv`
-
-Example:
-
-```csv
-evidence_id,file_path,artifact_type,evidence_role,source_demo,review_status,description
-E001,metrics/base_fit_report.csv,fit_model,metric_input,D03,reviewed,base FIT report
-E002,campaign/fault_outcomes.csv,fault_classification,metric_input,D11,review_required,classified fault outcomes
-E003,metrics/measured_dc_by_failure_mode.csv,measured_metric,metric_output,D12,review_required,measured DC by failure mode
-E004,fmeda/fmeda_table.csv,fmeda_table,review_basis,D13,review_required,updated FMEDA table
-```
-
-This is the package inventory.
-
----
-
-## 24. Main Output: `traceability_matrix.csv`
-
-Example:
-
-```csv
-trace_id,source,target,relationship,description
-T001,R003,F004,supported_by_unsafe_fault,alarm-not-asserted row linked to unsafe fault
-T002,F004,D10_RUN_F004,executed_by,campaign run generated raw result
-T003,D10_RUN_F004,D08_F004,defined_by_fault_list,fault came from generated list
-T004,D08_F004,D09_CONTEXT,uses_context,VCD context provided injection and detection window
-T005,R003,E004,included_in_fmeda,FMEDA row included in evidence package
-```
-
-This is the chain that makes the evidence reviewable.
-
----
-
-## 25. Main Output: `claim_traceability.csv`
-
-Example:
-
-```csv
-claim_id,claim,status,primary_evidence,supporting_evidence,open_issue
-C001,counter state data corruption is covered by endpoint parity,supported,E003,E004,low sample size
-C002,alarm-not-asserted remains an open risk,supported,E004,E002,unsafe fault F004
-C003,diagnostic state requires protection,supported,E004,E002,unsafe fault F003
-```
-
-Claim traceability is useful for articles, reports, and review decks.
-
----
-
-## 26. Main Output: `assumption_register.csv`
-
-Example:
-
-```csv
-assumption_id,assumption,source_demo,status,impact
-A001,fault model set is limited to stuck-at and transient flip,D08,active,campaign scope limited
-A002,primary measured DC excludes safe and unresolved faults,D12,active,affects measured DC formula
-A003,low-confidence measured DC does not replace estimated DC,D13,active,keeps FMEDA conservative
-```
-
-This makes assumptions explicit.
-
----
-
-## 27. Main Output: `package_status.csv`
-
-Example:
-
-```csv
-check,status,details
-required_artifacts_present,PASS,all required artifacts found
-hashes_generated,PASS,hashes generated for 18 artifacts
-open_high_review_items,FAIL,1 high severity item open
-metric_confidence,WARN,measured DC confidence is low for demo sample
-package_ready_for_archive,WARN,package can be archived but not considered release-ready
-```
-
-Package status should be honest.
-
-A demo package can be complete but still not release-ready.
-
----
-
-## 28. The `safeic-evidence` Tool Architecture
-
-The generic tool `safeic-evidence` can be implemented as a staged pipeline.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-evidence]
-    B[package_config.yaml] --> T
-    C[review_readiness_policy.yaml] --> T
-    D[Artifacts from D01-D13] --> T
-
-    T --> E[Discover Artifacts]
-    E --> F[Validate Required Files]
-    F --> G[Copy or Link Artifacts]
-    G --> H[Generate Evidence Index]
-    H --> I[Generate Traceability Matrix]
-    I --> J[Generate Assumption Register]
-    J --> K[Generate Review Readiness Checks]
-    K --> L[Generate Package Summary]
-```
-
-**Figure 5. `safeic-evidence` discovers, validates, indexes, traces, and summarizes safety evidence artifacts.**
-
-Suggested internal modules:
-
-```text
-safeic_evidence/
-  cli.py
-  manifest.py
-  load_config.py
-  artifact_discovery.py
-  artifact_copy.py
-  hashing.py
-  evidence_index.py
-  traceability.py
-  claims.py
-  assumptions.py
-  review_readiness.py
-  package_summary.py
-  report.py
-```
-
-Responsibilities:
-
-| Module | Responsibility |
-|---|---|
-| `artifact_discovery.py` | Locate expected artifacts from previous demos |
-| `artifact_copy.py` | Copy or link artifacts into package folder |
-| `hashing.py` | Generate file hashes |
-| `evidence_index.py` | Build evidence inventory |
-| `traceability.py` | Build dependency and traceability matrix |
-| `claims.py` | Build claim-oriented traceability |
-| `assumptions.py` | Build assumption register |
-| `review_readiness.py` | Apply readiness checks |
-| `package_summary.py` | Generate human-readable summary |
-| `report.py` | Generate CSV and Markdown outputs |
-
----
-
-## 29. D14 Manifest
-
-Example:
-
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D14_safety_evidence_package
-  top_module: toy_counter
-
-inputs:
-  package_config: inputs/package_config.yaml
-  review_readiness_policy: inputs/review_readiness_policy.yaml
-
-source_roots:
-  demos_root: ..
-  include_demos:
-    - D03_base_fit_rate
-    - D05_structural_safety_model
-    - D08_fault_list_generation
-    - D09_vcd_safety_context
-    - D10_fault_campaign_execution
-    - D11_fault_outcome_classification
-    - D12_measured_diagnostic_coverage
-    - D13_fmeda_update
-
-outputs:
-  package_dir: package
-  package_status: outputs/package_status.csv
-  summary: outputs/evidence_package_summary.md
-```
-
-The manifest defines the package build.
-
----
-
-## 30. D14 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load Package Config]
-    B --> C[Load Review Readiness Policy]
-    C --> D[Discover Required Artifacts]
-    D --> E[Check Completeness]
-    E --> F[Copy or Link Artifacts]
-    F --> G[Generate Hashes]
-    G --> H[Build Evidence Index]
-    H --> I[Build Traceability Matrix]
-    I --> J[Build Claim Traceability]
-    J --> K[Build Assumption Register]
-    K --> L[Run Review Readiness Checks]
-    L --> M[Generate Package Summary]
-```
-
-**Figure 6. D14 execution flow: discover artifacts, check completeness, package files, build traceability, record assumptions, and summarize review readiness.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-evidence \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D14_safety_evidence_package
-echo "Running $DEMO"
-
-safeic-evidence \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
-
-```text
-package/package_manifest.yaml
-package/evidence_index.csv
-package/traceability_matrix.csv
-package/claim_traceability.csv
-package/assumption_register.csv
-package/review_items.csv
-package/completeness_check.csv
-package/evidence_quality.csv
-package/artifact_hashes.csv
-outputs/package_status.csv
-outputs/evidence_package_summary.md
-```
-
----
-
-## 31. Validation Rules
-
-`safeic-evidence` should validate:
-
-```text
-package_config.yaml exists
-review readiness policy exists
-required artifacts exist
-artifact paths are unique
-evidence IDs are unique
-artifact types are valid
-review statuses are valid
-trace links reference existing evidence IDs
-claim links reference existing evidence IDs
-assumption IDs are unique
-hash generation succeeds when enabled
-package directory is writable
-```
-
-Example messages:
-
-```text
-[PASS] package config loaded
-[PASS] D13 fmeda_table.csv found
-[PASS] D11 fault_outcomes.csv found
-[PASS] evidence index generated with 18 artifacts
-[WARN] D10 campaign logs folder not found; package includes summary only
-[WARN] one high-severity review item remains open
-[ERROR] traceability link references unknown evidence ID E999
-```
-
-D14 should not pretend the package is complete when required artifacts are missing.
-
----
-
-## 32. Common Mistakes
-
-### 32.1 Treating Evidence as a File Dump
-
-A folder of files is not an evidence package unless it has index, traceability, assumptions, and review status.
-
-### 32.2 Losing Policy Files
-
-Metrics cannot be interpreted without policy files.
-
-Always archive classification, measurement, and update policies.
-
-### 32.3 Hiding Open Review Items
-
-Open issues are part of the evidence package.
-
-They should be visible.
-
-### 32.4 Missing Traceability
-
-If FMEDA values cannot be traced back to campaign outcomes and assumptions, the package is weak.
-
-### 32.5 Mixing Estimated and Measured Evidence Without Labels
-
-Estimated values and measured results must be clearly distinguished.
-
-### 32.6 Ignoring Artifact Versioning
-
-A report without artifact hashes or version records is harder to reproduce.
-
-### 32.7 Overclaiming Demo Evidence
-
-A methodology demo package is not equivalent to production safety signoff.
-
-The summary should state evidence scope and limitations.
-
----
-
-## 33. How D14 Connects to Later Demos
-
-D14 creates a consolidated evidence package.
-
-Later demos can generate reports, dashboards, and iteration tracking.
+D14 reads from earlier sessions and writes a final-metric session.
 
 ```mermaid
 flowchart LR
-    A[D14 Evidence Package] --> B[D15 Safety Report Generation]
-    A --> C[D16 Regression and Trend Tracking]
-    A --> D[D17 Commercial Tool Comparison]
-    B --> E[Review Report]
-    C --> F[Metric Trend]
-    D --> G[Comparison Report]
+    A[(D02_BFR)] --> D[(D14_FINAL_METRICS)]
+    B[(D08_FAULT_LIST)] --> D
+    C[(D13_OUTCOMES)] --> D
+    D --> E[(D15_FMEDA_EXPORT)]
+    D --> F[(D17_CLOSURE)]
 ```
 
-**Figure 7. D14 provides the package foundation for safety reports, regression tracking, and tool comparison.**
-
-Once evidence is packaged, later steps can focus on presentation, comparison, automation, and iteration.
+The database is not a replacement for file-based evidence. It is the structured backbone that allows different tools and review layers to share the same safety context.
 
 ---
 
-## 34. Recommended Implementation Stages
+## 17. File evidence vs database evidence
 
-D14 can be implemented in stages.
+D14 should preserve both file artifacts and database artifacts.
 
-### Stage 1: Package Inventory
-
-Collect key artifacts and generate `evidence_index.csv`.
-
-Deliverables:
+File artifacts are good for:
 
 ```text
-evidence_index.csv
-package_manifest.yaml
+Git review
+diff
+human inspection
+archival packages
+training examples
 ```
 
-### Stage 2: Completeness and Quality Checks
-
-Check required artifacts and summarize quality.
-
-Deliverables:
+Database artifacts are good for:
 
 ```text
-completeness_check.csv
-evidence_quality.csv
-package_status.csv
+cross-stage linkage
+GUI loading
+tool-to-tool handoff
+session partitioning
+metric recomputation
 ```
 
-### Stage 3: Traceability Matrix
+A mature flow should not choose one and discard the other.
 
-Link FMEDA rows, fault outcomes, campaign runs, and source artifacts.
+---
 
-Deliverables:
+## 18. Write-back manifest
+
+The write-back manifest is one of the most important D14 deliverables.
+
+It should record:
 
 ```text
-traceability_matrix.csv
+source outcome file
+source fault list
+source campaign setup
+source observation contract
+source FIT setup
+source database session
+target database session
+write-back timestamp / run identity
+number of fault outcomes imported
+number of outcomes excluded
+number of unresolved outcomes retained
+metric artifacts generated
 ```
 
-### Stage 4: Claims and Assumptions
+This manifest allows a reviewer to know exactly what evidence was used to compute final metrics.
 
-Generate claim traceability and assumption register.
+---
 
-Deliverables:
+## 19. Handling unresolved outcomes
+
+Unresolved outcomes must remain visible.
+
+D14 should not convert unresolved into detected or safe.
+
+A practical unresolved policy is:
 
 ```text
-claim_traceability.csv
-assumption_register.csv
+unresolved_count > 0 -> D17 closure required
+unresolved_fit_weight > threshold -> metric review required
+unresolved linked to high-severity failure mode -> priority escalation
 ```
 
-### Stage 5: Package Summary and Archive
+Unresolved does not necessarily mean the design is unsafe.
 
-Generate summary and optional archive.
+It means the current campaign evidence is insufficient to classify the fault.
 
-Deliverables:
+D17 is responsible for closure actions such as:
 
 ```text
-evidence_package_summary.md
-automotive_safeic_practice_d14_evidence_package.zip
+improve stimulus
+extend VCD window
+add observe points
+fix alarm binding
+review X propagation
+rerun selected campaign subset
+manual safety review
 ```
 
-This staged approach makes D14 useful even before a formal report generator exists.
+---
+
+## 20. Unsafe outcomes and residual risk
+
+Unsafe outcomes require special handling.
+
+They may indicate:
+
+```text
+missing safety mechanism
+incorrect alarm list
+observe boundary mismatch
+insufficient diagnostic latency
+fault list over-approximation
+failure mode mapping error
+real safety design gap
+```
+
+D14 should not automatically assume all unsafe outcomes have the same meaning.
+
+Instead, it should group them by:
+
+```text
+failure mode
+endpoint
+safety mechanism
+fault kind
+campaign scenario
+FIT weight
+```
+
+This grouping is what makes safety closure actionable.
+
+---
+
+## 21. Safe outcomes and credit policy
+
+Safe faults are not dangerous under the observed safety context.
+
+However, D14 should distinguish between different kinds of safe evidence:
+
+```text
+structurally irrelevant safe fault
+masked safe fault
+functionally safe fault
+alarm-detected safe fault
+observation-window safe fault
+```
+
+The credit policy should be explicit.
+
+If a fault is safe only because the stimulus never activates the logic, that may require caution.
+
+If a fault is safe because it cannot propagate to a safety-relevant output under the design structure, that is stronger evidence.
+
+---
+
+## 22. Detected outcomes and alarm evidence
+
+Detected faults usually provide diagnostic coverage credit.
+
+But D14 should still check:
+
+```text
+Was the alarm in the approved alarm list?
+Did the alarm fire within the FTTI window?
+Was the observed alarm mapped to the expected safety mechanism?
+Was the affected endpoint covered by the intended mechanism?
+Was the classification based on a valid good-machine reference?
+```
+
+This is why D10 and D09 matter. D14 final metrics depend on observation boundary and safety context.
+
+---
+
+## 23. FTTI-aware metric review
+
+Fault Tolerant Time Interval is a timing contract.
+
+A fault detected too late may not deserve the same credit as a fault detected within the allowed interval.
+
+D14 can therefore introduce latency-aware classification:
+
+```text
+detected_within_ftti
+detected_after_ftti
+not_detected
+not_observable
+```
+
+The metric policy may treat these differently.
+
+This prevents a slow alarm from being incorrectly counted as fully effective.
+
+---
+
+## 24. Observation boundary consistency
+
+D14 must confirm that D13 outcomes were classified against the intended boundary.
+
+Key inputs are:
+
+```text
+alarm list
+observe point list
+VCD signal catalog
+FTTI window plan
+campaign observation contract
+```
+
+A mismatch can corrupt final metrics.
+
+For example:
+
+```text
+fault campaign used alarm A
+D14 metric policy expects alarm B
+```
+
+or:
+
+```text
+fault campaign observed internal debug signal
+D14 metric policy expects protocol-visible safety output
+```
+
+These cases should produce review warnings or quality-gate failures.
+
+---
+
+## 25. Metric aggregation hierarchy
+
+D14 should aggregate metrics at several levels.
+
+```mermaid
+flowchart BT
+    A[Fault Outcome Rows] --> B[Endpoint Metrics]
+    B --> C[Failure Mode Metrics]
+    C --> D[Safety Mechanism Metrics]
+    D --> E[Part / Sub-Part Metrics]
+    E --> F[Top-Level Final Metrics]
+```
+
+Each level supports a different review:
+
+| Level | Reviewer question |
+|---|---|
+| Fault row | What happened to this fault? |
+| Endpoint | Which endpoint remains risky? |
+| Failure mode | Which failure mode needs closure? |
+| Safety mechanism | Which mechanism is effective or weak? |
+| Part / sub-part | How does this map into FMEDA? |
+| Top level | Are the final metrics acceptable? |
+
+---
+
+## 26. Final metric report structure
+
+A useful final metric report should not be only a table.
+
+It should include:
+
+```text
+run identity
+design boundary
+FIT standard
+fault campaign identity
+classification source
+outcome distribution
+permanent/transient split
+DC by endpoint
+DC by failure mode
+residual FIT summary
+SPFM / LFM / PMHF estimate
+unresolved and unsafe highlights
+handoff to FMEDA
+handoff to closure
+```
+
+This structure makes the report useful for engineering review instead of only tool archiving.
+
+---
+
+## 27. Quality gates for D14
+
+D14 quality gates should check more than file existence.
+
+Suggested gates:
+
+```text
+D13 outcome classification exists
+D12 execution manifest exists
+D10 observation contract exists
+D08 fault list exists
+D02/D03 FIT identity exists
+fault outcome rows can be joined to fault-list rows
+endpoint rows can be joined to safety-mechanism rows
+no unknown outcome category appears
+unresolved is not silently credited
+unsafe is explicitly summarized
+lambda conservation is within tolerance
+final metric tables are generated
+handoff to D15 and D17 is complete
+```
+
+A D14 pass means the result set is coherent enough for final metric review. It does not mean the design is automatically compliant.
+
+---
+
+## 28. Demo architecture
+
+The D14 demo can be organized as:
+
+```text
+D14_fault_campaign_result_writeback_final_metrics/
+  configs/
+    metric_policy.csv
+    outcome_credit_policy.csv
+    lambda_category_policy.csv
+  scripts/
+    run_demo.csh
+    run_demo.sh
+  tools/
+    build_d14_final_metrics.py
+  inputs/
+    from_D13/
+    from_D12/
+    from_D10/
+    from_D08/
+    from_D05/
+    from_D03/
+  outputs/
+    final_metrics/
+    db_writeback/
+    handoff/
+    reports/
+```
+
+The demo should keep orchestration separate from metric policy.
+
+This makes it easier to review and change metric assumptions without rewriting the whole script.
+
+---
+
+## 29. D14 execution flow
+
+A practical D14 flow is:
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant D14 as D14 Orchestrator
+    participant E as Evidence Inputs
+    participant M as Metric Engine
+    participant DB as Common DB Session
+    participant R as Reports
+
+    U->>D14: run demo
+    D14->>E: snapshot upstream artifacts
+    D14->>M: normalize outcome rows
+    M->>M: apply credit policy
+    M->>M: compute DC and residual FIT
+    M->>M: compute SPFM/LFM/PMHF estimate
+    M->>DB: prepare write-back session
+    M->>R: emit final metric reports
+    D14->>R: emit handoff and quality gate
+```
+
+This sequence keeps the flow reproducible and reviewable.
+
+---
+
+## 30. Handoff to D15
+
+D15 will build the FMEDA data model.
+
+D14 should hand off:
+
+```text
+failure_mode_id
+part_or_subpart
+endpoint_id
+safety_mechanism_id
+validated_dc_perm
+validated_dc_tran
+residual_fit_perm
+residual_fit_tran
+outcome_distribution
+metric_confidence
+open_review_flags
+```
+
+D15 can then convert these into FMEDA rows.
+
+The important idea is that FMEDA should not receive a disconnected metric table. It should receive traceable metric evidence.
+
+---
+
+## 31. Handoff to D17
+
+D17 will focus on diagnostic coverage closure.
+
+D14 should hand off:
+
+```text
+unsafe fault groups
+unresolved fault groups
+high residual FIT endpoints
+weak safety mechanisms
+late alarm detections
+observation boundary mismatches
+stimulus insufficiency indicators
+recommended rerun subsets
+```
+
+D17 is not only about fixing scripts. It is about turning final metric weaknesses into engineering actions.
+
+---
+
+## 32. Handling dry-run and real-result modes
+
+The public demo should be able to run without a private fault engine.
+
+A practical D14 demo can support two modes:
+
+```text
+review mode
+real-result mode
+```
+
+Review mode consumes deterministic D13 review-level classification and demonstrates the metric pipeline.
+
+Real-result mode consumes native campaign results if available and preserves the same output schema.
+
+The key is that the output must clearly label:
+
+```text
+classification_source = review_model | native_campaign_result
+metric_confidence = demo | measured | validated
+```
+
+This avoids confusing a teaching artifact with signoff evidence.
+
+---
+
+## 33. Common mistakes
+
+Common D14 mistakes include:
+
+```text
+treating unresolved as detected
+mixing IEC 62380 and SN 29500 evidence in the same metric table
+joining outcomes to the wrong fault list version
+ignoring FTTI when crediting detected faults
+losing the alarm-to-safety-mechanism trace
+reporting only global DC
+failing to preserve permanent/transient split
+copying fault campaign results manually into FMEDA
+not recording database session identity
+```
+
+D14 exists to prevent these mistakes.
+
+---
+
+## 34. A useful mental model
+
+Think of D14 as an accounting system for failure-rate mass.
+
+The early analysis gives a pool of possible random hardware failure contribution.
+
+The fault campaign classifies evidence.
+
+D14 accounts for where the contribution went:
+
+```text
+detected by safety mechanism
+safe by design or context
+unsafe / residual
+unresolved / pending review
+excluded by justified scope policy
+```
+
+A trustworthy final metric is simply a well-audited accounting statement over that failure-rate mass.
 
 ---
 
 ## 35. Summary
 
-Safety evidence packaging is the step that turns analysis outputs into a reviewable artifact set.
+D14 turns fault campaign outcomes into final metric evidence.
 
-The D14 demo:
-
-```text
-D14_safety_evidence_package
-```
-
-introduces the generic tool:
+Its job is to:
 
 ```text
-safeic-evidence
+read classified fault outcomes
+connect them to fault list, endpoint, SM, alarm, and FIT evidence
+apply explicit credit policy
+compute final diagnostic coverage
+estimate residual FIT
+prepare SPFM / LFM / PMHF-oriented tables
+write back structured results into a common session
+hand off metric evidence to FMEDA and closure stages
 ```
 
-The tool consumes:
+D14 is where the campaign becomes safety evidence.
 
-```text
-artifacts from D01-D13
-package_config.yaml
-review_readiness_policy.yaml
-```
+D13 tells us what happened.
 
-and generates:
+D14 tells us what it means for diagnostic coverage and residual risk.
 
-```text
-package_manifest.yaml
-evidence_index.csv
-traceability_matrix.csv
-claim_traceability.csv
-assumption_register.csv
-review_items.csv
-completeness_check.csv
-evidence_quality.csv
-artifact_hashes.csv
-package_status.csv
-evidence_package_summary.md
-```
+D15 will turn that meaning into FMEDA data.
 
-The central lesson is:
-
-> Safety evidence becomes useful only when it is indexed, traceable, policy-aware, assumption-aware, and review-ready. A single metric or FMEDA table is not enough without the evidence chain behind it.
-
-D14 prepares the workflow for reporting, comparison, and iterative safety improvement.
-
----
-
-## 36. D14 Demo Checklist
-
-For `D14_safety_evidence_package`, the expected deliverables are:
-
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/package_config.yaml
-[ ] inputs/review_readiness_policy.yaml
-
-[ ] package/package_manifest.yaml
-[ ] package/evidence_index.csv
-[ ] package/traceability_matrix.csv
-[ ] package/claim_traceability.csv
-[ ] package/assumption_register.csv
-[ ] package/review_items.csv
-[ ] package/completeness_check.csv
-[ ] package/evidence_quality.csv
-[ ] package/artifact_hashes.csv
-
-[ ] package/summaries/evidence_package_summary.md
-[ ] package/metrics/measured_dc_by_endpoint.csv
-[ ] package/metrics/measured_dc_by_failure_mode.csv
-[ ] package/metrics/measured_residual_fit.csv
-[ ] package/fmeda/fmeda_table.csv
-[ ] package/fmeda/fmeda_delta.csv
-[ ] package/fmeda/fmeda_review_items.csv
-[ ] package/campaign/campaign_status.csv
-[ ] package/campaign/fault_outcomes.csv
-[ ] package/policies/classification_policy.yaml
-[ ] package/policies/measurement_policy.yaml
-[ ] package/policies/fmeda_update_policy.yaml
-
-[ ] outputs/package_status.csv
-[ ] outputs/evidence_package_summary.md
-```
-
-A successful D14 run should answer:
-
-```text
-Which artifacts are included in the evidence package?
-Which required artifacts are missing?
-Which metrics and FMEDA rows are supported by evidence?
-Which claims are supported and which remain open?
-Which assumptions are active?
-Which review items remain unresolved?
-Which artifacts are estimated versus measured?
-Which files support measured DC and residual FIT?
-Can a reviewer trace FMEDA rows back to fault outcomes and campaign data?
-Is the package ready for review, archive, or further report generation?
-```
+D17 will turn remaining gaps into closure actions.
