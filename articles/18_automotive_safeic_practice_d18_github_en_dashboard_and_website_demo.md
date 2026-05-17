@@ -1,1736 +1,1163 @@
-# [Automotive Safe-IC Practice 18] Dashboard and Website Demo: From Safety Evidence Packages to an Interactive Engineering Review Portal
+# Automotive Safe-IC Practice 18: Regression Gate — Turning Safety Metrics into CI Quality Gates
 
 **Author**: Darren H. Chen  
 **Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D18_dashboard_and_website_demo  
-**Tags**: Automotive Chip, Functional Safety, Safety Dashboard, Website Demo, Evidence Package, FMEDA, Fault Injection, Diagnostic Coverage, Residual FIT, Tool Comparison, Engineering Review
+**Demo**: `D18_regression_gate_safety_metrics_ci`  
+**Tags**: Automotive Chip, Functional Safety, ISO 26262, ASIL, FIT, Diagnostic Coverage, SPFM, LFM, PMHF, Fault Campaign, FMEDA, Regression Gate, CI, Evidence Automation
 
 ---
 
-## 1. Why This Article Matters
+## 1. From Safety Analysis to Engineering Control
 
-In the previous article, we introduced a commercial tool comparison workflow.
+By D17, the flow has already moved through design input packaging, base FIT analysis, safety mechanism exploration, fault-list preparation, simulation context construction, fault campaign setup, execution planning, outcome classification, final metric preparation, FMEDA modeling, top-down FMEDA organization, and diagnostic coverage closure.
 
-D17 compared an internal safety evidence package with normalized commercial-tool evidence and generated outputs such as:
-
-```text
-tool_comparison_summary.md
-tool_comparison_matrix.csv
-fault_list_overlap.csv
-fault_outcome_correlation.csv
-dc_comparison_by_failure_mode.csv
-fmeda_row_comparison.csv
-residual_fit_comparison.csv
-methodology_gap_report.csv
-comparison_warnings.csv
-```
-
-That comparison makes the flow more credible.
-
-However, reports and CSV files are still not the easiest way to communicate a safety engineering workflow.
-
-A reviewer, customer, manager, collaborator, or potential employer may ask:
-
-> Can I see the safety flow, evidence, metrics, FMEDA updates, fault results, trend tracking, and tool comparison in one navigable demo?
-
-The eighteenth demo in this repository is:
+At that point, a team may have many useful artifacts:
 
 ```text
-D18_dashboard_and_website_demo
+FIT summaries
+fault campaign classifications
+residual FIT tables
+FMEDA rows
+closure action plans
+review queues
+database session manifests
+evidence indexes
 ```
 
-The generic tool introduced in this article is:
+However, an automotive chip project does not pass or fail once. It changes every day.
+
+RTL changes.
+
+Clocking changes.
+
+Safety mechanisms change.
+
+Fault lists change.
+
+Test stimulus changes.
+
+Mission profile assumptions change.
+
+Therefore, the functional safety flow needs a regression gate.
+
+D18 turns safety work from a manual review activity into a repeatable engineering control system.
+
+It answers a practical question:
 
 ```text
-safeic-dashboard
+When a design changes, can we automatically decide whether the safety evidence is still acceptable?
 ```
 
-The purpose of `safeic-dashboard` is to convert safety evidence packages, reports, metrics, trends, and comparison outputs into a static or lightweight interactive review portal:
-
-```text
-evidence package
-safety report
-metric tables
-FMEDA tables
-fault outcomes
-regression trend outputs
-commercial tool comparison outputs
-public-safe metadata
-dashboard configuration
-```
-
-and generate:
-
-```text
-site/index.html
-site/data/dashboard_index.json
-site/data/metrics/*.json
-site/data/fmeda/*.json
-site/data/campaign/*.json
-site/data/trends/*.json
-site/data/comparison/*.json
-site/assets/
-site/README.md
-```
-
-The central idea is:
-
-> A dashboard is not just a visualization layer. It is a communication layer that turns structured safety evidence into an inspectable, navigable, and shareable engineering story.
+This is the bridge between safety methodology and day-to-day chip development.
 
 ---
 
-## 2. Where D18 Fits in the Flow
+## 2. D18 Position in the 20-Demo Flow
 
-D18 sits after reporting, regression tracking, and tool comparison.
+D18 is the regression-gate stage of the series.
 
-```mermaid
-flowchart LR
-    A[D14 Evidence Package] --> D[D18 Dashboard / Website Demo]
-    B[D15 Safety Report] --> D
-    C[D16 Regression Trend] --> D
-    E[D17 Tool Comparison] --> D
-    D --> F[Interactive Review Portal]
-    D --> G[Public Methodology Demo]
-    D --> H[Customer / Partner Demo]
-```
+It does not replace D01-D17.
 
-**Figure 1. D18 turns evidence packages, reports, trends, and comparison outputs into a dashboard and website demo.**
-
-Earlier demos answered:
-
-```text
-What evidence exists?
-What does the report say?
-How did metrics change over iterations?
-How does this flow compare with another tool?
-```
-
-D18 answers:
-
-```text
-Can the whole workflow be reviewed interactively?
-Can key metrics be inspected quickly?
-Can unsafe faults be linked to FMEDA rows?
-Can trend changes be viewed across iterations?
-Can tool comparison gaps be explored?
-Can public-safe demo data be separated from private project data?
-```
-
-This is the transition from file-based engineering output to product-style demonstration.
-
----
-
-## 3. Dashboard Is Not a Replacement for Evidence
-
-A dashboard must not replace the evidence package.
-
-It should sit on top of it.
+It reads their outputs and converts the safety state into CI-grade pass / warn / fail decisions.
 
 ```mermaid
 flowchart TD
-    A[Raw Artifacts] --> B[Evidence Package]
-    B --> C[Safety Report]
-    B --> D[Dashboard Data Model]
-    D --> E[Dashboard / Website]
-    B --> F[Traceability Package]
-    E --> G[Human Review]
-    F --> G
+    D13[D13 Fault Outcome Classification] --> D14[D14 Result Writeback and Final Metrics]
+    D14 --> D15[D15 FMEDA Data Model]
+    D15 --> D16[D16 Top-down FMEDA Flow]
+    D16 --> D17[D17 Diagnostic Coverage Closure]
+    D17 --> D18[D18 Regression Gate]
+    D18 --> D19[D19 Evidence Traceability]
+    D19 --> D20[D20 End-to-End Mini Flow]
 ```
 
-**Figure 2. The dashboard presents evidence, but the evidence package remains the source of truth.**
+D18 is not a new safety calculation stage.
 
-A good dashboard should make it easy to navigate:
+It is a control stage.
 
-```text
-metrics
-fault outcomes
-FMEDA rows
-review items
-trend changes
-comparison gaps
-assumptions
-limitations
-traceability
-```
+It converts evidence into rules.
 
-But every displayed number should still point back to source evidence.
+It converts rules into gates.
+
+It converts gates into continuous integration decisions.
 
 ---
 
-## 4. Why a Dashboard Matters
+## 3. What Regression Means in a Functional Safety Flow
 
-A safety workflow has many artifacts:
-
-```text
-CSV tables
-Markdown reports
-YAML policies
-log files
-fault lists
-FMEDA rows
-trend reports
-comparison matrices
-review items
-```
-
-These artifacts are excellent for reproducibility, but hard for quick understanding.
-
-A dashboard helps by organizing them into review pages:
+In ordinary RTL verification, regression often means:
 
 ```text
-Overview
-Metrics
-Fault Campaign
-Fault Outcomes
-Measured DC
-FMEDA
-Residual FIT
-Review Items
-Regression Trends
-Tool Comparison
-Traceability
-Assumptions
-Downloads
+run testcases
+collect pass / fail results
+measure coverage
+compare against a threshold
 ```
 
-A reviewer can start from a top-level view and drill down into evidence.
+In functional safety, regression has a broader meaning:
 
-This makes the workflow easier to communicate without sacrificing traceability.
+```text
+re-check whether the safety argument remains valid after design, configuration, stimulus, or evidence changes
+```
+
+A safety regression should ask:
+
+```text
+Did FIT increase?
+Did diagnostic coverage decrease?
+Did residual FIT exceed the budget?
+Did unresolved faults grow?
+Did unsafe faults appear?
+Did evidence become stale?
+Did a safety mechanism lose its endpoint binding?
+Did an alarm or observe point disappear?
+Did a database session become inconsistent with the exported reports?
+```
+
+This is why D18 is not just a script that greps for a success string.
+
+It is a structured safety quality gate.
 
 ---
 
-## 5. Public Demo vs Private Project Dashboard
+## 4. Metrics That Matter to the Gate
 
-A key architecture decision is to separate:
+D18 focuses on metrics that can affect a safety decision.
 
-```text
-public methodology demo
-private project dashboard
-```
+Typical metric families include:
 
-Public demo data should avoid:
+| Metric Family | Example Fields | Gate Question |
+|---|---|---|
+| Failure-rate metrics | total FIT, permanent FIT, transient FIT, residual FIT | Is the failure-rate budget still acceptable? |
+| Diagnostic coverage metrics | DC permanent, DC transient, endpoint coverage, mechanism coverage | Did coverage drop below the intended level? |
+| Architectural metrics | SPFM, LFM, PMHF-like summaries | Are hardware random failure metrics still within target? |
+| Campaign metrics | detected, safe, unsafe, unresolved counts | Did the campaign produce unacceptable outcomes? |
+| Closure metrics | open critical actions, unresolved root causes, review status | Is the safety case still open? |
+| Evidence metrics | missing files, stale inputs, mismatched sessions | Can the result be trusted and reproduced? |
 
-```text
-proprietary RTL
-customer names
-license-protected reports
-commercial tool raw outputs
-private tool logs
-internal project paths
-confidential safety assumptions
-supplier-specific FIT data
-```
+D18 should not overfit to a single number.
 
-Private dashboards can include more details, but should still control access.
+A realistic gate is multi-dimensional.
 
-```mermaid
-flowchart LR
-    A[Private Evidence Package] --> B[Sanitization Layer]
-    B --> C[Public Demo Dataset]
-    A --> D[Private Dashboard Dataset]
-    C --> E[Public Website Demo]
-    D --> F[Internal Review Portal]
-```
+---
 
-**Figure 3. Public and private dashboards should be generated from different data profiles.**
+## 5. FIT, Residual FIT, and Gate Semantics
 
-D18 should support both profiles.
+FIT means Failure In Time. In semiconductor safety work, it is commonly used to express expected random hardware failure rate.
 
-For this article series, the default is:
+Residual FIT is the portion of FIT that remains after crediting safety mechanisms and classifying fault outcomes.
+
+In a regression gate, residual FIT is especially important because it is closer to the remaining safety risk.
+
+A simple gate rule may look like:
 
 ```text
-public_methodology_demo
+if residual_fit_total <= residual_fit_budget:
+    PASS
+else:
+    FAIL
+```
+
+But a better rule should also inspect why residual FIT changed:
+
+```text
+Did the design add registers?
+Did a high-FIT cone lose coverage?
+Did unresolved faults increase?
+Did a mechanism become unmapped?
+Did the mission profile change?
+Did the FIT standard change?
+```
+
+A FIT increase is not always wrong.
+
+For example, adding a safety mechanism may increase transistor count and therefore increase base FIT, while reducing residual FIT through better diagnostic coverage.
+
+D18 should therefore distinguish:
+
+```text
+base FIT movement
+coverage movement
+residual FIT movement
 ```
 
 ---
 
-## 6. Dashboard Data Model
+## 6. Diagnostic Coverage as a Regression Signal
 
-A dashboard should not read every raw CSV directly at runtime.
+Diagnostic coverage, usually abbreviated as DC, measures how effectively a safety mechanism detects or controls faults.
 
-It should use a dashboard data model.
+A regression gate should check both absolute and relative movement.
 
-Suggested normalized JSON files:
-
-```text
-dashboard_index.json
-overview_metrics.json
-fault_outcomes.json
-measured_dc.json
-fmeda_rows.json
-residual_fit.json
-review_items.json
-trend_summary.json
-tool_comparison.json
-traceability_links.json
-assumptions.json
-warnings.json
-```
-
-This is similar to the canonical model used in D17.
-
-The idea is:
+Absolute rule:
 
 ```text
-raw evidence package
-→ dashboard build step
-→ normalized dashboard data
-→ static web presentation
+DC must be greater than or equal to the target.
 ```
 
-```mermaid
-flowchart LR
-    A[Evidence CSV / Markdown / YAML] --> B[Dashboard Builder]
-    B --> C[Normalized JSON]
-    C --> D[Static Dashboard]
-```
-
-**Figure 4. D18 converts file-based evidence into normalized dashboard JSON.**
-
-This separation keeps the website simple and reproducible.
-
----
-
-## 7. Main Dashboard Pages
-
-A practical D18 dashboard can include the following pages:
+Relative rule:
 
 ```text
-1. Overview
-2. Safety Flow
-3. Key Metrics
-4. Fault Campaign
-5. Fault Outcomes
-6. Diagnostic Coverage
-7. FMEDA
-8. Residual FIT
-9. Review Items
-10. Regression Trends
-11. Commercial Tool Comparison
-12. Traceability
-13. Assumptions and Limitations
-14. Downloads
+DC must not drop by more than the allowed delta compared with baseline.
 ```
 
-Each page should answer a specific review question.
+The relative rule is important because a design may still pass the minimum threshold while trending in a bad direction.
 
 For example:
 
 ```text
-Overview:
-  What is the current safety status?
-
-Fault Outcomes:
-  Which faults are detected, safe, unsafe, unresolved?
-
-FMEDA:
-  Which rows use estimated DC, measured DC, or selected DC?
-
-Trends:
-  Did safety metrics improve or regress?
-
-Comparison:
-  Where do internal and commercial-tool outputs agree or disagree?
+previous DC = 98.7%
+current DC  = 97.3%
+target DC   = 97.0%
 ```
 
-A dashboard without clear review questions becomes decorative.
+This may technically pass the target, but the drop deserves review.
+
+D18 should make this visible.
 
 ---
 
-## 8. Overview Page
+## 7. Fault Outcome Metrics
 
-The overview page should summarize the entire package.
-
-Suggested cards:
+D13 classifies fault outcomes into:
 
 ```text
-Design
-Analysis scope
-Evidence package version
-Total base FIT
-Total residual FIT
-Weighted selected DC
-Unsafe fault count
-Unresolved fault count
-Review-required row count
-High-severity review items
-Dashboard profile
+detected
+safe
+unsafe
+unresolved
 ```
 
-Example data:
+D18 consumes this classification.
 
-```json
-{
-  "design": "toy_counter",
-  "scope": "functional safety analysis and fault injection practice",
-  "total_base_fit": 0.078,
-  "total_residual_fit": 0.0204,
-  "weighted_selected_dc": 0.738,
-  "unsafe_faults": 2,
-  "unresolved_faults": 0,
-  "review_required_rows": 2,
-  "profile": "public_methodology_demo"
-}
+A reasonable gate policy is:
+
+```text
+unsafe faults       -> FAIL unless explicitly reviewed and justified
+unresolved faults   -> WARN or FAIL depending on severity and FIT weight
+detected faults     -> contribute positively to diagnostic coverage
+safe faults         -> contribute to safe-fault accounting but still require traceability
 ```
 
-The overview should be honest.
+This distinction matters because not all unresolved faults have the same safety impact.
 
-If the data is demo-only, say so clearly.
+A low-FIT unresolved fault in a non-critical cone may require review.
+
+A high-FIT unresolved fault tied to a safety goal may block the regression.
+
+D18 therefore should not only count unresolved faults.
+
+It should weight them.
 
 ---
 
-## 9. Safety Flow Page
+## 8. Closure State Is Part of the Gate
 
-The safety flow page explains how artifacts are generated.
+D17 creates closure actions for unresolved faults, unsafe outcomes, residual FIT gaps, missing bindings, and incomplete evidence.
+
+D18 uses those actions as gate inputs.
+
+A typical closure gate may be:
+
+```text
+critical open actions > 0 -> FAIL
+high open actions     > 0 -> FAIL or WARN depending on branch policy
+medium open actions   > threshold -> WARN
+low open actions      -> PASS with tracking
+```
+
+This prevents a common engineering mistake:
+
+```text
+metrics look acceptable, but the review queue still contains unresolved safety concerns
+```
+
+The regression gate should not only check numbers.
+
+It should check unfinished engineering decisions.
+
+---
+
+## 9. Evidence Freshness and Staleness
+
+A safety metric is useful only when its input evidence matches the current design state.
+
+D18 should therefore include freshness checks.
+
+Example questions:
+
+```text
+Was the final metrics table generated from the current outcome classification?
+Was the FMEDA model generated after final metric writeback?
+Was the closure dashboard generated after FMEDA rollup?
+Was the fault list generated from the latest EP-to-SM map?
+Was the VCD context generated after the latest observe-point plan?
+```
+
+This is not merely file timestamp checking.
+
+The stronger method is to use artifact identity.
+
+Each artifact should carry a run identity:
+
+```text
+artifact_id
+source_demo
+source_file
+source_hash
+generated_at
+input_manifest_id
+upstream_dependency_id
+```
+
+D18 can then detect stale evidence even when filenames look correct.
+
+---
+
+## 10. Regression Gate Architecture
+
+A robust D18 gate can be organized as a four-layer architecture.
+
+```mermaid
+flowchart TD
+    A[Upstream Evidence Collectors] --> B[Metric Normalization Layer]
+    B --> C[Gate Rule Engine]
+    C --> D[CI Decision Publisher]
+    C --> E[Review Packet Builder]
+    D --> F[PASS / WARN / FAIL]
+    E --> G[Reviewer Dashboard]
+```
+
+The layers are:
+
+```text
+collector layer       -> gather D13-D17 artifacts
+normalization layer   -> convert CSV/JSON/MD into comparable tables
+rule engine layer     -> apply thresholds and dependency checks
+publisher layer       -> emit CI result and review packet
+```
+
+This keeps the system maintainable.
+
+Adding a new metric should not require rewriting the entire flow.
+
+---
+
+## 11. Input Contract from D17
+
+D18 primarily consumes the D17 handoff.
+
+Typical D17 outputs used by D18 include:
+
+```text
+closure_item_catalog.csv
+unresolved_root_cause_analysis.csv
+diagnostic_coverage_gap_analysis.csv
+closure_action_plan.csv
+closure_decision_matrix.csv
+residual_fit_priority_queue.csv
+fmeda_review_packet.csv
+d17_handoff_to_d18.csv
+d17_quality_gate.csv
+evidence_index.csv
+```
+
+These files represent the final open state before CI gating.
+
+D18 should not ignore D14, D15, or D16, but D17 is the immediate upstream owner of closure semantics.
+
+A clean D18 design should treat D17 as the primary closure authority.
+
+---
+
+## 12. Cross-Checking D14, D15, and D16
+
+D18 should also cross-check upstream evidence beyond D17.
+
+From D14:
+
+```text
+final metrics summary
+lambda bucket allocation
+result writeback manifest
+```
+
+From D15:
+
+```text
+FMEDA residual FIT table
+FMEDA traceability matrix
+residual FIT review queue
+```
+
+From D16:
+
+```text
+top-down FMEDA rollup
+assumption register
+top-down review queue
+```
+
+This creates a consistency triangle:
 
 ```mermaid
 flowchart LR
-    A[D01 Input Package] --> B[D02 Assumption Setup]
-    B --> C[D03 FIT Modeling]
-    C --> D[D04 Base FIT Review]
-    D --> E[D05 Structural Safety Model]
-    E --> F[D06 Estimated DC]
-    F --> G[D07 Safety Mechanism Selection]
-    G --> H[D08 Fault List]
-    H --> I[D09 VCD Context]
-    I --> J[D10 Fault Campaign]
-    J --> K[D11 Outcome Classification]
-    K --> L[D12 Measured DC]
-    L --> M[D13 FMEDA Update]
-    M --> N[D14 Evidence Package]
-    N --> O[D15 Report]
-    O --> P[D16 Regression]
-    P --> Q[D17 Comparison]
-    Q --> R[D18 Dashboard]
+    A[D14 Final Metrics] --> G[D18 Regression Gate]
+    B[D15 FMEDA Data Model] --> G
+    C[D16 Top-down FMEDA] --> G
+    D[D17 Closure Actions] --> G
+    G --> H[CI Decision]
 ```
 
-**Figure 5. The dashboard should show the complete safety analysis and fault injection flow.**
+If D14 says residual FIT is acceptable but D15 has residual FIT review rows, D18 should report a consistency issue.
 
-This page is important for public explanation.
-
-It tells users that the platform is not just one script.
-
-It is a structured safety analysis workflow.
+If D16 still has open assumptions, D18 should not claim the safety case is clean.
 
 ---
 
-## 10. Key Metrics Page
+## 13. Gate Rule Types
 
-The key metrics page should provide concise, grouped metrics.
+D18 rules can be grouped into several types.
 
-Suggested sections:
-
-```text
-top-level safety metrics
-measured diagnostic coverage
-residual FIT by failure mode
-FMEDA review status
-campaign quality
-evidence quality
-```
-
-Example metric table:
-
-```csv
-metric,value,status
-total_base_fit,0.078,INFO
-total_residual_fit,0.0204,REVIEW
-weighted_selected_dc,0.738,REVIEW
-unsafe_faults,2,HIGH
-review_required_rows,2,HIGH
-metric_confidence,LOW,WARN
-```
-
-The dashboard can show these as cards and tables.
-
-For public demos, avoid pretending that toy data represents production-level signoff.
-
----
-
-## 11. Fault Campaign Page
-
-The fault campaign page should show execution status.
-
-Suggested fields:
-
-```text
-campaign id
-design
-fault list version
-total requested faults
-executed faults
-passed runs
-failed runs
-timeout runs
-not-classified runs
-execution mode
-run timestamp
-```
-
-Example:
-
-```csv
-item,value
-campaign_id,campaign_demo_001
-design,toy_counter
-requested_faults,5
-executed_faults,5
-passed_runs,5
-failed_runs,0
-not_classified,0
-execution_mode,emulation
-```
-
-The page should also link to:
-
-```text
-campaign_status.csv
-raw_fault_results.csv
-fault_outcomes.csv
-campaign warnings
-```
-
-A campaign page helps reviewers check whether measured results are backed by actual runs.
-
----
-
-## 12. Fault Outcomes Page
-
-The fault outcomes page should allow filtering by:
-
-```text
-outcome
-failure mode
-fault type
-node
-endpoint
-safety mechanism
-confidence
-review status
-```
-
-Suggested table columns:
-
-```text
-fault_id
-node
-fault_type
-failure_mode
-endpoint
-expected_alarm
-observed_alarm
-outcome
-subtype
-confidence
-reason
-linked_fmeda_row
-```
-
-Example:
-
-```csv
-fault_id,node,fault_type,failure_mode,outcome,reason
-F001,toy_counter.count[0],stuck_at_0,FM_DATA_CORRUPTION,detected,alarm asserted within detection window
-F003,toy_counter.count_parity,stuck_at_0,FM_DIAGNOSTIC_STATE_CORRUPTION,unsafe,no alarm observed
-F004,toy_counter.alarm,stuck_at_0,FM_ALARM_NOT_ASSERTED,unsafe,alarm stuck inactive
-```
-
-Unsafe faults should be visually prominent.
-
-But the source evidence should remain traceable.
-
----
-
-## 13. Diagnostic Coverage Page
-
-The diagnostic coverage page should show DC by:
-
-```text
-overall
-endpoint
-failure mode
-safety mechanism
-part
-subpart
-```
-
-Important labels:
-
-```text
-estimated_dc
-measured_dc
-selected_dc
-confidence
-sample size
-unresolved ratio
-```
-
-Example:
-
-```csv
-group_type,group_id,estimated_dc,measured_dc,selected_dc,confidence
-failure_mode,FM_DATA_CORRUPTION,0.90,1.00,0.90,LOW
-failure_mode,FM_DIAGNOSTIC_STATE_CORRUPTION,0.00,0.00,0.00,LOW
-failure_mode,FM_ALARM_NOT_ASSERTED,0.00,0.00,0.00,LOW
-```
-
-The dashboard must distinguish estimated, measured, and selected DC.
-
-Mixing these values is one of the most common safety communication mistakes.
-
----
-
-## 14. FMEDA Page
-
-The FMEDA page should show:
-
-```text
-row_id
-part
-subpart
-design_object
-failure_mode
-base_fit
-safety_mechanism
-estimated_dc
-measured_dc
-selected_dc
-residual_fit
-evidence_source
-confidence
-review_status
-review_comment
-```
-
-Example:
-
-```csv
-row_id,part,subpart,failure_mode,selected_dc,residual_fit,review_status
-R001,PART_COUNTER,SUBPART_COUNTER_STATE,FM_DATA_CORRUPTION,0.90,0.0064,low_confidence
-R002,PART_COUNTER,SUBPART_COUNTER_DIAG,FM_DIAGNOSTIC_STATE_CORRUPTION,0.00,0.0040,review_required
-R003,PART_COUNTER,SUBPART_COUNTER_DIAG,FM_ALARM_NOT_ASSERTED,0.00,0.0100,review_required
-```
-
-Useful filters:
-
-```text
-review_required only
-high residual FIT
-low confidence
-unsafe fault linked
-measured DC lower than estimated
-evidence missing
-```
-
-This page is the central review table.
-
----
-
-## 15. Residual FIT Page
-
-The residual FIT page should support prioritization.
-
-Views:
-
-```text
-residual FIT by failure mode
-residual FIT by part
-residual FIT by subpart
-top residual contributors
-residual FIT trend
-```
-
-Example:
-
-```csv
-rank,failure_mode,residual_fit,dominant_row
-1,FM_ALARM_NOT_ASSERTED,0.0100,R003
-2,FM_DATA_CORRUPTION,0.0064,R001
-3,FM_DIAGNOSTIC_STATE_CORRUPTION,0.0040,R002
-```
-
-This answers:
-
-```text
-Where should design improvement focus first?
-Which failure mode dominates remaining risk?
-Which part or subpart should be reviewed?
-```
-
-A dashboard is especially useful here because prioritization is easier when the top contributors are visible.
-
----
-
-## 16. Review Items Page
-
-The review items page should show engineering actions.
-
-Suggested columns:
-
-```text
-item_id
-severity
-row_id
-fault_id
-issue
-recommended_action
-status
-owner
-due_date
-evidence_link
-```
-
-Example:
-
-```csv
-item_id,severity,row_id,issue,recommended_action,status
-I001,HIGH,R003,alarm path has unsafe fault,add redundant alarm or alarm path monitor,open
-I002,MEDIUM,R002,diagnostic state unprotected,add protection or justify residual risk,open
-I003,LOW,R001,measured DC confidence low,increase campaign sample size,open
-```
-
-A dashboard becomes useful when it converts findings into actions.
-
----
-
-## 17. Regression Trend Page
-
-The regression trend page comes from D16.
-
-It should show:
-
-```text
-baseline iteration
-current iteration
-metric deltas
-residual FIT trend
-DC trend
-fault outcome changes
-FMEDA row changes
-review item changes
-regression alerts
-```
-
-Example:
-
-```csv
-metric,baseline,current,delta,delta_class
-total_residual_fit,0.0204,0.0104,-0.0100,improvement
-unsafe_faults,2,1,-1,improvement
-review_required_rows,2,1,-1,improvement
-```
-
-Important alert examples:
-
-```text
-detected fault became unsafe
-new unsafe fault introduced
-residual FIT increased
-policy changed with metric change
-evidence quality degraded
-```
-
-Trend pages show that the platform is not just a one-shot analysis tool.
-
-It is an iterative safety engineering system.
-
----
-
-## 18. Commercial Tool Comparison Page
-
-The comparison page comes from D17.
-
-It should show:
-
-```text
-input scope alignment
-fault model comparison
-fault list overlap
-fault outcome correlation
-DC comparison
-FMEDA row comparison
-residual FIT comparison
-methodology gap report
-comparison warnings
-```
-
-Example summary:
-
-```csv
-item,value
-matched_faults,90
-internal_only_faults,10
-commercial_only_faults,30
-matched_outcomes,85
-disagreements,5
-policy_differences,2
-methodology_gaps,4
-```
-
-The page should clearly state:
-
-```text
-which metrics are directly comparable
-which metrics are not directly comparable
-which differences are caused by scope or policy
-which differences require review
-```
-
-This prevents the dashboard from becoming a misleading marketing page.
-
----
-
-## 19. Traceability Page
-
-The traceability page should connect:
-
-```text
-FMEDA row
-fault outcome
-fault campaign run
-fault list item
-VCD context
-structural model
-evidence file
-```
-
-Example:
-
-```csv
-trace_id,source,target,relationship
-T001,R003,F004,supported_by_unsafe_fault
-T002,F004,D10_RUN_F004,executed_by
-T003,D10_RUN_F004,D08_F004,defined_by_fault_list
-T004,D08_F004,D09_CONTEXT,uses_context
-```
-
-A useful dashboard should allow a reviewer to start from:
-
-```text
-FMEDA row R003
-```
-
-and trace back to:
-
-```text
-unsafe fault F004
-campaign result
-fault list definition
-VCD context
-classification reason
-```
-
-Traceability is what turns visualization into engineering evidence.
-
----
-
-## 20. Assumptions and Limitations Page
-
-This page should be explicit.
-
-Examples:
-
-```text
-demo data is synthetic or public-safe
-fault model set is limited
-sample size is intentionally small
-commercial tool data may be normalized sample data
-some execution may be emulated
-not production safety signoff
-estimated and measured DC are separated
-safe and unresolved handling follows configured policy
-```
-
-A dashboard that hides limitations loses credibility.
-
-A dashboard that states limitations clearly is more professional.
-
----
-
-## 21. Downloads Page
-
-A useful dashboard should include links to source artifacts:
-
-```text
-safety_report.md
-evidence_package_summary.md
-fmeda_table.csv
-fault_outcomes.csv
-measured_dc_by_failure_mode.csv
-regression_summary.md
-tool_comparison_summary.md
-assumption_register.csv
-traceability_matrix.csv
-```
-
-For public dashboards, downloads should be sanitized.
-
-For private dashboards, downloads can include richer artifacts.
-
-The download page should identify:
-
-```text
-public-safe artifact
-private artifact
-synthetic sample
-derived report
-raw evidence
-```
-
----
-
-## 22. Dashboard Configuration
-
-D18 should be driven by configuration.
-
-Example `dashboard_config.yaml`:
-
-```yaml
-dashboard:
-  title: Automotive Safe-IC Functional Safety Demo
-  demo: D18_dashboard_and_website_demo
-  top_module: toy_counter
-  profile: public_methodology_demo
-
-data_sources:
-  evidence_package: inputs/evidence_package
-  safety_report: inputs/reports/safety_report.md
-  regression_outputs: inputs/regression
-  comparison_outputs: inputs/comparison
-
-pages:
-  overview: true
-  safety_flow: true
-  metrics: true
-  fault_campaign: true
-  fault_outcomes: true
-  diagnostic_coverage: true
-  fmeda: true
-  residual_fit: true
-  review_items: true
-  regression_trends: true
-  tool_comparison: true
-  traceability: true
-  assumptions: true
-  downloads: true
-
-privacy:
-  sanitize_paths: true
-  hide_raw_commercial_reports: true
-  allow_downloads: true
-  show_demo_limitations: true
-```
-
-Configuration makes the dashboard reusable across:
-
-```text
-public GitHub demo
-internal engineering review
-customer demonstration
-training material
-```
-
----
-
-## 23. Public-Safe Data Policy
-
-D18 should include a public-safe data policy.
-
-Example:
-
-```yaml
-public_data_policy:
-  allow:
-    - synthetic RTL names
-    - toy design metrics
-    - normalized sample fault outcomes
-    - derived methodology reports
-    - sanitized comparison tables
-
-  deny:
-    - proprietary RTL
-    - raw commercial tool reports
-    - real customer identifiers
-    - license-protected logs
-    - private filesystem paths
-    - confidential safety assumptions
-```
-
-This is important if the dashboard will be placed on a public website.
-
-A public dashboard must be designed, not accidentally exported.
-
----
-
-## 24. Static Site Architecture
-
-The simplest D18 implementation is a static site.
-
-Static site structure:
-
-```text
-site/
-  index.html
-  assets/
-    app.js
-    style.css
-  data/
-    dashboard_index.json
-    overview_metrics.json
-    fault_outcomes.json
-    measured_dc.json
-    fmeda_rows.json
-    residual_fit.json
-    review_items.json
-    trend_summary.json
-    tool_comparison.json
-    traceability_links.json
-```
-
-Advantages:
-
-```text
-easy to publish
-easy to version-control
-easy to archive
-no server required
-safe for public demo
-works with sanitized JSON
-```
-
-For a GitHub methodology demo, static site generation is the best first version.
-
----
-
-## 25. Data Build Pipeline
-
-D18 should have a build pipeline:
-
-```mermaid
-flowchart TD
-    A[Load Dashboard Config] --> B[Load Evidence Package]
-    B --> C[Load Safety Report]
-    C --> D[Load Regression Outputs]
-    D --> E[Load Tool Comparison Outputs]
-    E --> F[Sanitize Data]
-    F --> G[Normalize to Dashboard JSON]
-    G --> H[Generate Static Site]
-    H --> I[Validate Links and Data]
-```
-
-**Figure 6. D18 build pipeline converts evidence into sanitized dashboard JSON and static website files.**
-
-The dashboard build step should produce warnings if:
-
-```text
-required data is missing
-private path appears in output
-commercial raw report is included
-metric value cannot be parsed
-traceability link is broken
-unsafe fault has no FMEDA link
-```
-
----
-
-## 26. Dashboard Validation
-
-Dashboard generation should validate:
-
-```text
-all enabled pages have data
-all JSON files are valid
-all metric values are parseable
-all FMEDA row links resolve
-all fault IDs resolve
-all review item links resolve
-no forbidden private path appears
-no raw commercial report is copied
-all downloads exist
-dashboard_index.json matches generated files
-```
-
-Example validation output:
-
-```csv
-check,status,details
-overview_data_present,PASS,overview_metrics.json found
-fault_outcomes_present,PASS,5 records
-fmeda_links_resolve,PASS,3 rows linked
-private_path_scan,PASS,no forbidden path found
-commercial_raw_report_scan,PASS,no raw report copied
-traceability_links,WARN,1 link target missing
-```
-
-A dashboard is a generated artifact and must be checked like any other artifact.
-
----
-
-## 27. Dashboard Index
-
-The dashboard index is the entry point for the site.
-
-Example `dashboard_index.json`:
-
-```json
-{
-  "project": "automotive_safeic_practice",
-  "demo": "D18_dashboard_and_website_demo",
-  "top_module": "toy_counter",
-  "profile": "public_methodology_demo",
-  "pages": [
-    {"id": "overview", "title": "Overview", "data": "data/overview_metrics.json"},
-    {"id": "fault_outcomes", "title": "Fault Outcomes", "data": "data/fault_outcomes.json"},
-    {"id": "fmeda", "title": "FMEDA", "data": "data/fmeda_rows.json"},
-    {"id": "trends", "title": "Regression Trends", "data": "data/trend_summary.json"},
-    {"id": "comparison", "title": "Tool Comparison", "data": "data/tool_comparison.json"}
-  ],
-  "limitations": [
-    "public methodology demo",
-    "synthetic or sanitized data",
-    "not production safety signoff"
-  ]
-}
-```
-
-This file allows the website to load pages dynamically.
-
----
-
-## 28. The `safeic-dashboard` Tool Architecture
-
-The generic tool `safeic-dashboard` can be implemented as a staged pipeline.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-dashboard]
-    B[dashboard_config.yaml] --> T
-    C[Evidence Package] --> T
-    D[Safety Report] --> T
-    E[Regression Outputs] --> T
-    F[Tool Comparison Outputs] --> T
-
-    T --> G[Load Sources]
-    G --> H[Normalize Data]
-    H --> I[Sanitize Public Data]
-    I --> J[Build Dashboard JSON]
-    J --> K[Render Static Site]
-    K --> L[Validate Dashboard]
-    L --> M[Generate Site Package]
-```
-
-**Figure 7. `safeic-dashboard` loads evidence, normalizes and sanitizes it, generates dashboard JSON, renders a static site, and validates the output.**
-
-Suggested internal modules:
-
-```text
-safeic_dashboard/
-  cli.py
-  manifest.py
-  load_config.py
-  source_loader.py
-  csv_to_json.py
-  markdown_loader.py
-  data_model.py
-  sanitizer.py
-  page_builder.py
-  static_site.py
-  link_validator.py
-  dashboard_validator.py
-  report.py
-```
-
-Responsibilities:
-
-| Module | Responsibility |
+| Rule Type | Example |
 |---|---|
-| `source_loader.py` | Load D14-D17 outputs |
-| `csv_to_json.py` | Convert CSV tables to JSON records |
-| `markdown_loader.py` | Load report summaries |
-| `data_model.py` | Build dashboard-ready data |
-| `sanitizer.py` | Remove private paths and disallowed artifacts |
-| `page_builder.py` | Build page-specific JSON |
-| `static_site.py` | Generate HTML, JS, CSS |
-| `link_validator.py` | Check internal links |
-| `dashboard_validator.py` | Validate generated site |
-| `report.py` | Generate build summary and warnings |
+| Threshold rule | residual FIT must not exceed budget |
+| Trend rule | DC must not drop more than allowed delta |
+| Completeness rule | required evidence files must exist |
+| Consistency rule | D14 final metric count must match D15 FMEDA rollup |
+| Closure rule | no critical open closure item |
+| Classification rule | unsafe faults must be zero or explicitly waived |
+| Freshness rule | downstream artifact must be newer than upstream dependency identity |
+| Policy rule | release branch uses stricter thresholds than development branch |
+
+A single pass/fail flag is too weak.
+
+D18 should produce a rule-level result table so reviewers can see why a gate passed or failed.
 
 ---
 
-## 29. D18 Directory Structure
+## 14. PASS, WARN, FAIL, and BLOCK
 
-Suggested directory:
+A practical gate should use more than two states.
+
+Recommended states:
 
 ```text
-D18_dashboard_and_website_demo/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    dashboard_config.yaml
-    public_data_policy.yaml
-
-    evidence_package/
-      package_manifest.yaml
-      evidence_index.csv
-      assumption_register.csv
-      traceability_matrix.csv
-      metrics/
-        measured_dc_by_failure_mode.csv
-        measured_dc_by_endpoint.csv
-        measured_residual_fit.csv
-        safety_metric_summary.csv
-      fmeda/
-        fmeda_table.csv
-        fmeda_review_items.csv
-      campaign/
-        campaign_status.csv
-        fault_outcomes.csv
-
-    reports/
-      safety_report.md
-      safety_report_summary.md
-
-    regression/
-      regression_summary.md
-      metric_trend.csv
-      regression_alerts.csv
-
-    comparison/
-      tool_comparison_summary.md
-      fault_outcome_correlation.csv
-      dc_comparison_by_failure_mode.csv
-      methodology_gap_report.csv
-
-  site/
-    index.html
-    assets/
-      app.js
-      style.css
-    data/
-      dashboard_index.json
-      overview_metrics.json
-      fault_outcomes.json
-      measured_dc.json
-      fmeda_rows.json
-      residual_fit.json
-      review_items.json
-      trend_summary.json
-      tool_comparison.json
-      traceability_links.json
-
-  outputs/
-    dashboard_build_summary.md
-    dashboard_validation.csv
-    dashboard_warnings.csv
-    site_manifest.yaml
+PASS   -> safe to continue
+WARN   -> acceptable for development, review required
+FAIL   -> cannot merge or release without action
+BLOCK  -> input evidence incomplete; decision cannot be made
 ```
 
-This directory separates inputs, generated site, and build outputs.
+`BLOCK` is different from `FAIL`.
+
+For example, if the fault outcome file is missing, D18 cannot say the design failed safety criteria.
+
+It can only say the evidence is incomplete.
+
+This distinction improves engineering fairness.
 
 ---
 
-## 30. D18 Manifest
+## 15. Branch-Aware Safety Policy
+
+Not every branch needs the same strictness.
+
+A development branch may allow warnings.
+
+A release candidate should be stricter.
+
+Example policy:
+
+| Branch Type | Unsafe Faults | Critical Closure Actions | Evidence Missing | DC Drop |
+|---|---:|---:|---:|---:|
+| development | FAIL | FAIL | BLOCK | WARN |
+| integration | FAIL | FAIL | BLOCK | FAIL if above delta |
+| release | FAIL | FAIL | BLOCK | FAIL on any unexplained drop |
+
+D18 can encode this through a policy file:
+
+```yaml
+branch_policy:
+  development:
+    allow_warn: true
+    fail_on_dc_drop_percent: 2.0
+  release:
+    allow_warn: false
+    fail_on_dc_drop_percent: 0.5
+```
+
+This avoids hardcoding project policy into scripts.
+
+---
+
+## 16. Baseline Comparison
+
+Regression implies comparison.
+
+D18 should compare current evidence against a baseline.
+
+Baseline types include:
+
+```text
+last passing run
+last release candidate
+ASIL-target baseline
+customer-agreed baseline
+manual review baseline
+```
+
+A baseline snapshot should contain:
+
+```text
+metric table
+artifact hashes
+policy version
+rule version
+gate result
+review waivers
+```
+
+Then D18 can answer:
+
+```text
+Which metric changed?
+Which evidence changed?
+Which rule changed?
+Was the change expected?
+```
+
+---
+
+## 17. Safety Metrics Are Not Ordinary Coverage Numbers
+
+Code coverage and functional coverage are usually measured to increase confidence in verification completeness.
+
+Safety metrics are tied to risk.
+
+A 1% movement in residual FIT or diagnostic coverage may have certification meaning.
+
+Therefore, D18 should avoid casual gate design such as:
+
+```text
+if metric > 90 then pass
+```
+
+A better approach is:
+
+```text
+metric value
+metric target
+metric source
+metric confidence
+metric trend
+metric review state
+metric dependency chain
+```
+
+The gate result is a decision with context, not just a number.
+
+---
+
+## 18. Waiver Management
+
+A real project will sometimes need waivers.
+
+For example:
+
+```text
+an unresolved fault is tied to unreachable stimulus
+an unsafe candidate is outside the safety goal boundary
+a missing alarm is intentionally reviewed as non-safety-relevant
+a metric drop is expected because the design boundary changed
+```
+
+D18 should support waivers, but waivers must be controlled.
+
+A waiver should include:
+
+```text
+waiver_id
+rule_id
+artifact_id
+reason
+owner
+expiration
+review_status
+linked_action
+```
+
+Waivers should not be invisible.
+
+They should appear in the CI summary.
+
+---
+
+## 19. The Difference Between Waiver and Closure
+
+A waiver says:
+
+```text
+this issue is accepted under defined conditions
+```
+
+A closure action says:
+
+```text
+this issue must be resolved
+```
+
+D18 should not confuse them.
+
+A waived issue may pass a gate, but it still remains part of the evidence package.
+
+A closure item blocks or warns until resolved.
+
+This separation is important for auditability.
+
+---
+
+## 20. Evidence Contract for CI
+
+A CI system should not parse arbitrary folders blindly.
+
+D18 should define an evidence contract.
 
 Example:
 
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D18_dashboard_and_website_demo
-  top_module: toy_counter
-
-inputs:
-  dashboard_config: inputs/dashboard_config.yaml
-  public_data_policy: inputs/public_data_policy.yaml
-  evidence_package: inputs/evidence_package
-  reports: inputs/reports
-  regression: inputs/regression
-  comparison: inputs/comparison
-
-outputs:
-  site_dir: site
-  dashboard_index: site/data/dashboard_index.json
-  validation: outputs/dashboard_validation.csv
-  warnings: outputs/dashboard_warnings.csv
-  summary: outputs/dashboard_build_summary.md
-  site_manifest: outputs/site_manifest.yaml
+```text
+inputs/
+  from_D17/
+  from_D16/
+  from_D15/
+  from_D14/
+configs/
+  gate_policy.yaml
+  branch_policy.yaml
+  waiver_register.csv
+outputs/
+  normalized_metrics.csv
+  regression_gate_results.csv
+  ci_status.json
+  review_dashboard.md
 ```
 
-The manifest makes the dashboard build reproducible.
+This gives the CI stage a stable interface.
+
+The purpose of D18 is not just to run checks.
+
+It is to define what a safety regression check means.
 
 ---
 
-## 31. D18 Execution Flow
+## 21. CI Integration Model
+
+A D18 CI flow can be modeled as:
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer Commit
+    participant CI as CI Runner
+    participant D18 as Safety Gate
+    participant Art as Evidence Store
+    participant Rev as Reviewer
+
+    Dev->>CI: push / merge request
+    CI->>D18: run gate with current artifacts
+    D18->>Art: read D14-D17 evidence
+    D18->>D18: normalize metrics and apply policy
+    D18->>CI: return PASS/WARN/FAIL/BLOCK
+    D18->>Rev: publish dashboard if review needed
+```
+
+The CI runner does not need to know how each safety metric was created.
+
+It only needs to execute the gate and publish the result.
+
+---
+
+## 22. What D18 Should Produce
+
+D18 should produce both machine-readable and human-readable outputs.
+
+Machine-readable:
+
+```text
+ci_status.json
+regression_gate_results.csv
+normalized_safety_metrics.csv
+rule_evaluation.csv
+baseline_delta.csv
+waiver_application.csv
+```
+
+Human-readable:
+
+```text
+regression_gate_dashboard.md
+release_readiness_summary.md
+review_packet.md
+```
+
+Handoff outputs:
+
+```text
+d18_handoff_to_d19.csv
+d18_handoff_to_d20.csv
+```
+
+The machine-readable outputs drive automation.
+
+The human-readable outputs support review.
+
+---
+
+## 23. Normalized Safety Metric Table
+
+A normalized metric table should flatten multiple upstream outputs into one schema.
+
+Example columns:
+
+```text
+metric_id
+metric_name
+metric_group
+current_value
+baseline_value
+delta
+unit
+target
+comparison_operator
+source_demo
+source_artifact
+confidence_level
+review_status
+```
+
+This enables generic rule evaluation.
+
+For example:
+
+```text
+metric_name = residual_fit_total
+current_value = 4.2
+unit = FIT
+target = 10
+comparison_operator = <=
+```
+
+The rule engine can evaluate this without knowing the original artifact format.
+
+---
+
+## 24. Rule Evaluation Table
+
+The rule evaluation table should be explicit.
+
+Example columns:
+
+```text
+rule_id
+rule_name
+rule_type
+severity
+metric_id
+condition
+observed_value
+expected_value
+result
+reason
+action_hint
+waiver_id
+```
+
+This is better than a single summary line.
+
+When a gate fails, engineers should immediately know:
+
+```text
+which rule failed
+which metric caused it
+which artifact produced the metric
+what action is suggested
+whether a waiver exists
+```
+
+---
+
+## 25. Gate Dashboard
+
+A reviewer-facing dashboard can summarize the result:
+
+```text
+Overall gate: FAIL
+Critical failures: 2
+Warnings: 5
+Blocked evidence: 0
+Residual FIT trend: +0.3 FIT
+DC trend: -0.8%
+Unresolved high-risk faults: 1
+Open critical closure actions: 1
+Waivers applied: 2
+```
+
+A dashboard should also show the path to the evidence.
 
 ```mermaid
 flowchart TD
-    A[Load Manifest] --> B[Load Dashboard Config]
-    B --> C[Load Public Data Policy]
-    C --> D[Load Evidence Package]
-    D --> E[Load Reports]
-    E --> F[Load Regression Outputs]
-    F --> G[Load Tool Comparison Outputs]
-    G --> H[Build Dashboard Data Model]
-    H --> I[Sanitize Data]
-    I --> J[Generate JSON Data Files]
-    J --> K[Render Static HTML Site]
-    K --> L[Validate Site]
-    L --> M[Generate Build Summary]
+    A[Overall Gate Status] --> B[Metric Results]
+    A --> C[Closure Results]
+    A --> D[Evidence Results]
+    B --> E[Residual FIT]
+    B --> F[DC / SPFM / LFM / PMHF]
+    C --> G[Open Actions]
+    D --> H[Missing / Stale Evidence]
 ```
 
-**Figure 8. D18 execution flow: load sources, build data model, sanitize, generate site, validate, and summarize.**
+D19 will later expand this into a full evidence traceability layer.
 
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-dashboard \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D18_dashboard_and_website_demo
-echo "Running $DEMO"
-
-safeic-dashboard \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
-
-```text
-site/index.html
-site/assets/app.js
-site/assets/style.css
-site/data/dashboard_index.json
-site/data/overview_metrics.json
-site/data/fault_outcomes.json
-site/data/measured_dc.json
-site/data/fmeda_rows.json
-site/data/residual_fit.json
-site/data/review_items.json
-site/data/trend_summary.json
-site/data/tool_comparison.json
-site/data/traceability_links.json
-outputs/dashboard_build_summary.md
-outputs/dashboard_validation.csv
-outputs/dashboard_warnings.csv
-outputs/site_manifest.yaml
-```
+D18 focuses on CI decision quality.
 
 ---
 
-## 32. Example `overview_metrics.json`
+## 26. Handling Tool Warnings and Known Diagnostics
+
+A functional safety toolchain may produce warnings that are not necessarily failures.
+
+D18 should not use a naive rule such as:
+
+```text
+if log contains Warning -> FAIL
+```
+
+Instead, it should classify diagnostics:
+
+```text
+fatal error
+execution error
+known benign warning
+known review warning
+unknown warning
+suppressed message summary
+```
+
+Known benign warnings may be recorded but not fail the gate.
+
+Unknown warnings may trigger review.
+
+Execution errors should fail or block.
+
+This prevents regression noise while preserving evidence quality.
+
+---
+
+## 27. Dry-Run Evidence and Real-Run Evidence
+
+Earlier demos may produce either:
+
+```text
+review-level generated evidence
+real tool-generated evidence
+```
+
+D18 should recognize evidence confidence.
+
+Suggested confidence labels:
+
+```text
+synthetic
+review_level
+tool_parsed
+tool_generated
+signoff_candidate
+```
+
+A development branch may allow review-level evidence.
+
+A release branch should require real tool-generated or signoff-candidate evidence.
+
+This avoids overstating what a demo artifact proves.
+
+---
+
+## 28. Safety Gate and Audit Thinking
+
+D18 should be designed with audit thinking in mind.
+
+An auditor or reviewer may ask:
+
+```text
+What exactly failed?
+Who accepted the waiver?
+Which evidence supports the pass decision?
+Which upstream artifact changed?
+Why did the metric move?
+Can the decision be reproduced?
+```
+
+D18 answers these questions by producing:
+
+```text
+rule table
+metric table
+waiver table
+baseline delta
+artifact index
+review dashboard
+CI status
+```
+
+A gate without traceability is just a script.
+
+A gate with traceability becomes part of the safety case.
+
+---
+
+## 29. Demo18 Project Structure
+
+A clean D18 demo may use the following structure:
+
+```text
+D18_regression_gate_safety_metrics_ci/
+  README.md
+  configs/
+    gate_policy.yaml
+    branch_policy.yaml
+    waiver_register.csv
+    metric_targets.csv
+  scripts/
+    run_demo.csh
+    run_demo.sh
+  tools/
+    build_d18_regression_gate.py
+  inputs/
+    from_D17/
+    from_D16/
+    from_D15/
+    from_D14/
+  outputs/
+    normalized_safety_metrics.csv
+    baseline_safety_metrics.csv
+    baseline_delta.csv
+    rule_evaluation.csv
+    regression_gate_results.csv
+    waiver_application.csv
+    ci_status.json
+    regression_gate_dashboard.md
+    release_readiness_summary.md
+    d18_handoff_to_d19.csv
+    d18_handoff_to_d20.csv
+    d18_quality_gate.csv
+    evidence_index.csv
+    demo_summary.md
+```
+
+The demo should be able to run without private infrastructure.
+
+It should also be easy to connect to a CI runner later.
+
+---
+
+## 30. Example Gate Policy
+
+A policy file may contain:
+
+```yaml
+metrics:
+  residual_fit_total:
+    unit: FIT
+    operator: <=
+    target: 10.0
+    severity: FAIL
+
+  diagnostic_coverage_transient:
+    unit: percent
+    operator: >=
+    target: 90.0
+    severity: FAIL
+
+  unresolved_high_fit_faults:
+    unit: count
+    operator: ==
+    target: 0
+    severity: FAIL
+
+closure:
+  critical_open_actions:
+    operator: ==
+    target: 0
+    severity: FAIL
+
+  high_open_actions:
+    operator: <=
+    target: 0
+    severity: WARN
+```
+
+This approach keeps policy separate from implementation.
+
+That is important because safety targets may differ by product, ASIL target, release phase, or customer requirement.
+
+---
+
+## 31. Example CI Status JSON
+
+D18 should emit a compact status file:
 
 ```json
 {
-  "cards": [
-    {"name": "Design", "value": "toy_counter", "status": "INFO"},
-    {"name": "Total Base FIT", "value": 0.078, "status": "INFO"},
-    {"name": "Total Residual FIT", "value": 0.0204, "status": "REVIEW"},
-    {"name": "Weighted Selected DC", "value": 0.738, "status": "REVIEW"},
-    {"name": "Unsafe Faults", "value": 2, "status": "HIGH"},
-    {"name": "Review Required Rows", "value": 2, "status": "HIGH"}
-  ],
-  "limitations": [
-    "public methodology demo",
-    "toy design",
-    "not production safety signoff"
-  ]
+  "demo_id": "D18",
+  "gate_name": "safety_metrics_regression_gate",
+  "overall_status": "FAIL",
+  "policy": "development",
+  "rules_total": 32,
+  "rules_passed": 27,
+  "rules_warned": 3,
+  "rules_failed": 2,
+  "rules_blocked": 0,
+  "waivers_applied": 1,
+  "review_required": true
 }
 ```
 
-This data can drive the overview page.
+A CI system can consume this easily.
+
+A reviewer can open the dashboard for details.
 
 ---
 
-## 33. Example `dashboard_validation.csv`
+## 32. D18 Handoff to D19
 
-```csv
-check,status,details
-dashboard_config_loaded,PASS,inputs/dashboard_config.yaml
-evidence_package_loaded,PASS,inputs/evidence_package
-overview_metrics_generated,PASS,6 cards
-fault_outcomes_generated,PASS,5 records
-fmeda_rows_generated,PASS,3 records
-traceability_links_resolve,WARN,1 missing link target
-private_path_scan,PASS,no private paths detected
-raw_commercial_report_scan,PASS,no raw commercial reports copied
-site_index_generated,PASS,site/index.html
+D19 will focus on evidence traceability.
+
+D18 should therefore hand off:
+
+```text
+which rules were evaluated
+which artifacts supported each rule
+which metrics were normalized
+which waivers were applied
+which evidence was missing or stale
+which decision was published to CI
 ```
 
-Validation results should be part of the generated site package.
+D19 can then build a broader traceability graph:
+
+```text
+requirement -> metric -> artifact -> rule -> gate decision
+```
+
+D18 creates the decision.
+
+D19 explains the evidence graph behind the decision.
 
 ---
 
-## 34. Example `dashboard_build_summary.md`
+## 33. D18 Handoff to D20
 
-```md
-# D18 Dashboard Build Summary
+D20 is the end-to-end mini flow.
 
-Demo: D18_dashboard_and_website_demo  
-Design: toy_counter  
-Profile: public_methodology_demo  
+D18 should provide D20 with:
 
-## Generated Site
-
-- `site/index.html`
-- `site/data/dashboard_index.json`
-- `site/data/overview_metrics.json`
-- `site/data/fault_outcomes.json`
-- `site/data/fmeda_rows.json`
-- `site/data/trend_summary.json`
-- `site/data/tool_comparison.json`
-
-## Key Dashboard Warnings
-
-- One traceability link target is missing.
-- Data is public-demo data and not production safety signoff.
-- Commercial comparison data is normalized sample data.
-
-## Result
-
-Dashboard generated successfully with warnings.
+```text
+CI gate status
+release readiness summary
+remaining warnings
+open closure actions
+baseline deltas
+artifact index
 ```
 
-This summary helps users know whether the dashboard build is acceptable.
+D20 can then show the full flow from BFR to safety mechanisms, fault campaign, final metrics, FMEDA, closure, and regression gating.
+
+D18 is therefore one of the last engineering gates before the final end-to-end story.
 
 ---
 
-## 35. Dashboard UI Principles
+## 34. Common Mistakes
 
-The UI should follow engineering review principles:
+### 34.1 Treating Any Warning as a Failure
 
-```text
-show key status first
-make unsafe findings easy to find
-separate estimated, measured, and selected values
-make filters obvious
-link metrics to evidence
-show limitations clearly
-avoid decorative-only charts
-avoid hiding warnings
-make CSV downloads available
-```
+Warnings should be classified, not blindly failed.
 
-Dashboard pages should be calm and functional.
+### 34.2 Ignoring Evidence Freshness
 
-The goal is review clarity, not visual complexity.
+A metric may look good but be generated from old inputs.
 
----
+### 34.3 Mixing Development and Release Policy
 
-## 36. Suggested Visual Components
+Development CI can be more permissive than release CI.
 
-Useful components include:
+### 34.4 Hiding Waivers
 
-```text
-metric cards
-sortable tables
-filterable fault outcome table
-FMEDA review table
-residual FIT ranking
-trend tables
-comparison status matrix
-traceability graph
-warning banner
-download list
-```
+A waiver should never disappear from the evidence package.
 
-For a public static demo, tables may be more useful than complex charts.
+### 34.5 Checking Only Final Metrics
 
-Tables are easier to inspect, diff, and validate.
+Final metrics are important, but D18 must also check closure actions, evidence completeness, and trend movement.
 
-Charts can be added later.
+### 34.6 Failing Without Action Hints
+
+A gate should tell engineers what to fix.
 
 ---
 
-## 37. Security and Confidentiality Considerations
+## 35. Review Checklist
 
-D18 must be careful about data exposure.
-
-Before publishing, check:
+A reviewer should be able to answer:
 
 ```text
-no real customer names
-no proprietary RTL paths
-no raw commercial tool reports
-no license server paths
-no internal usernames
-no private absolute paths
-no confidential FIT assumptions
-no private emails or project identifiers
+Which policy was used?
+Which metrics were checked?
+Which artifacts provided the metrics?
+What changed from baseline?
+Which rules passed, warned, failed, or blocked?
+Were waivers applied?
+Were any critical closure items open?
+Were any unsafe faults unresolved?
+Was evidence stale or missing?
+Can the decision be reproduced?
+What should be fixed next?
 ```
 
-The dashboard builder should perform basic scans.
-
-Example forbidden patterns:
-
-```text
-/home/private_project/
-customer_
-license.dat
-LM_LICENSE_FILE
-internal_only
-confidential
-```
-
-This is not perfect security, but it reduces accidental leakage.
+If the gate result cannot answer these questions, it is not yet a safety regression gate.
 
 ---
 
-## 38. Dashboard as Portfolio Asset
+## 36. Summary
 
-A public-safe D18 dashboard can become a portfolio asset.
+D18 transforms functional safety artifacts into a CI-grade regression gate.
 
-It can demonstrate:
+It does not replace safety analysis, fault injection, outcome classification, FMEDA, or closure.
 
-```text
-structured safety workflow
-evidence traceability
-fault injection methodology
-FMEDA integration
-measured DC computation
-regression tracking
-commercial tool correlation
-engineering communication
-```
+It connects them.
 
-This is valuable because it shows not only knowledge, but engineering implementation thinking.
-
-However, public dashboards should focus on methodology and sanitized sample data.
-
-Do not expose private project information to make the demo look more realistic.
-
-A clean public demo is more professional than a risky one.
-
----
-
-## 39. How D18 Connects to Later Demos
-
-D18 creates the website/demo layer.
-
-Later demos can add automation, CI, publication workflow, and user-facing online trial packages.
-
-```mermaid
-flowchart LR
-    A[D18 Dashboard / Website Demo] --> B[D19 CI Automation]
-    A --> C[D20 Public Demo Package]
-    A --> D[D21 User Trial Flow]
-    B --> E[Automatic Dashboard Refresh]
-    C --> F[Shareable Repository Release]
-    D --> G[External Reviewer Experience]
-```
-
-**Figure 9. D18 provides the presentation layer for later CI automation, public demo packaging, and external reviewer workflows.**
-
-The dashboard is where the toolchain becomes visible to external users.
-
----
-
-## 40. Recommended Implementation Stages
-
-D18 can be implemented in stages.
-
-### Stage 1: Static Data Conversion
-
-Convert selected CSV and Markdown files to JSON.
-
-Deliverables:
+The core idea is:
 
 ```text
-site/data/*.json
-outputs/dashboard_validation.csv
+D01-D17 produce safety evidence.
+D18 decides whether that evidence is acceptable for the current regression context.
 ```
 
-### Stage 2: Static HTML Dashboard
-
-Generate `index.html`, `app.js`, and `style.css`.
-
-Deliverables:
+A mature D18 gate should evaluate:
 
 ```text
-site/index.html
-site/assets/app.js
-site/assets/style.css
+FIT and residual FIT
+DC and metric trends
+fault outcome state
+closure actions
+FMEDA review state
+evidence completeness
+baseline delta
+waivers
+branch policy
+CI decision
 ```
 
-### Stage 3: Page Navigation and Filtering
+This is how a safety flow becomes part of everyday engineering.
 
-Add pages and filters for metrics, faults, FMEDA rows, and review items.
+Not a one-time spreadsheet.
 
-Deliverables:
+Not a one-time report.
 
-```text
-overview page
-fault outcomes page
-FMEDA page
-review items page
-```
-
-### Stage 4: Trend and Comparison Pages
-
-Add D16 and D17 outputs.
-
-Deliverables:
-
-```text
-regression trend page
-commercial tool comparison page
-```
-
-### Stage 5: Public-Safe Packaging
-
-Add sanitization, validation, download bundle, and publication workflow.
-
-Deliverables:
-
-```text
-dashboard_warnings.csv
-site_manifest.yaml
-public_demo_site.zip
-```
-
-This staged approach makes D18 useful quickly and safe to publish later.
-
----
-
-## 41. Summary
-
-Dashboard and website generation turns safety evidence into an interactive engineering review experience.
-
-The D18 demo:
-
-```text
-D18_dashboard_and_website_demo
-```
-
-introduces the generic tool:
-
-```text
-safeic-dashboard
-```
-
-The tool consumes:
-
-```text
-D14 evidence package
-D15 safety report
-D16 regression outputs
-D17 commercial tool comparison outputs
-dashboard_config.yaml
-public_data_policy.yaml
-```
-
-and generates:
-
-```text
-site/index.html
-site/assets/app.js
-site/assets/style.css
-site/data/dashboard_index.json
-site/data/overview_metrics.json
-site/data/fault_outcomes.json
-site/data/measured_dc.json
-site/data/fmeda_rows.json
-site/data/residual_fit.json
-site/data/review_items.json
-site/data/trend_summary.json
-site/data/tool_comparison.json
-site/data/traceability_links.json
-outputs/dashboard_build_summary.md
-outputs/dashboard_validation.csv
-outputs/dashboard_warnings.csv
-outputs/site_manifest.yaml
-```
-
-The central lesson is:
-
-> A dashboard is a communication layer for structured safety evidence. It should make the workflow easier to inspect, but it must preserve traceability, show limitations, and avoid exposing private or proprietary data.
-
-D18 makes the methodology visible, navigable, and suitable for public demonstration or controlled engineering review.
-
----
-
-## 42. D18 Demo Checklist
-
-For `D18_dashboard_and_website_demo`, the expected deliverables are:
-
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/dashboard_config.yaml
-[ ] inputs/public_data_policy.yaml
-
-[ ] inputs/evidence_package/package_manifest.yaml
-[ ] inputs/evidence_package/evidence_index.csv
-[ ] inputs/evidence_package/assumption_register.csv
-[ ] inputs/evidence_package/traceability_matrix.csv
-[ ] inputs/evidence_package/metrics/measured_dc_by_failure_mode.csv
-[ ] inputs/evidence_package/metrics/measured_dc_by_endpoint.csv
-[ ] inputs/evidence_package/metrics/measured_residual_fit.csv
-[ ] inputs/evidence_package/metrics/safety_metric_summary.csv
-[ ] inputs/evidence_package/fmeda/fmeda_table.csv
-[ ] inputs/evidence_package/fmeda/fmeda_review_items.csv
-[ ] inputs/evidence_package/campaign/campaign_status.csv
-[ ] inputs/evidence_package/campaign/fault_outcomes.csv
-
-[ ] inputs/reports/safety_report.md
-[ ] inputs/reports/safety_report_summary.md
-
-[ ] inputs/regression/regression_summary.md
-[ ] inputs/regression/metric_trend.csv
-[ ] inputs/regression/regression_alerts.csv
-
-[ ] inputs/comparison/tool_comparison_summary.md
-[ ] inputs/comparison/fault_outcome_correlation.csv
-[ ] inputs/comparison/dc_comparison_by_failure_mode.csv
-[ ] inputs/comparison/methodology_gap_report.csv
-
-[ ] site/index.html
-[ ] site/assets/app.js
-[ ] site/assets/style.css
-
-[ ] site/data/dashboard_index.json
-[ ] site/data/overview_metrics.json
-[ ] site/data/fault_outcomes.json
-[ ] site/data/measured_dc.json
-[ ] site/data/fmeda_rows.json
-[ ] site/data/residual_fit.json
-[ ] site/data/review_items.json
-[ ] site/data/trend_summary.json
-[ ] site/data/tool_comparison.json
-[ ] site/data/traceability_links.json
-
-[ ] outputs/dashboard_build_summary.md
-[ ] outputs/dashboard_validation.csv
-[ ] outputs/dashboard_warnings.csv
-[ ] outputs/site_manifest.yaml
-```
-
-A successful D18 run should answer:
-
-```text
-Can the complete safety workflow be reviewed interactively?
-Can users see key metrics, unsafe faults, FMEDA rows, residual FIT, and review items?
-Can trend and regression outputs be inspected?
-Can tool comparison gaps be explored?
-Can dashboard values be traced back to evidence artifacts?
-Does the dashboard distinguish estimated, measured, and selected DC?
-Are assumptions and limitations visible?
-Has public data been sanitized?
-Is the generated site suitable for GitHub, a company website demo, or controlled customer review?
-```
+A controlled, repeatable, reviewable regression gate.
