@@ -1,1521 +1,1250 @@
-# [Automotive Safe-IC Practice 12] Measured Diagnostic Coverage: From Classified Fault Outcomes to Evidence-Based DC
+# Automotive Safe-IC Practice 12: Fault Injection Execution — Single, Distributed, and Parallel Campaigns
 
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D12_measured_diagnostic_coverage  
-**Tags**: Automotive Chip, Functional Safety, Measured Diagnostic Coverage, Fault Injection, Fault Outcome, Detected Fault, Unsafe Fault, Safe Fault, Unresolved Fault, FMEDA, Residual FIT
+Author: Darren H. Chen  
+Direction: Automotive chip functional safety analysis and fault injection practice  
+Demo: D12_fault_injection_execution_single_distributed_parallel  
+Tags: ISO 26262, Functional Safety, Fault Injection, Fault Campaign, Safety Verification, VCD, FTTI, Alarm, Observe Point, Diagnostic Coverage, FMEDA, Safe-IC
 
 ---
 
-## 1. Why This Article Matters
+## 1. From a prepared campaign package to a running fault campaign
 
-In the previous article, we classified fault campaign results into:
+D11 built the fault campaign input package. It organized the design filelist, clock definition, VCD list, good-machine waveform, campaign-ready fault list, alarm list, observe point specification, FTTI boundary plan, and campaign initialization files into a reviewable package.
+
+D12 is the point where the prepared package becomes an execution flow.
+
+A fault campaign is not simply a loop over faults. It is an execution system that must answer several questions at the same time:
+
+```text
+Which fault should be injected?
+When should it be injected?
+Which VCD context should be used?
+Which design scope should receive the fault?
+Which alarm signals should be monitored?
+Which observe points define unsafe propagation?
+How long should the injected fault be observed?
+How should results be written back for later classification?
+How can the run be restarted, partitioned, and audited?
+```
+
+D12 therefore focuses on execution semantics, not on metric closure. D13 will classify outcomes. D14 will write campaign results back into final metric validation. D12 is the operational bridge between a fault campaign setup and a set of raw execution results.
+
+```mermaid
+flowchart LR
+    A[D11 Campaign Input Package] --> B[D12 Fault Injection Execution]
+    B --> C[D13 Fault Outcome Classification]
+    C --> D[D14 Campaign Result Writeback]
+    D --> E[D15 FMEDA Data Model]
+```
+
+**Figure 1. D12 is the execution layer between campaign setup and outcome classification.**
+
+---
+
+## 2. The exact role of D12 in the Safe-IC flow
+
+The full series uses a 20-stage core flow. D12 is the twelfth stage and corresponds to:
+
+```text
+D12 Fault Injection Execution: single / distributed / parallel campaign execution
+```
+
+It comes after:
+
+```text
+D08 Fault List Generation
+D09 Simulation Safety Context
+D10 Alarm List and Observe Point Boundary
+D11 Fault Campaign Setup
+```
+
+It feeds:
+
+```text
+D13 Fault Outcome Classification
+D14 Fault Campaign Result Writeback and Final Metrics
+D17 Diagnostic Coverage Closure
+D19 Evidence Traceability
+D20 End-to-End Mini Flow
+```
+
+D12 should not redefine the campaign scope. It should execute the scope that D11 prepared. If D12 quietly changes the fault list, VCD list, alarm list, observe points, timing window, or design filelist, the campaign becomes difficult to review.
+
+A disciplined D12 flow treats the D11 package as a signed execution contract.
+
+---
+
+## 3. Fault injection is controlled perturbation, not random chaos
+
+The phrase “fault injection” can be misleading. In an engineering-grade safety verification flow, the fault is not injected randomly without context.
+
+A campaign fault has structure:
+
+```text
+fault_id
+fault_type
+fault_site
+fault_value
+injection_time
+injection_duration
+simulation_context
+alarm_monitor_set
+observe_point_set
+FTTI_window
+expected_safety_boundary
+```
+
+The execution engine uses these fields to replay the good-machine context, perturb one location at a defined time, observe alarm and state behavior, and record the raw result.
+
+The fault may model:
+
+```text
+stuck-at-0
+stuck-at-1
+transient bit flip
+temporary logic upset
+state element corruption
+net-level perturbation
+port-level perturbation
+user-defined cell-level defect
+```
+
+D12 does not decide whether the fault is ultimately detected, safe, unsafe, or unresolved. It collects the evidence that D13 will use to classify the outcome.
+
+---
+
+## 4. Fault, error, failure, alarm, and outcome
+
+Before discussing execution modes, the vocabulary must be precise.
+
+| Term | Meaning in D12 |
+|---|---|
+| Fault | Injected defect or perturbation at a node, port, state element, memory bit, or modeled defect site. |
+| Error | Incorrect internal value caused by a fault. It may or may not propagate. |
+| Failure | Externally relevant malfunction or violation of the safety boundary. |
+| Alarm | Signal asserted by a safety mechanism to indicate detected abnormal behavior. |
+| Observe point | Signal or state boundary used to check whether fault effects propagate into relevant behavior. |
+| Outcome | Classification result produced later, usually detected, safe, unsafe, unresolved, or potential. |
+
+A fault does not automatically cause a failure. A fault may be masked, may occur during an inactive window, may be detected by an alarm, or may propagate silently. D12 must preserve enough trace information for those distinctions.
+
+---
+
+## 5. The D12 input contract inherited from D11
+
+D12 begins with the D11 output package.
+
+A practical D12 package should include:
+
+```text
+campaign_inputs/design_filelist.absolute.f
+campaign_inputs/clock.clk
+campaign_inputs/vcd_list.f
+campaign_inputs/good_machine.vcd
+campaign_inputs/campaign_fault_list.flt
+campaign_inputs/alarm_list.alarm
+campaign_inputs/observe_points.obs
+campaign_inputs/ftti_boundary_plan.csv
+campaign_inputs/campaign_observation_contract.csv
+campaign_inputs/safety_context.json
+
+campaign_configs/fault_campaign_single.ini
+campaign_configs/fault_campaign_distributed.ini
+campaign_configs/fault_campaign_vcd_filter.ini
+
+campaign_commands/run_campaign_single.csh
+campaign_commands/run_campaign_distributed.csh
+```
+
+The important design principle is that D12 should execute from resolved files, not from ambiguous upstream references.
+
+For example, a filelist used by D12 should avoid relative paths that only work from a previous demo directory. D11 should produce an absolute or run-root-resolved filelist. D12 then consumes that filelist as-is.
+
+---
+
+## 6. The execution contract
+
+The campaign execution contract can be summarized as:
+
+```text
+same design boundary
+same VCD context
+same fault list
+same alarm list
+same observe points
+same FTTI policy
+same execution identity
+```
+
+This contract matters because fault injection is sensitive to small changes.
+
+Changing a VCD can change activity windows. Changing observe points can change unsafe propagation detection. Changing alarm signals can change detected-fault counts. Changing FTTI can shift a fault from unresolved to detected or unsafe.
+
+D12 should therefore write an execution identity file before the campaign starts:
+
+```json
+{
+  "demo": "D12_fault_injection_execution_single_distributed_parallel",
+  "campaign_package": "D11_fault_campaign_setup_input_package",
+  "execution_mode": "single",
+  "design_filelist": "outputs/campaign_inputs/design_filelist.absolute.f",
+  "vcd_list": "outputs/campaign_inputs/vcd_list.f",
+  "fault_list": "outputs/campaign_inputs/campaign_fault_list.flt",
+  "alarm_list": "outputs/campaign_inputs/alarm_list.alarm",
+  "observe_points": "outputs/campaign_inputs/observe_points.obs",
+  "timing_policy": "outputs/campaign_inputs/ftti_boundary_plan.csv"
+}
+```
+
+The exact paths in a public demo can be relative to the demo root. A private local execution environment can map them to actual installed tools.
+
+---
+
+## 7. Three execution modes: single, distributed, and parallel
+
+D12 covers three execution styles.
+
+```text
+single campaign mode
+    one campaign manager
+    small fault subset or debug-oriented run
+    easier to inspect
+
+parallel local mode
+    one machine, multiple workers
+    faster than single mode
+    useful for medium fault sets
+
+distributed campaign mode
+    multiple workers across machines or queues
+    intended for large campaigns
+    requires stronger job tracking and restart policy
+```
+
+These modes are not three different safety methodologies. They are three ways to execute the same campaign contract.
+
+```mermaid
+flowchart TD
+    A[D11 Campaign Package] --> B{Execution Mode}
+    B --> C[Single Campaign]
+    B --> D[Local Parallel Campaign]
+    B --> E[Distributed Campaign]
+    C --> F[Raw Fault Results]
+    D --> F
+    E --> F
+    F --> G[D13 Outcome Classification]
+```
+
+**Figure 2. Different execution modes should preserve the same campaign semantics.**
+
+---
+
+## 8. Single campaign execution
+
+Single campaign execution is the simplest execution model.
+
+It is suitable when:
+
+```text
+the fault list is small
+the design is small
+the VCD is short
+the campaign is being debugged
+a new alarm or observe point rule is being validated
+a new fault-list format is being tested
+```
+
+A single execution flow is easier to reason about because the artifacts are linear:
+
+```text
+one command
+one log
+one output directory
+one fault-result report
+one status file
+```
+
+A neutral command wrapper may look like this:
+
+```csh
+#!/bin/csh -f
+
+if ( ! $?SAFEIC_FAULT_ENGINE ) then
+    echo "[ERROR] SAFEIC_FAULT_ENGINE is not set."
+    exit 1
+endif
+
+$SAFEIC_FAULT_ENGINE \
+    --mode single_campaign \
+    --config outputs/campaign_configs/fault_campaign_single.ini \
+    --output outputs/native/single_campaign \
+    |& tee logs/d12_single_campaign.console.log
+
+set rc = $status
+echo $rc > outputs/status/single_campaign.exit_code
+exit $rc
+```
+
+The command name and options are intentionally abstracted. The article cares about the execution model, not about exposing local tool binaries.
+
+---
+
+## 9. Distributed campaign execution
+
+Distributed execution is used when the campaign is too large for a single process.
+
+A large campaign may contain:
+
+```text
+many fault sites
+multiple fault types per site
+multiple injection windows
+multiple VCD files
+long FTTI windows
+large designs with many state elements
+```
+
+Distributed execution splits the campaign into smaller jobs.
+
+```mermaid
+flowchart TD
+    A[Campaign Fault List] --> B[Partitioner]
+    B --> C[Shard 0]
+    B --> D[Shard 1]
+    B --> E[Shard 2]
+    B --> F[Shard N]
+    C --> G[Worker 0]
+    D --> H[Worker 1]
+    E --> I[Worker 2]
+    F --> J[Worker N]
+    G --> K[Shard Result 0]
+    H --> L[Shard Result 1]
+    I --> M[Shard Result 2]
+    J --> N[Shard Result N]
+    K --> O[Merge]
+    L --> O
+    M --> O
+    N --> O
+    O --> P[Raw Campaign Result Package]
+```
+
+**Figure 3. Distributed fault campaign execution partitions the same campaign into multiple result shards.**
+
+The important point is that distributed execution should not change classification semantics. It only changes how computation is scheduled.
+
+---
+
+## 10. Parallel local execution
+
+Parallel local execution is between single and fully distributed execution.
+
+It uses multiple local workers, often on the same server.
+
+Typical controls include:
+
+```text
+max_workers
+max_concurrent_faults
+worker_memory_limit
+worker_timeout
+shard_size
+retry_count
+```
+
+Parallel execution is useful for demos because it demonstrates scaling behavior without requiring a compute farm.
+
+However, parallel execution introduces new risks:
+
+```text
+race conditions in temporary directories
+non-deterministic shard ordering
+incomplete result merging
+worker timeout ambiguity
+partial failure handling
+```
+
+Therefore, D12 should generate a run matrix and a worker manifest even for local parallel mode.
+
+---
+
+## 11. Campaign partitioning strategy
+
+A campaign can be partitioned in several ways.
+
+| Partitioning key | Benefit | Risk |
+|---|---|---|
+| By fault ID range | Simple, deterministic | May create imbalanced runtime if some faults are expensive |
+| By fault type | Easy to separate permanent and transient campaign behavior | May hide cross-type scheduling bottlenecks |
+| By endpoint / cone | Aligns with structure and FMEDA evidence | Requires good structural metadata |
+| By VCD | Natural when multiple safety contexts exist | Some VCDs may dominate runtime |
+| By injection window | Useful for transient faults | Can fragment result merging |
+
+For D12, deterministic partitioning is usually better than clever partitioning. A reviewer should be able to reproduce which fault went to which shard.
+
+A good shard manifest includes:
+
+```text
+shard_id
+fault_id_start
+fault_id_end
+fault_count
+fault_type_set
+vcd_context
+estimated_cost
+worker_status
+result_file
+```
+
+---
+
+## 12. Fault execution state machine
+
+Each fault follows a conceptual state machine.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Scheduled
+    Scheduled --> Injected
+    Injected --> Propagating
+    Propagating --> AlarmObserved
+    Propagating --> ObservePointReached
+    Propagating --> NoVisibleEffect
+    Propagating --> Timeout
+    AlarmObserved --> Recorded
+    ObservePointReached --> Recorded
+    NoVisibleEffect --> Recorded
+    Timeout --> Recorded
+    Recorded --> [*]
+```
+
+**Figure 4. D12 records raw execution events; D13 performs formal outcome classification.**
+
+D12 should not over-collapse these states too early. For example, a fault that triggers an alarm late may need FTTI analysis before it receives detected credit. A fault with no visible effect may be safe or unactivated, depending on activity and observation rules.
+
+---
+
+## 13. The anatomy of an injected fault
+
+A campaign-ready fault can be represented as:
+
+```csv
+fault_id,fault_kind,fault_site,fault_value,injection_time,duration,vcd_id,observe_group,alarm_group
+F000001,permanent_sa0,top.u0.state_q[3],0,100,full,VCD0,OBS_STATE,ALARM_MAIN
+F000002,permanent_sa1,top.u0.valid_o,1,120,full,VCD0,OBS_PROTOCOL,ALARM_MAIN
+F000003,transient_flip,top.u0.counter_q[0],toggle,160,1cycle,VCD0,OBS_STATE,ALARM_MAIN
+```
+
+The engine needs enough information to:
+
+```text
+locate the node
+force or perturb its value
+choose the injection time
+restore or maintain the perturbation
+monitor alarms
+monitor observe points
+record event timing
+```
+
+For permanent faults, the fault may remain active after injection. For transient faults, the fault may last one cycle, one time unit, or a specified transient window depending on the campaign setup.
+
+---
+
+## 14. Permanent and transient execution semantics
+
+Permanent and transient faults differ in both physics and simulation semantics.
+
+Permanent fault execution:
+
+```text
+inject once
+hold the faulty value
+observe until FTTI or simulation end
+record alarm and observe behavior
+```
+
+Transient fault execution:
+
+```text
+inject at a specific time
+apply for a short duration
+release the node
+observe propagation and recovery
+record alarm and observe behavior
+```
+
+A permanent stuck-at fault may model a hard defect. A transient fault may model a soft error, radiation-induced upset, temporary glitch, or short-lived state corruption.
+
+This distinction matters because campaign runtime and classification can differ dramatically.
+
+---
+
+## 15. VCD replay and the good-machine reference
+
+D12 does not invent stimulus. It reuses the simulation safety context built in D09 and packaged in D11.
+
+The VCD supplies the good-machine activity:
+
+```text
+clock activity
+reset behavior
+state element toggles
+control signal transitions
+protocol handshakes
+alarm baseline
+observe point baseline
+```
+
+The execution engine compares the faulted behavior against the good-machine reference.
+
+```mermaid
+sequenceDiagram
+    participant GM as Good Machine VCD
+    participant FI as Fault Injection Engine
+    participant DUT as Design Under Test
+    participant AL as Alarm Monitors
+    participant OP as Observe Points
+    GM->>FI: Replay safety context
+    FI->>DUT: Inject selected fault
+    DUT->>AL: Alarm response or no response
+    DUT->>OP: Propagated effect or no visible effect
+    FI->>FI: Record raw execution evidence
+```
+
+**Figure 5. D12 uses the good-machine context to drive and compare faulted execution.**
+
+The richer the VCD, the more meaningful the campaign. Poor stimulus can cause unresolved faults or misleadingly safe-looking behavior.
+
+---
+
+## 16. FTTI and execution timing
+
+FTTI means Fault Tolerant Time Interval. It defines how much time the system has to detect or control a fault before the fault becomes unacceptable.
+
+D12 uses FTTI as an execution boundary:
+
+```text
+fault injected at T0
+alarm observed at Ta
+unsafe propagation observed at Tu
+observation ends at T0 + FTTI
+```
+
+A simple timing model:
+
+```text
+if alarm occurs before or within FTTI:
+    D13 may classify as detected
+
+if unsafe observe point deviation occurs before alarm:
+    D13 may classify as unsafe
+
+if neither alarm nor unsafe propagation occurs:
+    D13 may classify as safe or unresolved depending on activity
+```
+
+D12 should preserve raw timestamps. D13 should apply the classification rule.
+
+---
+
+## 17. Alarm monitors and observe monitors during execution
+
+Alarm monitors and observe monitors are not the same.
+
+```text
+Alarm monitor:
+    Did a safety mechanism report the fault?
+
+Observe monitor:
+    Did the fault effect reach a safety-relevant boundary?
+```
+
+A fault may:
+
+```text
+trigger alarm only
+reach observe point only
+trigger alarm and reach observe point
+trigger neither
+produce unknown or X propagation
+```
+
+D12 should record these as raw facts. D13 can then classify them.
+
+A raw execution row may look like:
+
+```csv
+fault_id,alarm_seen,alarm_time,observe_deviation,observe_time,completed,status_hint
+F000001,1,135,0,,1,alarm_recorded
+F000002,0,,1,142,1,observe_deviation_recorded
+F000003,0,,0,,1,no_visible_effect
+```
+
+The field `status_hint` is not the final outcome.
+
+---
+
+## 18. Raw execution results versus final outcomes
+
+D12 output is raw campaign evidence.
+
+D13 output is classified outcome evidence.
+
+Do not confuse the two.
+
+D12 may produce:
+
+```text
+fault execution status
+alarm event time
+observe event time
+simulation timeout
+worker exit code
+trace availability
+shard completion state
+```
+
+D13 will use those facts to produce:
 
 ```text
 detected
 safe
 unsafe
 unresolved
-not_classified
+potential
+not simulated
 ```
 
-This classification is the first point where the fault campaign becomes safety evidence.
-
-However, classification alone is still not the final metric.
-
-The next question is:
-
-> How do we convert classified fault outcomes into measured diagnostic coverage?
-
-The twelfth demo in this repository is:
-
-```text
-D12_measured_diagnostic_coverage
-```
-
-The generic tool introduced in this article is:
-
-```text
-safeic-measdc
-```
-
-The purpose of `safeic-measdc` is to compute measured diagnostic coverage from:
-
-```text
-fault_outcomes.csv
-fault_list.csv
-residual_fit.csv
-base_fit_report.csv
-failure mode mapping
-part/sub-part mapping
-classification policy
-measurement policy
-```
-
-and generate:
-
-```text
-measured_dc_by_endpoint.csv
-measured_dc_by_failure_mode.csv
-measured_dc_by_safety_mechanism.csv
-measured_dc_by_part.csv
-estimated_vs_measured_dc.csv
-measured_dc_summary.md
-```
-
-The central idea is:
-
-> Measured DC is not just a count ratio. It is a metric derived from classified fault outcomes under explicit counting, weighting, filtering, and evidence-quality policies.
+This separation improves auditability. If a classification rule changes, the raw D12 evidence can be reinterpreted without rerunning every fault.
 
 ---
 
-## 2. Where D12 Fits in the Flow
+## 19. Result shard design
 
-D12 sits after fault outcome classification and before FMEDA update.
+Distributed and parallel runs produce shards.
 
-```mermaid
-flowchart LR
-    A[D11 Fault Outcomes] --> B[D12 Measured Diagnostic Coverage]
-    C[D06 Estimated DC] --> B
-    D[D03/D04 FIT Data] --> B
-    B --> E[Estimated vs Measured DC]
-    B --> F[Residual FIT Update]
-    E --> G[FMEDA Update]
-    F --> G
-```
-
-**Figure 1. D12 converts classified fault outcomes into measured DC and prepares data for FMEDA update.**
-
-D11 answers:
+A shard result should include:
 
 ```text
-what happened to each injected fault
+shard_id
+worker_id
+fault_count
+completed_fault_count
+failed_fault_count
+start_time
+end_time
+engine_exit_code
+raw_result_file
+worker_log
+status_file
 ```
 
-D12 answers:
+The merge step should not discard shard-level metadata. If one shard fails, the campaign should not silently pass.
+
+D12 should generate:
 
 ```text
-what the measured coverage means for endpoints, failure modes, mechanisms, parts, and residual FIT
+outputs/execution_status/shard_status.csv
+outputs/execution_status/worker_status.csv
+outputs/raw_fault_results/*.csv
+outputs/raw_fault_results/merged_fault_execution.csv
+outputs/d12_quality_gate.csv
 ```
 
-This is a major shift:
-
-```text
-from individual fault evidence
-to aggregate safety metric evidence
-```
+This lets D13 start from a reliable execution inventory.
 
 ---
 
-## 3. Estimated DC vs Measured DC
+## 20. Restart and resume behavior
 
-Earlier in the flow, D06 computed estimated diagnostic coverage.
+Large fault campaigns often cannot be completed in one uninterrupted run.
 
-Estimated DC is based on:
-
-```text
-safety mechanism assumptions
-structural scope
-engineering judgment
-library values
-FIT-weighted calculation
-```
-
-Measured DC is based on:
+A robust D12 flow should support:
 
 ```text
-fault injection outcomes
-actual alarm behavior
-actual observe point deviation
-actual campaign evidence
+resume completed shards
+rerun failed shards
+skip already completed faults
+preserve old logs with timestamps
+write a new execution identity per attempt
+merge only validated results
 ```
 
-They are related but not the same.
+The restart rule should be explicit:
 
-```mermaid
-flowchart TD
-    A[Estimated DC] --> C[Coverage Assumption]
-    B[Measured DC] --> D[Fault Campaign Evidence]
-    C --> E[Compare]
-    D --> E
-    E --> F[Update Safety Argument]
+```text
+same campaign identity + same shard identity + completed status
+    -> reuse result
+
+same campaign identity + failed status
+    -> rerun if retry budget remains
+
+changed campaign identity
+    -> invalidate prior result unless explicitly imported
 ```
 
-**Figure 2. Estimated DC is an assumption or calculation; measured DC is campaign-derived evidence.**
-
-A healthy workflow should compare them.
-
-If measured DC is much lower than estimated DC, the safety mechanism assumption may be too optimistic.
-
-If measured DC is higher, the campaign may have exercised strong detection behavior, but the measurement scope must still be reviewed.
+Silent reuse of stale results is dangerous. It can make a campaign appear more complete than it really is.
 
 ---
 
-## 4. The Simplest Measured DC Formula
+## 21. Save and restore
 
-A common simplified formula is:
-
-```text
-measured_dc = detected / (detected + unsafe)
-```
-
-This formula focuses on faults that produced safety-relevant effects or required diagnostic credit.
-
-Example:
+Some fault campaign engines support save-and-restore style acceleration. The idea is simple:
 
 ```text
-detected = 80
-unsafe = 20
-
-measured_dc = 80 / (80 + 20) = 0.80
+run good-machine context to a checkpoint
+save design state
+restore that state for many fault injections
+avoid replaying the same prefix repeatedly
 ```
 
-But this simple formula hides many questions:
+This is useful when:
 
 ```text
-What about safe faults?
-What about unresolved faults?
-What about not_classified runs?
-Are all faults equally weighted?
-Should residual FIT weights be used?
-Should diagnostic-path faults be separated?
-Should endpoints be grouped by failure mode?
-Should missing evidence reduce confidence?
+many faults share the same injection window
+reset and initialization are long
+VCD prefix replay dominates runtime
 ```
 
-Therefore, D12 must make measurement policy explicit.
+The engineering risk is that save points become part of the evidence chain. A checkpoint must correspond to the same design, VCD, configuration, and tool version.
+
+A checkpoint manifest should include:
+
+```text
+checkpoint_id
+design_hash
+vcd_hash
+config_hash
+save_time
+compatible_fault_window
+producer_run_id
+```
+
+D12 can prepare checkpoint metadata even if the public demo does not run a real save/restore backend.
 
 ---
 
-## 5. Why Counting Policy Matters
+## 22. Resource planning
 
-Different counting policies can produce different measured DC values from the same campaign.
+Fault injection execution consumes CPU, memory, disk, and licenses.
 
-Consider:
-
-```text
-detected = 80
-safe = 50
-unsafe = 20
-unresolved = 10
-not_classified = 5
-```
-
-Possible formulas:
+A D12 resource plan should estimate:
 
 ```text
-detected / (detected + unsafe)
-= 80 / (80 + 20)
-= 0.80
-
-detected / (detected + unsafe + unresolved)
-= 80 / (80 + 20 + 10)
-= 0.727
-
-(detected + safe) / (detected + safe + unsafe)
-= 130 / (130 + 20)
-= 0.867
+fault_count
+vcd_size
+expected runtime per fault
+max concurrent workers
+memory per worker
+log volume
+result volume
+license tokens
+queue policy
 ```
 
-These values are not interchangeable.
+A simple resource table:
 
-A measurement report must state which policy was used.
+| Mode | Fault volume | Typical use | Review focus |
+|---|---:|---|---|
+| Single | 1 to thousands | Debug and smoke campaign | Correct setup and traceability |
+| Local parallel | thousands to tens of thousands | Medium campaign | Worker isolation and merge correctness |
+| Distributed | tens of thousands or more | Large campaign | Job control, restart, shard completeness |
 
-```mermaid
-flowchart TD
-    A[Fault Outcomes] --> B{Counting Policy}
-    B --> C[Detected vs Unsafe]
-    B --> D[Include Unresolved]
-    B --> E[Include Safe]
-    B --> F[FIT Weighted]
-    C --> G[Measured DC]
-    D --> G
-    E --> G
-    F --> G
-```
-
-**Figure 3. Measured DC depends on the counting policy applied to classified outcomes.**
-
-For this demo, the default policy should be conservative and explicit.
+D12 should make scaling visible instead of hiding it inside a command line.
 
 ---
 
-## 6. Recommended Default Policy for D12
+## 23. License and queue awareness
 
-For the first implementation, use a conservative default:
+Real fault campaigns often run in environments with shared compute resources and limited tool licenses.
 
-```text
-Primary measured DC:
-  detected / (detected + unsafe)
+A practical execution wrapper should not blindly launch maximum parallelism.
 
-Unresolved:
-  reported separately
-
-Safe:
-  reported separately
-
-Not classified:
-  excluded from DC numerator and denominator,
-  but reported as campaign quality issue
-```
-
-Why?
-
-Because:
+It should support:
 
 ```text
-detected faults provide diagnostic evidence
-unsafe faults represent detected failure gaps
-safe faults may not require diagnostic credit
-unresolved faults represent evidence gaps
-not_classified runs represent execution quality problems
+max_workers
+license_token_limit
+queue_name
+job_timeout
+retry_limit
+backoff_policy
 ```
 
-Example policy:
+Even when a demo uses a small design, these fields should appear in the run matrix because they are essential in real projects.
 
-```yaml
-measurement_policy:
-  primary_metric:
-    formula: detected_over_detected_plus_unsafe
-
-  safe_faults:
-    count_in_primary_dc: false
-    report_separately: true
-
-  unresolved_faults:
-    count_in_primary_dc: false
-    report_separately: true
-    reduce_confidence: true
-
-  not_classified:
-    count_in_primary_dc: false
-    report_as_campaign_quality_issue: true
-
-  weighting:
-    mode: count
-```
-
-This policy keeps the measured DC clear while still exposing evidence gaps.
-
----
-
-## 7. Count-Based vs FIT-Weighted Measured DC
-
-A measured DC can be computed by simple count or by FIT weighting.
-
-### 7.1 Count-Based Measured DC
-
-Every fault counts equally:
-
-```text
-measured_dc_count =
-  detected_count / (detected_count + unsafe_count)
-```
-
-This is simple and useful for early demos.
-
-### 7.2 FIT-Weighted Measured DC
-
-Each fault is weighted by its associated FIT contribution:
-
-```text
-measured_dc_fit =
-  detected_fit / (detected_fit + unsafe_fit)
-```
-
-This is often more meaningful because faults do not all contribute equally to safety risk.
-
-Example:
+Example run matrix:
 
 ```csv
-fault_id,outcome,fit_weight
-F001,detected,0.010
-F002,detected,0.010
-F003,unsafe,0.001
-F004,unsafe,0.020
+run_id,mode,max_workers,queue,license_limit,retry_limit,status
+D12_SINGLE, single,1,local,1,0,ready
+D12_PARALLEL,parallel,4,local,2,1,ready
+D12_DIST,distributed,16,compute,4,2,ready
 ```
-
-Count-based result:
-
-```text
-detected = 2
-unsafe = 2
-measured_dc_count = 0.50
-```
-
-FIT-weighted result:
-
-```text
-detected_fit = 0.020
-unsafe_fit = 0.021
-measured_dc_fit = 0.488
-```
-
-If the high-FIT unsafe fault dominates, the FIT-weighted result makes that visible.
-
-```mermaid
-flowchart LR
-    A[Fault Outcomes] --> B[Count-Based DC]
-    A --> C[FIT-Weighted DC]
-    D[FIT Weights] --> C
-    B --> E[Comparison]
-    C --> E
-```
-
-**Figure 4. Count-based and FIT-weighted measured DC answer related but different questions.**
-
-D12 should support both, with count-based as the simplest default.
 
 ---
 
-## 8. Mapping Fault Outcomes to FIT Weights
+## 24. Determinism and reproducibility
 
-To compute FIT-weighted measured DC, each fault needs a weight.
+A fault campaign is expensive. Rerunning it should produce comparable results when the same campaign identity is used.
 
-Possible weight sources:
+D12 should preserve:
 
 ```text
-instance FIT
-endpoint FIT
-startpoint FIT
-cone FIT
-failure-mode FIT
-part/sub-part FIT
-manual weight
-uniform weight
+input file hashes
+fault list hash
+VCD hash
+alarm list hash
+observe point hash
+config hash
+engine wrapper version
+execution mode
+random seed if sampling is used
+partitioning rule
 ```
 
-Example mapping:
+This allows reviewers to distinguish:
+
+```text
+same campaign rerun
+different execution mode with same semantics
+changed campaign input
+changed classification rule
+changed tool environment
+```
+
+A campaign that cannot be reproduced cannot be trusted as safety evidence.
+
+---
+
+## 25. Handling suppressed, warning, and error messages
+
+D12 should classify logs carefully.
+
+Not every message containing the word `Error` is a tool execution error. In functional safety terminology, expressions such as permanent error, transient error, or error propagation may describe modeled behavior.
+
+A robust diagnostic collector should distinguish:
+
+```text
+fatal tool errors
+HDL parsing failures
+missing file errors
+license failures
+worker timeout
+known benign warnings
+safety terminology containing the word error
+```
+
+The quality gate should fail on real execution failures:
+
+```text
+engine exit code nonzero
+missing result shard
+empty raw result when faults were scheduled
+missing alarm/observe input
+failed merge
+missing campaign identity
+```
+
+It should not fail simply because a known diagnostic warning appears, provided the warning is classified and justified.
+
+---
+
+## 26. D12 quality gates
+
+D12 should generate machine-readable quality gates.
+
+Suggested checks:
 
 ```csv
-fault_id,node,endpoint,failure_mode,outcome,fit_weight,weight_source
-F001,toy_counter.count[0],toy_counter.count,FM_DATA_CORRUPTION,detected,0.008,endpoint_fit
-F002,toy_counter.count[1],toy_counter.count,FM_DATA_CORRUPTION,detected,0.008,endpoint_fit
-F003,toy_counter.count_parity,toy_counter.count_parity,FM_DIAGNOSTIC_STATE_CORRUPTION,unsafe,0.004,endpoint_fit
-F004,toy_counter.alarm,toy_counter.alarm,FM_ALARM_NOT_ASSERTED,unsafe,0.010,endpoint_fit
+check,status,details
+campaign_package_exists,PASS,D11 handoff found
+design_filelist_resolved,PASS,absolute filelist available
+vcd_list_exists,PASS,good-machine VCD list available
+fault_list_exists,PASS,campaign fault list available
+alarm_list_exists,PASS,alarm list available
+observe_points_exists,PASS,observe point file available
+execution_identity_written,PASS,run identity generated
+single_command_generated,PASS,reviewable command generated
+distributed_command_generated,PASS,reviewable command generated
+raw_result_manifest_exists,PASS,raw result manifest available
+failed_shards,FAIL,one or more shard failures
 ```
 
-If no FIT weight exists, the tool can:
-
-```text
-use uniform weight
-warn and continue
-exclude from FIT-weighted metric
-mark as unresolved for metric computation
-```
-
-The choice should be policy-driven.
+In preflight-only mode, command generation may pass while actual execution is skipped. In real execution mode, missing or failed shard results must fail the gate.
 
 ---
 
-## 9. Outcome Groups for Measurement
+## 27. Raw campaign result schema
 
-D12 should not only compute one global number.
+D12 should output a raw result table suitable for D13.
 
-It should compute measured DC by useful groups:
-
-```text
-endpoint
-failure mode
-safety mechanism
-part/sub-part
-fault model
-fault type
-campaign source
-structural scope
-```
-
-Why?
-
-Because global measured DC can hide weak spots.
-
-Example:
+A recommended schema:
 
 ```csv
-group,measured_dc
-overall,0.85
-FM_DATA_CORRUPTION,0.95
-FM_ALARM_NOT_ASSERTED,0.40
-endpoint_parity,0.92
-alarm_path,0.30
+fault_id,shard_id,worker_id,fault_type,fault_site,vcd_id,injection_time,alarm_seen,alarm_time,observe_deviation,observe_time,simulation_completed,timeout,raw_status,result_artifact
 ```
 
-The overall value may look acceptable, but alarm-path coverage may be weak.
+This table avoids premature classification.
 
-```mermaid
-flowchart TD
-    A[Fault Outcomes] --> B[Overall DC]
-    A --> C[By Failure Mode]
-    A --> D[By Endpoint]
-    A --> E[By Safety Mechanism]
-    A --> F[By Part/Sub-part]
+D13 can apply classification rules such as:
+
+```text
+alarm_seen within FTTI -> detected candidate
+observe_deviation before alarm -> unsafe candidate
+no deviation and no alarm -> safe or inactive candidate
+incomplete simulation -> unresolved candidate
+X propagation to observe point -> potential candidate depending on policy
 ```
 
-**Figure 5. Measured DC should be rolled up by meaningful safety analysis dimensions.**
-
-This is why D12 consumes failure mode and part/sub-part mappings.
+The raw result schema is the interface between execution and outcome logic.
 
 ---
 
-## 10. Measured DC by Endpoint
+## 28. Campaign result merging
 
-Endpoint-level measured DC answers:
+Merging is not just concatenating files.
 
-```text
-For faults targeting this endpoint, how many were detected versus unsafe?
-```
-
-Example:
-
-```csv
-endpoint,detected,safe,unsafe,unresolved,not_classified,measured_dc
-toy_counter.count,2,0,0,0,0,1.000
-toy_counter.count_parity,0,0,1,0,0,0.000
-toy_counter.alarm,1,0,1,0,0,0.500
-```
-
-This immediately shows that:
+A correct merge should check:
 
 ```text
-counter state is covered in this campaign
-diagnostic state is not covered
-alarm path is weak
+all expected shards exist
+all expected fault IDs are present
+no duplicate fault result unless explicitly retried
+retry result replaces failed attempt
+worker exit codes are recorded
+result row count matches scheduled fault count
 ```
 
-Endpoint-level measured DC is especially useful for debugging safety mechanism scope.
-
----
-
-## 11. Measured DC by Failure Mode
-
-Failure-mode roll-up is often more important than signal-level roll-up.
-
-Example:
-
-```csv
-failure_mode,detected,safe,unsafe,unresolved,measured_dc
-FM_DATA_CORRUPTION,2,0,0,0,1.000
-FM_DIAGNOSTIC_STATE_CORRUPTION,0,0,1,0,0.000
-FM_ALARM_NOT_ASSERTED,0,0,1,0,0.000
-FM_FALSE_ALARM,1,0,0,0,1.000
-```
-
-This tells us:
-
-```text
-data corruption is detected in the selected campaign
-diagnostic state corruption remains unsafe
-alarm-not-asserted remains unsafe
-false alarm behavior is observed but needs policy review
-```
-
-A safety review is usually interested in failure mode consequences, not only signal names.
-
----
-
-## 12. Measured DC by Safety Mechanism
-
-Safety mechanism roll-up answers:
-
-```text
-Which mechanisms actually detected faults in the campaign?
-Which mechanisms failed?
-Which mechanisms have unresolved evidence?
-```
-
-Example:
-
-```csv
-safety_mechanism,detected,unsafe,unresolved,measured_dc
-endpoint_parity,2,0,0,1.000
-none,0,2,0,0.000
-redundant_alarm,1,0,0,1.000
-```
-
-This is useful for mechanism validation.
-
-However, be careful:
-
-```text
-a mechanism may only be tested over a limited scope
-a high measured DC may reflect a small campaign
-a mechanism may have no unsafe faults because fault selection was too easy
-```
-
-Therefore, D12 should also report sample size and confidence.
-
----
-
-## 13. Measured DC by Part and Sub-Part
-
-For FMEDA integration, part and sub-part roll-up is important.
-
-Example:
-
-```csv
-part,subpart,detected,safe,unsafe,unresolved,measured_dc
-PART_COUNTER,SUBPART_COUNTER_STATE,2,0,0,0,1.000
-PART_COUNTER,SUBPART_COUNTER_DIAG,1,0,2,0,0.333
-```
-
-This output connects fault campaign evidence to the FMEDA structure.
-
-It helps answer:
-
-```text
-Which sub-part dominates unsafe outcomes?
-Which part needs safety mechanism improvement?
-Which FMEDA rows should be updated?
-```
-
-```mermaid
-flowchart LR
-    A[Fault Outcomes] --> B[Part/Sub-part Roll-up]
-    B --> C[FMEDA Row Update]
-```
-
-**Figure 6. Part/sub-part measured DC roll-up prepares the result for FMEDA update.**
-
----
-
-## 14. Handling Safe Faults
-
-Safe faults can be reported in multiple ways.
-
-Common options:
-
-```text
-exclude from primary DC
-include as safe coverage
-report separately
-use for fault reduction analysis
-use for no-effect statistics
-```
-
-Recommended for D12:
-
-```text
-primary DC:
-  exclude safe faults
-
-secondary metric:
-  safe fault ratio = safe / total_classified
-```
-
-Example:
-
-```csv
-group,total_classified,detected,safe,unsafe,unresolved,measured_dc,safe_ratio
-overall,100,70,20,10,0,0.875,0.200
-```
-
-Why exclude safe faults from primary DC?
-
-Because safe faults do not necessarily prove diagnostic coverage.
-
-They may simply have no safety-relevant effect.
-
-But they are still useful because they reveal:
-
-```text
-masking
-non-propagation
-inactive logic
-overly broad fault list
-structural non-relevance
-```
-
----
-
-## 15. Handling Unresolved Faults
-
-Unresolved faults should reduce confidence, even if they are excluded from the primary measured DC denominator.
-
-A measured DC result with many unresolved faults is weaker.
-
-Example:
-
-```text
-detected = 90
-unsafe = 10
-unresolved = 100
-
-primary measured DC = 90 / (90 + 10) = 0.90
-```
-
-The number looks good, but the evidence quality is poor.
-
-Therefore, D12 should report:
-
-```text
-unresolved_count
-unresolved_ratio
-evidence_quality
-```
-
-Example:
-
-```csv
-group,measured_dc,unresolved_ratio,evidence_quality
-overall,0.90,0.50,LOW
-```
-
-A simple evidence quality rule:
-
-```yaml
-evidence_quality:
-  high:
-    max_unresolved_ratio: 0.05
-  medium:
-    max_unresolved_ratio: 0.20
-  low:
-    above_unresolved_ratio: 0.20
-```
-
-This prevents over-trusting incomplete campaigns.
-
----
-
-## 16. Handling Not-Classified Runs
-
-Not-classified runs usually come from execution problems:
-
-```text
-simulation error
-timeout
-invalid input
-unsupported fault
-skipped run
-```
-
-They should not be counted as measured safety outcomes.
-
-But they must be reported.
-
-Example:
-
-```csv
-group,total_requested,total_classified,not_classified,execution_quality
-overall,120,100,20,LOW
-```
-
-Execution quality is separate from evidence quality.
-
-A campaign may have:
-
-```text
-high evidence quality among completed runs
-but low execution quality due to many failed runs
-```
-
-Both matter.
-
----
-
-## 17. Confidence and Sample Size
-
-Measured DC should always be interpreted with sample size.
-
-Example:
-
-```text
-measured DC = 1.0
-sample size = 2
-```
-
-is much weaker than:
-
-```text
-measured DC = 0.98
-sample size = 500
-```
-
-D12 should report:
-
-```text
-sample size
-detected count
-unsafe count
-unresolved count
-not-classified count
-confidence label
-```
-
-A simple confidence model:
-
-```yaml
-confidence_policy:
-  min_classified_for_high: 100
-  min_classified_for_medium: 20
-  max_unresolved_ratio_for_high: 0.05
-  max_unresolved_ratio_for_medium: 0.20
-```
-
-Example:
-
-```csv
-group,measured_dc,classified_count,unresolved_ratio,confidence
-endpoint_parity,1.000,2,0.000,LOW
-overall,0.875,100,0.050,HIGH
-```
-
-Confidence should not change the measured DC value. It qualifies how strongly we can rely on it.
-
----
-
-## 18. Estimated vs Measured DC Comparison
-
-A key D12 output is comparison against estimated DC from D06.
-
-Example:
-
-```csv
-group,estimated_dc,measured_dc,delta,status
-toy_counter.count,0.90,1.00,+0.10,OK
-toy_counter.count_parity,0.00,0.00,0.00,OK
-toy_counter.alarm,0.00,0.50,+0.50,REVIEW
-```
-
-Possible statuses:
-
-```text
-OK
-MEASURED_LOWER_THAN_ESTIMATED
-MEASURED_HIGHER_THAN_ESTIMATED
-INSUFFICIENT_SAMPLE
-UNRESOLVED_TOO_HIGH
-NO_ESTIMATE
-NO_MEASUREMENT
-```
-
-```mermaid
-flowchart TD
-    A[Estimated DC] --> C[Comparison]
-    B[Measured DC] --> C
-    C --> D{Difference?}
-    D --> E[OK]
-    D --> F[Review Estimate]
-    D --> G[Review Campaign]
-    D --> H[Update FMEDA]
-```
-
-**Figure 7. Estimated-vs-measured comparison helps decide whether to update assumptions, improve mechanisms, or improve the campaign.**
-
-If measured DC is lower than estimated DC, the design or assumption may need improvement.
-
-If measured DC is higher, the campaign scope should be checked before upgrading assumptions.
-
----
-
-## 19. Updating Residual FIT from Measured DC
-
-A measured DC can be used to update residual FIT estimates.
-
-A simplified formula:
-
-```text
-measured_residual_fit = base_fit × (1 - measured_dc)
-```
-
-Example:
-
-```text
-base_fit = 10 FIT
-measured_dc = 0.80
-measured_residual_fit = 2 FIT
-```
-
-For grouped results:
-
-```csv
-group,base_fit,measured_dc,measured_residual_fit
-FM_DATA_CORRUPTION,0.064,1.000,0.000
-FM_ALARM_NOT_ASSERTED,0.010,0.000,0.010
-FM_DIAGNOSTIC_STATE_CORRUPTION,0.004,0.000,0.004
-```
-
-However, this update must be controlled by policy.
-
-Do not blindly replace estimated DC with measured DC if:
-
-```text
-sample size is too small
-unresolved ratio is high
-campaign is not representative
-fault model is too narrow
-execution quality is poor
-measurement scope differs from estimated scope
-```
-
-D12 should output both measured DC and update recommendation.
-
----
-
-## 20. Update Recommendation
-
-D12 can generate an update recommendation:
-
-```text
-use measured DC
-keep estimated DC
-take minimum of estimated and measured
-request more campaign evidence
-do not update due to low confidence
-```
-
-Example policy:
-
-```yaml
-update_policy:
-  allow_measured_update: true
-  require_min_confidence: medium
-  if_measured_lower_than_estimated: use_measured
-  if_measured_higher_than_estimated: require_review
-  if_low_confidence: keep_estimated_and_flag
-```
-
-Example output:
-
-```csv
-group,estimated_dc,measured_dc,confidence,recommendation,reason
-toy_counter.count,0.90,1.00,LOW,keep_estimated_and_flag,sample size too small
-toy_counter.alarm,0.00,0.50,LOW,require_more_evidence,sample size too small and mixed outcomes
-FM_DATA_CORRUPTION,0.90,0.95,MEDIUM,require_review,measured higher than estimated
-FM_ALARM_NOT_ASSERTED,0.85,0.00,HIGH,use_measured,measured lower than estimated
-```
-
-This keeps metric update disciplined.
-
----
-
-## 21. Measurement Policy File
-
-A policy file controls D12 behavior.
-
-Example `measurement_policy.yaml`:
-
-```yaml
-measurement_policy:
-  primary_metric:
-    formula: detected_over_detected_plus_unsafe
-
-  secondary_metrics:
-    report_safe_ratio: true
-    report_unresolved_ratio: true
-    report_execution_quality: true
-
-  weighting:
-    mode: count
-    allow_fit_weighted: true
-    missing_fit_weight_policy: warn_and_use_uniform
-
-  grouping:
-    by_endpoint: true
-    by_failure_mode: true
-    by_safety_mechanism: true
-    by_part: true
-
-  confidence:
-    enable: true
-    min_classified_for_medium: 20
-    min_classified_for_high: 100
-    max_unresolved_ratio_for_medium: 0.20
-    max_unresolved_ratio_for_high: 0.05
-
-  update_policy:
-    allow_measured_update: true
-    require_min_confidence: medium
-    measured_lower_than_estimated: use_measured
-    measured_higher_than_estimated: require_review
-```
-
-This file makes the metric computation reproducible and reviewable.
-
----
-
-## 22. Main Output: `measured_dc_overall.csv`
-
-Example:
+A useful merge summary:
 
 ```csv
 metric,value
-total_requested,5
-total_classified,5
-detected,3
-safe,0
-unsafe,2
-unresolved,0
-not_classified,0
-measured_dc_count,0.600
-safe_ratio,0.000
-unresolved_ratio,0.000
-execution_quality,HIGH
-evidence_quality,LOW
-confidence,LOW
+scheduled_faults,102
+completed_faults,102
+failed_faults,0
+result_shards,4
+missing_shards,0
+duplicate_results,0
+merge_status,PASS
 ```
 
-Why confidence is LOW here?
-
-Because the sample size is tiny, even though all runs classified cleanly.
-
-This is appropriate for a demo.
+This summary becomes the first input to D13.
 
 ---
 
-## 23. Output: `measured_dc_by_endpoint.csv`
+## 29. Execution evidence index
 
-Example:
+D12 should register every important file.
+
+Example evidence index:
 
 ```csv
-endpoint,detected,safe,unsafe,unresolved,not_classified,measured_dc,confidence
-toy_counter.count,2,0,0,0,0,1.000,LOW
-toy_counter.count_parity,0,0,1,0,0,0.000,LOW
-toy_counter.alarm,1,0,1,0,0,0.500,LOW
+artifact_id,artifact_type,path,producer,consumer
+D12_RUN_ID,json,outputs/execution_identity/d12_run_identity.json,D12,D13
+D12_SINGLE_CMD,csh,outputs/commands/run_single_campaign.csh,D12,review
+D12_SHARD_STATUS,csv,outputs/execution_status/shard_status.csv,D12,D13
+D12_RAW_RESULTS,csv,outputs/raw_fault_results/merged_fault_execution.csv,D12,D13
+D12_QUALITY,csv,outputs/d12_quality_gate.csv,D12,review
 ```
 
-This output makes weak endpoints visible.
+The evidence index is not paperwork. It is how later stages know which result belongs to which execution identity.
 
 ---
 
-## 24. Output: `measured_dc_by_failure_mode.csv`
+## 30. Demo structure
 
-Example:
-
-```csv
-failure_mode,detected,safe,unsafe,unresolved,measured_dc,confidence
-FM_DATA_CORRUPTION,2,0,0,0,1.000,LOW
-FM_DIAGNOSTIC_STATE_CORRUPTION,0,0,1,0,0.000,LOW
-FM_ALARM_NOT_ASSERTED,0,0,1,0,0.000,LOW
-FM_FALSE_ALARM,1,0,0,0,1.000,LOW
-```
-
-This output is directly useful for safety review.
-
----
-
-## 25. Output: `estimated_vs_measured_dc.csv`
-
-Example:
-
-```csv
-group_type,group_id,estimated_dc,measured_dc,delta,confidence,status,recommendation
-endpoint,toy_counter.count,0.90,1.00,0.10,LOW,INSUFFICIENT_SAMPLE,keep_estimated_and_flag
-endpoint,toy_counter.alarm,0.00,0.50,0.50,LOW,INSUFFICIENT_SAMPLE,require_more_evidence
-failure_mode,FM_DATA_CORRUPTION,0.90,1.00,0.10,LOW,INSUFFICIENT_SAMPLE,keep_estimated_and_flag
-failure_mode,FM_ALARM_NOT_ASSERTED,0.85,0.00,-0.85,LOW,MEASURED_LOWER_THAN_ESTIMATED,require_more_evidence
-```
-
-This report is one of the most important D12 outputs because it connects measurement back to assumptions.
-
----
-
-## 26. Output: `measured_residual_fit.csv`
-
-Example:
-
-```csv
-group_type,group_id,base_fit,measured_dc,measured_residual_fit,confidence,update_recommendation
-failure_mode,FM_DATA_CORRUPTION,0.064,1.000,0.000,LOW,keep_estimated
-failure_mode,FM_DIAGNOSTIC_STATE_CORRUPTION,0.004,0.000,0.004,LOW,review
-failure_mode,FM_ALARM_NOT_ASSERTED,0.010,0.000,0.010,LOW,review
-```
-
-This prepares data for FMEDA update.
-
-Again, confidence matters.
-
-A low-confidence measured value should not automatically replace estimated FMEDA values.
-
----
-
-## 27. Tool Architecture
-
-The generic tool `safeic-measdc` can be implemented as a staged pipeline.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-measdc]
-    B[fault_outcomes.csv] --> T
-    C[fault_list.csv] --> T
-    D[residual_fit.csv / base_fit_report.csv] --> T
-    E[estimated_dc.csv] --> T
-    F[part_subpart_map.yaml] --> T
-    G[measurement_policy.yaml] --> T
-
-    T --> H[Validate Outcomes]
-    H --> I[Apply Counting Policy]
-    I --> J[Apply Weighting Policy]
-    J --> K[Roll Up by Groups]
-    K --> L[Compare Estimated vs Measured]
-    L --> M[Compute Measured Residual FIT]
-    M --> N[Generate Reports]
-```
-
-**Figure 8. `safeic-measdc` computes measured DC using outcome classification, weighting, grouping, comparison, and update policy.**
-
-Suggested internal modules:
+A practical D12 demo can use the following structure:
 
 ```text
-safeic_measdc/
-  cli.py
-  manifest.py
-  load_inputs.py
-  validate_outcomes.py
-  counting.py
-  weighting.py
-  grouping.py
-  confidence.py
-  estimate_compare.py
-  residual_fit_update.py
-  report.py
+D12_fault_injection_execution_single_distributed_parallel/
+├── README.md
+├── manifest.yaml
+├── scripts/
+│   ├── run_demo.csh
+│   └── run_demo.sh
+├── tools/
+│   ├── build_d12_execution_plan.py
+│   ├── run_or_collect_campaign.py
+│   ├── merge_raw_fault_results.py
+│   └── diagnose_campaign_logs.py
+├── inputs/
+│   └── from_D11/
+├── outputs/
+│   ├── campaign_inputs/
+│   ├── execution_identity/
+│   ├── execution_plan/
+│   ├── commands/
+│   ├── raw_fault_results/
+│   ├── execution_status/
+│   ├── handoff/
+│   └── registry/
+└── logs/
 ```
 
-Responsibilities:
-
-| Module | Responsibility |
-|---|---|
-| `validate_outcomes.py` | Check outcome validity and ID consistency |
-| `counting.py` | Apply outcome counting policy |
-| `weighting.py` | Apply count or FIT weighting |
-| `grouping.py` | Roll up by endpoint, failure mode, mechanism, part |
-| `confidence.py` | Assign confidence labels |
-| `estimate_compare.py` | Compare estimated and measured DC |
-| `residual_fit_update.py` | Compute measured residual FIT |
-| `report.py` | Generate CSV and Markdown outputs |
-
----
-
-## 28. D12 Directory Structure
-
-Suggested directory:
+The demo may support two modes:
 
 ```text
-D12_measured_diagnostic_coverage/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
+plan-only mode:
+    generate execution plan and command scripts
+    do not call a real fault engine
 
-  inputs/
-    fault_outcomes.csv
-    fault_list.csv
-    estimated_dc.csv
-    residual_fit.csv
-    base_fit_report.csv
-    part_subpart_map.yaml
-    measurement_policy.yaml
-
-  outputs/
-    measured_dc_overall.csv
-    measured_dc_by_endpoint.csv
-    measured_dc_by_failure_mode.csv
-    measured_dc_by_safety_mechanism.csv
-    measured_dc_by_part.csv
-    estimated_vs_measured_dc.csv
-    measured_residual_fit.csv
-    measurement_quality.csv
-    measured_dc_summary.md
-    measured_dc_warnings.csv
+real-execution mode:
+    call the configured fault campaign engine
+    collect raw execution results
+    fail quality gate if execution fails
 ```
 
-D12 is metric computation and comparison. It should not rerun campaigns.
+This preserves public reproducibility while allowing private environments to connect to actual tools.
 
 ---
 
-## 29. D12 Manifest
+## 31. Neutral execution wrapper
 
-Example:
+The public script can use a neutral variable:
 
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D12_measured_diagnostic_coverage
-  top_module: toy_counter
-
-inputs:
-  fault_outcomes: inputs/fault_outcomes.csv
-  fault_list: inputs/fault_list.csv
-  estimated_dc: inputs/estimated_dc.csv
-  residual_fit: inputs/residual_fit.csv
-  base_fit_report: inputs/base_fit_report.csv
-  part_subpart_map: inputs/part_subpart_map.yaml
-  measurement_policy: inputs/measurement_policy.yaml
-
-outputs:
-  overall: outputs/measured_dc_overall.csv
-  by_endpoint: outputs/measured_dc_by_endpoint.csv
-  by_failure_mode: outputs/measured_dc_by_failure_mode.csv
-  by_safety_mechanism: outputs/measured_dc_by_safety_mechanism.csv
-  by_part: outputs/measured_dc_by_part.csv
-  estimate_compare: outputs/estimated_vs_measured_dc.csv
-  residual_fit: outputs/measured_residual_fit.csv
-  summary: outputs/measured_dc_summary.md
+```csh
+setenv SAFEIC_FAULT_ENGINE /path/to/fault_campaign_engine
 ```
 
-The manifest makes metric computation reproducible.
-
----
-
-## 30. D12 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load Fault Outcomes]
-    B --> C[Load Fault List and Grouping Data]
-    C --> D[Load Estimated DC and FIT Data]
-    D --> E[Load Measurement Policy]
-    E --> F[Validate Inputs]
-    F --> G[Apply Outcome Counting]
-    G --> H[Apply Weighting]
-    H --> I[Roll Up Measured DC]
-    I --> J[Compute Confidence and Quality]
-    J --> K[Compare Estimated vs Measured]
-    K --> L[Compute Measured Residual FIT]
-    L --> M[Generate Reports]
-```
-
-**Figure 9. D12 execution flow: validate outcomes, count, weight, roll up, compare, update, and report.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-measdc \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
+The generated command can be reviewable:
 
 ```csh
 #!/bin/csh -f
 
-set DEMO = D12_measured_diagnostic_coverage
-echo "Running $DEMO"
+set ROOT = `cd "$0:h/../.." && pwd`
+cd "$ROOT"
 
-safeic-measdc \
-  --manifest manifest.yaml \
-  --output-dir outputs
+if ( ! $?SAFEIC_FAULT_ENGINE ) then
+    echo "[ERROR] SAFEIC_FAULT_ENGINE is not set."
+    exit 1
+endif
+
+$SAFEIC_FAULT_ENGINE \
+    --mode single_campaign \
+    --config outputs/campaign_configs/fault_campaign_single.ini \
+    --output outputs/native/single_campaign \
+    |& tee logs/d12_single_campaign.console.log
+
+set rc = $status
+echo $rc > outputs/execution_status/single_campaign.exit_code
+exit $rc
 ```
 
-Expected outputs:
+The command is an interface pattern. The real local environment decides which vendor tool or internal wrapper implements it.
+
+---
+
+## 32. Single, parallel, and distributed outputs should converge
+
+If the same campaign is executed in different modes, the merged result should be semantically equivalent.
+
+D12 can support a convergence check:
 
 ```text
-outputs/measured_dc_overall.csv
-outputs/measured_dc_by_endpoint.csv
-outputs/measured_dc_by_failure_mode.csv
-outputs/measured_dc_by_safety_mechanism.csv
-outputs/measured_dc_by_part.csv
-outputs/estimated_vs_measured_dc.csv
-outputs/measured_residual_fit.csv
-outputs/measurement_quality.csv
-outputs/measured_dc_summary.md
-outputs/measured_dc_warnings.csv
+same fault IDs
+same raw result categories
+same alarm event visibility
+same observe event visibility
+same unresolved count
+same failed-worker count
+```
+
+A useful comparison table:
+
+```csv
+metric,single,parallel,distributed,status
+scheduled_faults,102,102,102,PASS
+completed_faults,102,102,102,PASS
+failed_faults,0,0,0,PASS
+raw_alarm_seen_count,18,18,18,PASS
+raw_observe_deviation_count,7,7,7,PASS
+```
+
+This is especially useful during flow bring-up. It proves that scaling the campaign did not change the meaning of the campaign.
+
+---
+
+## 33. Common failure modes in campaign execution
+
+D12 should expect failures and classify them.
+
+Common setup failures:
+
+```text
+missing RTL file
+bad filelist path
+bad clock definition
+VCD signal mismatch
+fault site not found
+alarm signal not found
+observe point not found
+unsupported fault syntax
+```
+
+Common execution failures:
+
+```text
+worker crash
+license checkout failure
+queue submission failure
+worker timeout
+memory limit exceeded
+corrupted VCD
+partial result write
+```
+
+Common merge failures:
+
+```text
+missing shard
+stale shard
+inconsistent run identity
+duplicate fault result
+row count mismatch
+```
+
+A mature D12 demo should make these categories visible even if the sample design is small.
+
+---
+
+## 34. D12 handoff to D13
+
+D13 needs a clean package:
+
+```text
+raw fault execution table
+shard status table
+alarm event timing
+observe event timing
+FTTI policy
+campaign observation contract
+execution identity
+quality gate result
+```
+
+D12 should write:
+
+```text
+outputs/d12_handoff_to_d13.csv
+```
+
+Example:
+
+```csv
+artifact,role,path,required_by
+merged_fault_execution,raw_result,outputs/raw_fault_results/merged_fault_execution.csv,D13
+campaign_observation_contract,classification_policy,outputs/campaign_inputs/campaign_observation_contract.csv,D13
+ftti_boundary_plan,timing_policy,outputs/campaign_inputs/ftti_boundary_plan.csv,D13
+execution_identity,traceability,outputs/execution_identity/d12_run_identity.json,D13
+```
+
+D13 should not need to search the D12 directory manually.
+
+---
+
+## 35. D12 handoff to D14
+
+D14 needs campaign result writeback material.
+
+D12 should prepare:
+
+```text
+raw result database session candidate
+campaign execution manifest
+fault result merge summary
+status of every shard
+log diagnostics summary
+```
+
+D14 will not necessarily use every raw event, but it needs enough evidence to connect final metrics to the actual campaign execution.
+
+A D14 handoff file can contain:
+
+```csv
+artifact,role,path
+execution_manifest,campaign_evidence,outputs/execution_identity/d12_run_identity.json
+raw_results,writeback_source,outputs/raw_fault_results/merged_fault_execution.csv
+merge_summary,completeness_check,outputs/raw_fault_results/merge_summary.csv
+shard_status,execution_integrity,outputs/execution_status/shard_status.csv
 ```
 
 ---
 
-## 31. Example `measured_dc_summary.md`
+## 36. How D12 stays distinct from D13 and D14
 
-```md
-# D12 Measured Diagnostic Coverage Summary
+The boundary is important.
 
-Project: automotive_safeic_practice
-Demo: D12_measured_diagnostic_coverage
-Top: toy_counter
-
-## Primary Metric Policy
-
-Formula: detected / (detected + unsafe)  
-Weighting: count-based  
-Safe faults: reported separately  
-Unresolved faults: reported separately  
-Not-classified runs: reported as execution quality issue  
-
-## Overall Result
-
-Detected: 3  
-Unsafe: 2  
-Safe: 0  
-Unresolved: 0  
-Not classified: 0  
-
-Measured DC: 0.600  
-Confidence: LOW  
-Reason: sample size is very small
-
-## Weak Groups
-
-1. FM_ALARM_NOT_ASSERTED
-   - measured DC: 0.000
-   - unsafe faults: 1
-
-2. FM_DIAGNOSTIC_STATE_CORRUPTION
-   - measured DC: 0.000
-   - unsafe faults: 1
-
-## Estimated vs Measured Review
-
-- toy_counter.count: measured higher than estimated, but sample size is too small.
-- FM_ALARM_NOT_ASSERTED: measured lower than estimated; requires review.
-
-## Next Step
-
-Use D13 to update FMEDA rows with measured outcome evidence and reviewed DC recommendations.
+```text
+D12 executes faults and records raw evidence.
+D13 classifies fault outcomes.
+D14 writes classified results back into final metric calculation.
 ```
 
-This summary is designed for review before FMEDA update.
+If D12 tries to do everything, the flow becomes hard to audit.
+
+D12 may record:
+
+```text
+alarm seen
+observe point deviation seen
+simulation timeout
+worker completed
+fault not simulated
+```
+
+D13 decides:
+
+```text
+detected
+safe
+unsafe
+unresolved
+potential
+```
+
+D14 calculates or validates:
+
+```text
+final DC
+SPFM
+LFM
+residual FIT
+FMEDA export readiness
+```
+
+This separation is what makes the flow scalable and explainable.
 
 ---
 
-## 32. Validation Rules
+## 37. Summary
 
-`safeic-measdc` should validate:
+D12 is where the campaign package becomes a running safety verification process.
 
-```text
-fault_outcomes.csv exists
-fault outcomes are valid
-fault IDs are unique
-required grouping columns exist
-estimated_dc.csv exists if comparison is enabled
-FIT data exists if FIT weighting is enabled
-measurement policy is valid
-safe/unresolved/not-classified handling is explicit
-grouping keys are valid
-confidence thresholds are valid
-measured DC denominator is non-zero
-```
-
-Example messages:
+It is not merely a shell script. It is an execution architecture for:
 
 ```text
-[PASS] fault outcomes loaded: 5 records
-[PASS] valid outcomes: detected, safe, unsafe, unresolved, not_classified
-[PASS] primary formula detected_over_detected_plus_unsafe selected
-[WARN] measured DC for endpoint toy_counter.count has low sample size
-[WARN] unresolved ratio for group top.u_bus is 0.35; evidence quality is LOW
-[ERROR] FIT weighting requested but fit_weight column is missing
-[ERROR] group FM_UNKNOWN has no estimated DC and comparison is required
+fault scheduling
+fault injection
+VCD replay
+alarm monitoring
+observe point monitoring
+FTTI-bounded evidence capture
+parallel and distributed job control
+result shard collection
+raw result merging
+execution diagnostics
+handoff to classification
 ```
 
-The tool should never silently compute a metric with an undefined denominator.
-
----
-
-## 33. Common Mistakes
-
-### 33.1 Reporting One Global DC Only
-
-A global value hides weak endpoints, failure modes, and mechanisms.
-
-Always roll up by meaningful safety dimensions.
-
-### 33.2 Counting Safe Faults Without Policy
-
-Safe faults may not prove diagnostic coverage.
-
-They should be reported separately unless the policy explicitly includes them.
-
-### 33.3 Ignoring Unresolved Faults
-
-A high unresolved ratio weakens the evidence.
-
-Do not hide unresolved results.
-
-### 33.4 Treating Not-Classified Runs as Safety Outcomes
-
-Simulation errors and invalid inputs are campaign quality issues, not safety outcomes.
-
-### 33.5 Ignoring Sample Size
-
-Measured DC from very small samples should not be over-trusted.
-
-### 33.6 Blindly Replacing Estimated DC
-
-Measured DC should update estimated DC only when scope, sample size, evidence quality, and confidence are acceptable.
-
-### 33.7 Mixing Different Scopes
-
-Do not compare endpoint-level estimated DC with path-level measured DC without scope alignment.
-
----
-
-## 34. How D12 Connects to FMEDA Update
-
-D12 prepares data for D13.
-
-```mermaid
-flowchart LR
-    A[D12 Measured DC] --> B[D13 FMEDA Update]
-    A --> C[Measured Residual FIT]
-    A --> D[Estimated vs Measured Review]
-    C --> B
-    D --> B
-```
-
-**Figure 10. D12 converts campaign evidence into measured coverage and residual FIT data for FMEDA update.**
-
-D13 should not recompute fault outcomes.
-
-It should consume D12 outputs and update FMEDA rows in a traceable way.
-
----
-
-## 35. Recommended Implementation Stages
-
-D12 can be implemented in stages.
-
-### Stage 1: Count-Based Overall Measured DC
-
-Compute overall measured DC from `fault_outcomes.csv`.
-
-Deliverables:
+A good D12 flow keeps four principles:
 
 ```text
-measured_dc_overall.csv
-measured_dc_summary.md
+same campaign contract across execution modes
+raw execution evidence separated from final outcome classification
+deterministic shard and result traceability
+quality gates that fail on real execution integrity problems
 ```
 
-### Stage 2: Group Roll-Up
-
-Roll up by endpoint, failure mode, and safety mechanism.
-
-Deliverables:
-
-```text
-measured_dc_by_endpoint.csv
-measured_dc_by_failure_mode.csv
-measured_dc_by_safety_mechanism.csv
-```
-
-### Stage 3: Confidence and Quality
-
-Add sample size, unresolved ratio, and execution quality.
-
-Deliverables:
-
-```text
-measurement_quality.csv
-```
-
-### Stage 4: Estimated vs Measured Comparison
-
-Compare D06 estimated DC against D12 measured DC.
-
-Deliverables:
-
-```text
-estimated_vs_measured_dc.csv
-```
-
-### Stage 5: FIT-Weighted and Residual FIT Update
-
-Add FIT weighting and measured residual FIT.
-
-Deliverables:
-
-```text
-measured_residual_fit.csv
-```
-
-This staged path makes D12 useful immediately and extensible for more rigorous analysis.
-
----
-
-## 36. Summary
-
-Measured diagnostic coverage is the metric layer built from classified fault campaign outcomes.
-
-The D12 demo:
-
-```text
-D12_measured_diagnostic_coverage
-```
-
-introduces the generic tool:
-
-```text
-safeic-measdc
-```
-
-The tool consumes:
-
-```text
-fault_outcomes.csv
-fault_list.csv
-estimated_dc.csv
-residual_fit.csv
-base_fit_report.csv
-part_subpart_map.yaml
-measurement_policy.yaml
-```
-
-and generates:
-
-```text
-measured_dc_overall.csv
-measured_dc_by_endpoint.csv
-measured_dc_by_failure_mode.csv
-measured_dc_by_safety_mechanism.csv
-measured_dc_by_part.csv
-estimated_vs_measured_dc.csv
-measured_residual_fit.csv
-measurement_quality.csv
-measured_dc_summary.md
-measured_dc_warnings.csv
-```
-
-The central lesson is:
-
-> Measured DC must be computed from classified outcomes using explicit counting, weighting, grouping, confidence, and update policies. A single percentage without scope, sample size, evidence quality, and unresolved-rate context is not enough.
-
-D12 turns fault campaign results into metric evidence that can support FMEDA update.
-
----
-
-## 37. D12 Demo Checklist
-
-For `D12_measured_diagnostic_coverage`, the expected deliverables are:
-
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/fault_outcomes.csv
-[ ] inputs/fault_list.csv
-[ ] inputs/estimated_dc.csv
-[ ] inputs/residual_fit.csv
-[ ] inputs/base_fit_report.csv
-[ ] inputs/part_subpart_map.yaml
-[ ] inputs/measurement_policy.yaml
-
-[ ] outputs/measured_dc_overall.csv
-[ ] outputs/measured_dc_by_endpoint.csv
-[ ] outputs/measured_dc_by_failure_mode.csv
-[ ] outputs/measured_dc_by_safety_mechanism.csv
-[ ] outputs/measured_dc_by_part.csv
-[ ] outputs/estimated_vs_measured_dc.csv
-[ ] outputs/measured_residual_fit.csv
-[ ] outputs/measurement_quality.csv
-[ ] outputs/measured_dc_summary.md
-[ ] outputs/measured_dc_warnings.csv
-```
-
-A successful D12 run should answer:
-
-```text
-What is the primary measured DC?
-Which counting policy was used?
-Which safe, unresolved, and not-classified counts were reported separately?
-What is measured DC by endpoint?
-What is measured DC by failure mode?
-What is measured DC by safety mechanism?
-Which groups have low confidence or high unresolved ratio?
-How does measured DC compare with estimated DC?
-Which residual FIT values can be updated?
-Which groups require more campaign evidence before FMEDA update?
-```
+With D12 complete, the series is ready to enter D13: fault outcome classification. That next stage will convert raw campaign evidence into detected, safe, unsafe, unresolved, and potential fault categories, which will later feed final diagnostic coverage and FMEDA evidence.
