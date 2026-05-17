@@ -1,1377 +1,1512 @@
-# [Automotive Safe-IC Practice 15] Safety Report Generation: From Evidence Package to Review-Ready Engineering Report
+# Automotive Safe-IC Practice 15: FMEDA Data Model — Part, Sub-Part, Failure Mode, SM, DC, and Residual FIT
 
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D15_safety_report_generation  
-**Tags**: Automotive Chip, Functional Safety, Safety Report, Evidence Package, FMEDA, Fault Injection, Diagnostic Coverage, Residual FIT, Traceability, Review Report
-
----
-
-## 1. Why This Article Matters
-
-In the previous article, we built a safety evidence package.
-
-D14 organized artifacts such as:
-
-```text
-package_manifest.yaml
-evidence_index.csv
-traceability_matrix.csv
-claim_traceability.csv
-assumption_register.csv
-review_items.csv
-completeness_check.csv
-evidence_quality.csv
-artifact_hashes.csv
-evidence_package_summary.md
-```
-
-That evidence package is the artifact foundation.
-
-However, a reviewer usually does not start by opening dozens of CSV files.
-
-The next question is:
-
-> How do we turn the evidence package into a readable, structured, review-ready safety engineering report?
-
-The fifteenth demo in this repository is:
-
-```text
-D15_safety_report_generation
-```
-
-The generic tool introduced in this article is:
-
-```text
-safeic-report
-```
-
-The purpose of `safeic-report` is to generate a safety report from the D14 evidence package:
-
-```text
-package manifest
-evidence index
-FMEDA table
-measured DC tables
-residual FIT summaries
-fault outcome summaries
-review items
-assumption register
-traceability matrix
-evidence quality checks
-package status
-```
-
-and produce:
-
-```text
-safety_report.md
-safety_report_summary.md
-review_action_list.md
-metric_tables_for_review.csv
-report_warnings.csv
-```
-
-The central idea is:
-
-> A safety report is not a reprint of all data. It is a structured explanation of scope, assumptions, evidence, metrics, findings, limitations, and review actions.
+Author: Darren H. Chen  
+Direction: Automotive chip functional safety analysis and fault injection practice  
+Demo: D15_fmeda_data_model_part_subpart_failure_mode_sm_dc_residual_fit  
+Tags: ISO 26262, FMEDA, FIT, Diagnostic Coverage, Residual FIT, Safety Mechanism, Fault Campaign, Common Safety Database, Automotive Semiconductor, Safe-IC
 
 ---
 
-## 2. Where D15 Fits in the Flow
+## 1. From Safety Results to a Reviewable FMEDA Model
 
-D15 sits after evidence packaging.
+By D14, the flow has already produced several important safety artifacts:
+
+```text
+base FIT evidence
+FIT-standard comparison evidence
+structural endpoint / startpoint evidence
+common database session manifest
+safety mechanism exploration candidates
+failure-mode to safety-mechanism mapping
+fault list artifacts
+simulation safety context
+alarm and observe point contracts
+fault campaign setup package
+fault injection execution evidence
+fault outcome classification
+final metric input bridge
+```
+
+These artifacts are valuable, but they are still distributed across many files and stages.
+
+A safety reviewer usually does not want to inspect only a fault list, only an alarm list, or only a metric summary. The reviewer wants to answer questions such as:
+
+```text
+Which hardware function is being assessed?
+Which part or sub-part owns this failure mode?
+What is the failure mode?
+Which safety mechanism detects or controls it?
+What diagnostic coverage is claimed?
+Which fault campaign evidence supports that claim?
+What residual FIT remains after coverage is credited?
+Which cases are still unresolved?
+```
+
+D15 is where the previous engineering artifacts are organized into a **Failure Modes, Effects, and Diagnostic Analysis data model**.
+
+The focus is not on producing one more report. The focus is on building a structured safety table that connects:
+
+```text
+part
+sub-part
+instance
+failure mode
+fault population
+safety mechanism
+diagnostic coverage
+fault outcome
+residual FIT
+review status
+evidence source
+```
+
+This is the point where the safety flow becomes audit-oriented.
+
+---
+
+## 2. D15 in the Full Safe-IC Flow
+
+D15 sits after the fault campaign result writeback and before the top-down FMEDA flow.
 
 ```mermaid
-flowchart LR
-    A[D14 Evidence Package] --> B[D15 Safety Report Generation]
-    B --> C[Safety Report]
-    B --> D[Review Action List]
-    B --> E[Metric Tables for Review]
-    B --> F[Report Warnings]
+flowchart TD
+    D01[D01 Analysis Input Package] --> D02[D02 Base FIT Rate]
+    D02 --> D03[D03 FIT Standards]
+    D03 --> D04[D04 Structural Building Blocks]
+    D04 --> D05[D05 Common Database Evidence Center]
+    D05 --> D06[D06 Safety Exploration]
+    D06 --> D07[D07 Safety Mechanism Map]
+    D07 --> D08[D08 Fault List Generation]
+    D08 --> D09[D09 Simulation Safety Context]
+    D09 --> D10[D10 Alarm / Observe Boundary]
+    D10 --> D11[D11 Fault Campaign Setup]
+    D11 --> D12[D12 Fault Injection Execution]
+    D12 --> D13[D13 Fault Outcome Classification]
+    D13 --> D14[D14 Result Writeback and Final Metrics]
+    D14 --> D15[D15 FMEDA Data Model]
+    D15 --> D16[D16 Top-down FMEDA Flow]
+    D15 --> D17[D17 Diagnostic Coverage Closure]
 ```
-
-**Figure 1. D15 turns the evidence package into a review-ready engineering report.**
 
 D14 answers:
 
 ```text
-Which artifacts exist?
-Where are they?
-How are they connected?
-Which assumptions and review items are active?
+What did the campaign prove?
+What metrics can be derived?
+Which fault outcomes remain risky?
 ```
 
 D15 answers:
 
 ```text
-What does the evidence mean?
-What are the key metrics?
-What are the key risks?
-Which safety mechanisms worked?
-Which failure modes remain weak?
-Which FMEDA rows require review?
-What should be done next?
+Where do these results belong in the FMEDA hierarchy?
+How do we allocate FIT and DC to failure modes?
+What evidence supports each row?
+What needs review before top-down FMEDA execution?
 ```
 
-This is the transition from evidence management to safety communication.
+D16 will use the D15 model to discuss the top-down FMEDA workflow. D17 will use the unresolved and unsafe rows from D15 to plan closure actions.
 
 ---
 
-## 3. Evidence Package vs Safety Report
+## 3. What FMEDA Means in This Series
 
-The evidence package and the safety report have different purposes.
+FMEDA stands for:
 
-| Item | Purpose |
-|---|---|
-| Evidence package | Store, index, trace, and preserve artifacts |
-| Safety report | Explain, summarize, interpret, and guide review |
-| FMEDA table | Provide row-level safety data |
-| Review action list | Convert findings into engineering actions |
-| Traceability matrix | Link claims to evidence |
+```text
+Failure Modes, Effects, and Diagnostic Analysis
+```
 
-A report should not replace the evidence package.
+For automotive semiconductor safety, FMEDA is a structured method for connecting hardware architecture to safety metrics.
 
-Instead, it should point to the evidence package.
+A simplified FMEDA row may look like this:
+
+```text
+Part:          CPU subsystem
+Sub-part:      Bus interface
+Failure mode:  Wrong data transaction
+Failure rate:  Lambda contribution
+Safety mech:   End-to-end protocol protection
+DC:            Diagnostic coverage
+Residual FIT:  Failure rate remaining after coverage
+Evidence:      Analysis reports and fault campaign results
+```
+
+A mature FMEDA is not merely a spreadsheet. It is a data model that supports:
+
+```text
+hierarchical decomposition
+failure-mode classification
+failure-rate allocation
+safety-mechanism traceability
+diagnostic coverage calculation
+fault campaign evidence attachment
+metric roll-up
+review workflow
+```
+
+In D15, the goal is to build that data model from the earlier demo artifacts.
+
+---
+
+## 4. The D15 Core Data Model
+
+The conceptual D15 data model is:
+
+```mermaid
+erDiagram
+    PART ||--o{ SUB_PART : contains
+    SUB_PART ||--o{ INSTANCE : owns
+    SUB_PART ||--o{ FAILURE_MODE : has
+    FAILURE_MODE ||--o{ FMEDA_ROW : contributes_to
+    INSTANCE ||--o{ FMEDA_ROW : mapped_to
+    SAFETY_MECHANISM ||--o{ FMEDA_ROW : protects
+    DC_EVIDENCE ||--o{ FMEDA_ROW : supports
+    FAULT_OUTCOME_EVIDENCE ||--o{ FMEDA_ROW : validates
+    FMEDA_ROW ||--o{ RESIDUAL_FIT : computes
+```
+
+The central object is the `FMEDA_ROW`.
+
+Each row should answer:
+
+```text
+What can fail?
+Where does it fail?
+How often is it expected to fail?
+How is it detected or controlled?
+How much of the failure contribution remains?
+Which evidence supports this claim?
+```
+
+D15 does not need to hide complexity. It should expose enough fields so that later review can be precise.
+
+---
+
+## 5. Part and Sub-Part: The Structural Ownership Layer
+
+A **part** is a major functional or architectural block.
+
+Examples:
+
+```text
+CPU core
+safety island
+bus fabric
+memory subsystem
+timer subsystem
+sensor interface
+diagnostic controller
+```
+
+A **sub-part** is a more detailed decomposition under a part.
+
+Examples:
+
+```text
+CPU core / register file
+CPU core / decode stage
+bus fabric / transaction control
+memory subsystem / ECC wrapper
+timer subsystem / compare logic
+sensor interface / data path
+```
+
+The hierarchy helps answer:
+
+```text
+Which function owns the failure mode?
+Where should the FIT be allocated?
+Where should diagnostic coverage be credited?
+Where should residual risk be reviewed?
+```
+
+A flat list of signals is not enough. FMEDA requires ownership.
 
 ```mermaid
 flowchart TD
-    A[Evidence Package] --> B[Safety Report]
-    A --> C[Traceability Matrix]
-    A --> D[FMEDA Table]
-    A --> E[Review Items]
-    B --> F[Engineering Review]
-    C --> F
-    D --> F
-    E --> F
+    A[SoC or IP] --> B[Part: Control Block]
+    A --> C[Part: Data Path]
+    A --> D[Part: Interface Block]
+
+    B --> B1[Sub-part: FSM]
+    B --> B2[Sub-part: Control Registers]
+    C --> C1[Sub-part: Arithmetic Path]
+    C --> C2[Sub-part: Storage Elements]
+    D --> D1[Sub-part: Protocol Handshake]
+    D --> D2[Sub-part: Error Signaling]
 ```
-
-**Figure 2. The safety report explains evidence while the evidence package preserves traceability.**
-
-A report without evidence is weak.
-
-An evidence package without a report is difficult to review.
 
 ---
 
-## 4. What Should the Report Do?
+## 6. Instance Mapping: Connecting Design Hierarchy to FMEDA Hierarchy
 
-A useful safety report should:
+The design hierarchy and the FMEDA hierarchy are related, but they are not always identical.
+
+Design hierarchy may look like:
 
 ```text
-define the analysis scope
-summarize the design under analysis
-state assumptions and limitations
-describe the analysis flow
-summarize key metrics
-highlight weak failure modes
-highlight unsafe faults
-summarize measured DC and residual FIT
-show estimated-vs-measured gaps
-show FMEDA update status
-list open review items
-link evidence files
-recommend next actions
+top.u_core.u_ctrl.u_fsm
+top.u_core.u_datapath.u_counter
+top.u_bus.u_handshake
 ```
 
-It should not:
+FMEDA hierarchy may look like:
 
 ```text
-hide unresolved evidence
-pretend demo data is production signoff
-mix estimated and measured metrics without labels
-omit policy assumptions
-report a single number without context
+Part: Control block
+Sub-part: State machine
+Failure mode: Incorrect state transition
 ```
 
-The report is a technical communication artifact.
+D15 needs an instance mapping table:
 
-Its value comes from clarity, traceability, and honesty.
+```csv
+part_id,subpart_id,instance_path,structural_scope,evidence_source,review_status
+P_CTRL,SP_FSM,top.u_core.u_ctrl.u_fsm,endpoint_cone,D04,reviewed
+P_DATA,SP_COUNTER,top.u_core.u_datapath.u_counter,register_endpoint,D04,reviewed
+```
 
----
-
-## 5. Report as a Layer on Top of Evidence
-
-D15 should not recompute all metrics.
-
-It should consume D14 and earlier outputs.
+This table prevents a common error:
 
 ```text
-D12:
-  measured diagnostic coverage
-
-D13:
-  FMEDA table and review items
-
-D14:
-  evidence index, traceability, assumptions, package status
-
-D15:
-  report generation
+Assuming every RTL instance directly corresponds to one FMEDA row.
 ```
 
-```mermaid
-flowchart TD
-    A[D12 Metrics] --> D[D15 Report]
-    B[D13 FMEDA] --> D
-    C[D14 Evidence Package] --> D
-    D --> E[Markdown Report]
-    D --> F[Review Summary]
-    D --> G[Action List]
-```
-
-**Figure 3. D15 is a report layer, not a metric recomputation layer.**
-
-This separation keeps the workflow modular.
-
-If D12 changes, regenerate D13 and D14, then regenerate D15.
+In practice, one instance can contribute to multiple failure modes, and one failure mode can span multiple instances.
 
 ---
 
-## 6. Report Inputs
+## 7. Failure Mode: The Functional Meaning of a Fault
 
-Suggested inputs:
+A fault is a physical or logical defect representation.
+
+Examples:
 
 ```text
-inputs/
-  report_config.yaml
-  report_template.md
-  package_manifest.yaml
-  evidence_index.csv
-  package_status.csv
-  evidence_package_summary.md
-  fmeda_table.csv
-  fmeda_review_items.csv
-  safety_metric_summary.csv
-  residual_fit_by_failure_mode.csv
-  residual_fit_by_part.csv
-  measured_dc_by_endpoint.csv
-  measured_dc_by_failure_mode.csv
-  measured_dc_by_safety_mechanism.csv
-  estimated_vs_measured_dc.csv
-  fault_outcomes.csv
-  outcome_summary.csv
-  assumption_register.csv
-  claim_traceability.csv
-  traceability_matrix.csv
+stuck-at-0
+stuck-at-1
+transient bit flip
+temporary logic inversion
+delayed transition
 ```
 
-D15 can read these from the D14 package folder.
+A failure mode is the functional effect category.
 
-For the first demo, the report generator can work with copied sample CSV files.
-
----
-
-## 7. Report Outputs
-
-Suggested outputs:
+Examples:
 
 ```text
-outputs/
-  safety_report.md
-  safety_report_summary.md
-  review_action_list.md
-  metric_tables_for_review.csv
-  report_warnings.csv
-  report_manifest.yaml
+wrong state transition
+wrong output value
+missing alarm assertion
+invalid protocol handshake
+latent corruption of a register
+incorrect memory data returned
 ```
 
-Optional later outputs:
-
-```text
-safety_report.html
-safety_report.pdf
-review_deck_outline.md
-```
-
-For the GitHub demo, Markdown is the best first format.
-
-Why?
-
-Because Markdown is:
-
-```text
-easy to version-control
-easy to review in GitHub
-easy to diff
-easy to generate
-easy to convert later
-```
-
----
-
-## 8. Report Configuration
-
-The report should be driven by a configuration file.
-
-Example `report_config.yaml`:
-
-```yaml
-report:
-  title: Automotive Safe-IC Functional Safety Analysis Report
-  subtitle: Fault Injection and FMEDA Evidence Summary
-  demo: D15_safety_report_generation
-  top_module: toy_counter
-  format: markdown
-
-sections:
-  include_scope: true
-  include_flow_overview: true
-  include_key_metrics: true
-  include_fmeda_summary: true
-  include_measured_dc: true
-  include_fault_campaign: true
-  include_unsafe_findings: true
-  include_assumptions: true
-  include_traceability: true
-  include_review_items: true
-  include_limitations: true
-  include_next_actions: true
-
-policies:
-  show_estimated_vs_measured: true
-  show_confidence_labels: true
-  show_open_review_items: true
-  fail_on_missing_required_tables: false
-  warn_on_low_confidence_metrics: true
-
-output:
-  markdown: outputs/safety_report.md
-  summary: outputs/safety_report_summary.md
-  action_list: outputs/review_action_list.md
-```
-
-Report configuration makes the generator reusable.
-
-Different audiences can use different report profiles.
-
----
-
-## 9. Report Template
-
-A simple report template can be Markdown with placeholders.
-
-Example:
-
-```md
-# {{ report.title }}
-
-Design: {{ project.top_module }}  
-Evidence Package: {{ package.name }}  
-Generated by: {{ tool.name }}  
-
-## 1. Scope
-
-{{ scope.summary }}
-
-## 2. Key Metrics
-
-{{ metrics.overview_table }}
-
-## 3. FMEDA Summary
-
-{{ fmeda.summary_table }}
-
-## 4. Key Findings
-
-{{ findings.key_findings }}
-
-## 5. Review Items
-
-{{ review.items_table }}
-```
-
-Template-based reporting keeps style separate from data extraction.
-
-This is important when the same data must be reported for:
-
-```text
-GitHub article
-internal review
-customer demo
-engineering checkpoint
-management summary
-```
-
----
-
-## 10. Suggested Report Structure
-
-A good D15 report can use the following structure:
-
-```text
-1. Executive Summary
-2. Scope and Inputs
-3. Analysis Flow Overview
-4. Evidence Package Summary
-5. Key Metrics
-6. Diagnostic Coverage Summary
-7. Residual FIT Summary
-8. Fault Campaign Summary
-9. Fault Outcome Summary
-10. FMEDA Update Summary
-11. Key Findings
-12. Open Review Items
-13. Assumptions and Limitations
-14. Traceability Summary
-15. Recommended Next Actions
-16. Appendix: Artifact Index
-```
-
-This structure balances readability and traceability.
-
-It starts with conclusions, then moves into evidence.
-
----
-
-## 11. Executive Summary
-
-The executive summary should be short and direct.
-
-Example:
-
-```md
-## Executive Summary
-
-This report summarizes a functional safety analysis and fault injection practice flow for `toy_counter`.
-
-The current evidence indicates:
-
-- Counter state data corruption is covered by endpoint parity in the demo campaign.
-- Diagnostic state corruption remains unsafe.
-- Alarm-not-asserted failure mode remains unsafe.
-- Measured DC values are low-confidence because the sample campaign is intentionally small.
-- FMEDA rows for diagnostic state and alarm path require review.
-
-The evidence package is complete for the demo scope, but it is not production signoff evidence.
-```
-
-The executive summary should clearly state both strengths and limitations.
-
----
-
-## 12. Scope and Inputs
-
-The report must define scope.
-
-Example:
-
-```md
-## Scope and Inputs
-
-Design under analysis: `toy_counter`  
-Safety analysis scope: functional safety analysis and fault injection practice  
-Evidence range: D01 to D14  
-Report generated from: D14 evidence package  
-
-Included evidence:
-
-- FIT model outputs
-- structural safety model outputs
-- estimated diagnostic coverage
-- fault list generation
-- VCD safety context
-- fault campaign execution
-- fault outcome classification
-- measured diagnostic coverage
-- FMEDA update
-- review items and assumption register
-```
-
-Scope prevents overclaiming.
-
-A demo report should explicitly state that it is a methodology demonstration.
-
----
-
-## 13. Analysis Flow Overview
-
-The report should include a flow diagram.
+D15 must bridge the two.
 
 ```mermaid
 flowchart LR
-    A[Input Package] --> B[FIT Modeling]
-    B --> C[Structure Model]
-    C --> D[Estimated DC]
-    D --> E[Safety Mechanism Selection]
-    E --> F[Fault List]
-    F --> G[VCD Context]
-    G --> H[Campaign Execution]
-    H --> I[Outcome Classification]
-    I --> J[Measured DC]
-    J --> K[FMEDA Update]
-    K --> L[Evidence Package]
-    L --> M[Safety Report]
+    A[Fault Model] --> B[Fault Site]
+    B --> C[Fault Outcome]
+    C --> D[Failure Mode]
+    D --> E[FMEDA Row]
 ```
 
-**Figure 4. Safety analysis and fault injection flow summarized in the generated report.**
-
-A report should help reviewers understand where each artifact came from.
+A fault list alone does not provide FMEDA meaning. It says where faults are injected. FMEDA says what those faults mean for the safety function.
 
 ---
 
-## 14. Key Metrics Section
+## 8. Failure Effect and Failure Mode Are Not the Same
 
-The key metrics section should summarize:
+A **failure mode** describes how an element fails.
 
-```text
-total base FIT
-total residual FIT
-weighted selected DC
-measured DC
-rows requiring review
-unsafe fault count
-unresolved fault count
-evidence quality
-execution quality
-```
-
-Example:
-
-```md
-## Key Metrics
-
-| Metric | Value |
-|---|---:|
-| Total base FIT | 0.078 |
-| Total residual FIT | 0.0204 |
-| Weighted selected DC | 0.738 |
-| FMEDA rows total | 3 |
-| Rows requiring review | 2 |
-| Rows with low confidence | 1 |
-| Unsafe faults | 2 |
-| Unresolved faults | 0 |
-```
-
-Metrics should be concise but include context.
-
-A single measured DC number is not enough.
-
----
-
-## 15. Diagnostic Coverage Summary
-
-Diagnostic coverage should be summarized by meaningful groups.
-
-Example:
-
-```md
-## Diagnostic Coverage Summary
-
-### By Failure Mode
-
-| Failure Mode | Detected | Unsafe | Measured DC | Confidence |
-|---|---:|---:|---:|---|
-| FM_DATA_CORRUPTION | 2 | 0 | 1.000 | LOW |
-| FM_DIAGNOSTIC_STATE_CORRUPTION | 0 | 1 | 0.000 | LOW |
-| FM_ALARM_NOT_ASSERTED | 0 | 1 | 0.000 | LOW |
-```
-
-The report should clearly label:
-
-```text
-estimated DC
-measured DC
-selected DC
-confidence
-```
-
-Do not mix them.
-
----
-
-## 16. Estimated vs Measured DC Section
-
-This section is important because it explains whether assumptions match evidence.
-
-Example:
-
-```md
-## Estimated vs Measured Diagnostic Coverage
-
-| Group | Estimated DC | Measured DC | Status | Recommendation |
-|---|---:|---:|---|---|
-| toy_counter.count | 0.90 | 1.00 | INSUFFICIENT_SAMPLE | keep estimated and expand campaign |
-| FM_ALARM_NOT_ASSERTED | 0.85 | 0.00 | MEASURED_LOWER_THAN_ESTIMATED | review mechanism assumption |
-```
-
-Interpretation text should be included:
-
-```text
-Measured DC is lower than the estimate for FM_ALARM_NOT_ASSERTED.
-This indicates that the alarm path assumption is not supported by the current fault campaign evidence.
-```
-
-Numbers without interpretation are easy to misread.
-
----
-
-## 17. Residual FIT Summary
-
-Residual FIT is often the most useful risk-prioritization output.
-
-Example:
-
-```md
-## Residual FIT Summary
-
-| Failure Mode | Base FIT | Selected DC | Residual FIT | Review Status |
-|---|---:|---:|---:|---|
-| FM_DATA_CORRUPTION | 0.064 | 0.90 | 0.0064 | low_confidence |
-| FM_DIAGNOSTIC_STATE_CORRUPTION | 0.004 | 0.00 | 0.0040 | review_required |
-| FM_ALARM_NOT_ASSERTED | 0.010 | 0.00 | 0.0100 | review_required |
-```
-
-A short interpretation can follow:
-
-```text
-The dominant residual FIT contribution comes from the alarm-not-asserted failure mode.
-This suggests that alarm path protection should be prioritized in the next design iteration.
-```
-
----
-
-## 18. Fault Campaign Summary
-
-The report should summarize campaign execution.
-
-Example:
-
-```md
-## Fault Campaign Summary
-
-| Item | Value |
-|---|---:|
-| Golden run status | PASS |
-| Faulted runs requested | 5 |
-| Faulted runs executed | 5 |
-| Passed runs | 5 |
-| Failed runs | 0 |
-| Not classified | 0 |
-| Execution mode | emulation |
-```
-
-If the campaign used emulation mode, the report must say so.
+A **failure effect** describes what happens to the system or safety goal because of that failure.
 
 Example:
 
 ```text
-The current campaign results are generated in emulation mode for methodology demonstration.
-They are not final design validation evidence.
+Failure mode:
+    counter state corruption
+
+Local effect:
+    wrong counter value
+
+System effect:
+    timing monitor releases control too early
+
+Safety effect:
+    safety goal may be violated if no alarm or safe state is reached
 ```
 
-This prevents overclaiming.
-
----
-
-## 19. Fault Outcome Summary
-
-The report should summarize classified outcomes.
-
-Example:
-
-```md
-## Fault Outcome Summary
-
-| Outcome | Count |
-|---|---:|
-| detected | 3 |
-| safe | 0 |
-| unsafe | 2 |
-| unresolved | 0 |
-| not_classified | 0 |
-```
-
-It should also highlight unsafe faults:
-
-```md
-### Unsafe Faults
-
-| Fault ID | Node | Failure Mode | Reason |
-|---|---|---|---|
-| F003 | toy_counter.count_parity | FM_DIAGNOSTIC_STATE_CORRUPTION | diagnostic state corrupted and no alarm observed |
-| F004 | toy_counter.alarm | FM_ALARM_NOT_ASSERTED | alarm stuck inactive |
-```
-
-Unsafe findings should never be hidden deep in an appendix.
-
----
-
-## 20. FMEDA Update Summary
-
-The report should summarize FMEDA status.
-
-Example:
-
-```md
-## FMEDA Update Summary
-
-| Row | Failure Mode | Selected DC | Residual FIT | Review Status |
-|---|---|---:|---:|---|
-| R001 | FM_DATA_CORRUPTION | 0.90 | 0.0064 | low_confidence |
-| R002 | FM_DIAGNOSTIC_STATE_CORRUPTION | 0.00 | 0.0040 | review_required |
-| R003 | FM_ALARM_NOT_ASSERTED | 0.00 | 0.0100 | review_required |
-```
-
-This table shows where review is needed.
-
----
-
-## 21. Key Findings Section
-
-The key findings section should turn metrics into engineering statements.
-
-Example:
-
-```md
-## Key Findings
-
-1. Counter state corruption is covered by endpoint parity in the current demo campaign.
-2. Diagnostic state corruption remains unsafe and requires additional protection or justification.
-3. Alarm-not-asserted remains the dominant residual FIT contributor.
-4. Measured DC sample size is too small to increase FMEDA selected DC.
-5. Current evidence package is complete for the demo scope but not sufficient for production signoff.
-```
-
-This is where the report becomes useful to decision makers.
-
----
-
-## 22. Open Review Items
-
-The report should provide an action list.
-
-Example:
-
-```md
-## Open Review Items
-
-| ID | Severity | FMEDA Row | Issue | Recommended Action |
-|---|---|---|---|---|
-| I001 | HIGH | R003 | alarm path has unsafe fault | add redundant alarm or alarm path monitor |
-| I002 | MEDIUM | R002 | diagnostic state unprotected | add protection or justify residual risk |
-| I003 | LOW | R001 | measured DC confidence low | increase campaign sample size |
-```
-
-Review items should be actionable.
-
-Avoid vague wording such as:
+D15 should represent at least two layers:
 
 ```text
-Need more analysis.
+local_effect
+system_effect
 ```
 
-Use specific actions:
+This separation is important because two different failure modes may have the same safety effect.
+
+```mermaid
+flowchart TD
+    FM1[Counter bit flip] --> E1[Wrong counter value]
+    FM2[Compare logic fault] --> E2[Wrong threshold decision]
+    E1 --> S[Safety timing violation]
+    E2 --> S
+```
+
+FMEDA review becomes clearer when local and system effects are separated.
+
+---
+
+## 9. Safety Mechanism: Detection, Control, or Correction
+
+A safety mechanism is a design feature or diagnostic feature that detects, controls, or corrects a fault.
+
+Examples:
 
 ```text
-Add alarm path monitor or justify residual risk for FM_ALARM_NOT_ASSERTED.
+endpoint parity
+protocol parity
+ECC
+duplication with comparison
+triplication with voting
+watchdog
+timeout monitor
+range checker
+control-flow monitor
+lockstep comparison
 ```
 
----
+D15 should not only store the mechanism name. It should store its **intent**.
 
-## 23. Assumptions and Limitations
-
-This section is critical.
-
-Example:
-
-```md
-## Assumptions and Limitations
-
-- The demo fault model set is limited to stuck-at and transient flip.
-- The current campaign sample size is intentionally small.
-- Primary measured DC uses detected / (detected + unsafe).
-- Safe and unresolved faults are reported separately.
-- Some results may be generated in emulation mode.
-- The report demonstrates methodology and is not production safety signoff.
-```
-
-A report that openly states limitations is more credible.
-
----
-
-## 24. Traceability Summary
-
-The report should include a short traceability summary and point to full traceability files.
-
-Example:
-
-```md
-## Traceability Summary
-
-The following traceability artifacts are included in the evidence package:
-
-- `evidence_index.csv`
-- `traceability_matrix.csv`
-- `claim_traceability.csv`
-- `artifact_hashes.csv`
-
-Example trace:
-
-FMEDA row `R003` is linked to unsafe fault `F004`, which is linked to D10 campaign execution, D08 fault list generation, and D09 VCD safety context.
-```
-
-The full traceability matrix can remain in the evidence package.
-
-The report should show enough to prove traceability exists.
-
----
-
-## 25. Report Warnings
-
-D15 should generate warnings when the report may be misleading.
-
-Example warnings:
-
-```text
-measured DC sample size is low
-campaign mode is emulation
-high-severity review items remain open
-measured DC lower than estimated DC for key failure mode
-missing evidence file
-unresolved ratio high
-scope mismatch found
-```
-
-Example output:
+Suggested fields:
 
 ```csv
-warning_id,severity,message,source
-W001,MEDIUM,Measured DC confidence is LOW for toy_counter.count,D12
-W002,HIGH,FM_ALARM_NOT_ASSERTED has unsafe fault evidence,D13
-W003,MEDIUM,Campaign execution mode is emulation,D10
+sm_id,sm_name,sm_family,detection_type,alarm_required,coverage_claim,evidence_source,review_status
+SM_PARITY,Endpoint parity,parity,detection,true,estimated,D07+D13,review
+SM_ECC,Endpoint ECC,ecc,correction,true,estimated,D07+D13,review
+SM_TMR,Triplication,redundancy,masking_or_detection,true,estimated,D07+D13,review
 ```
 
-Warnings should appear both in CSV and in the report.
+The distinction matters because:
+
+```text
+Detection mechanism -> must have alarm or safe-state response.
+Correction mechanism -> may prevent observable failure.
+Masking mechanism -> may classify many faults as safe.
+```
 
 ---
 
-## 26. Report Generation Policy
+## 10. Diagnostic Coverage: What It Means in D15
 
-A report policy can control how strong statements are allowed to be.
+Diagnostic Coverage, or DC, is not just a percentage.
+
+A simplified view is:
+
+```text
+DC = covered relevant fault contribution / total relevant fault contribution
+```
+
+But D15 must keep the context:
+
+```text
+permanent DC or transient DC?
+count-weighted or FIT-weighted?
+estimated or validated?
+based on safety exploration or fault campaign?
+computed per endpoint, per failure mode, or per sub-part?
+are unresolved faults excluded, included, or reviewed separately?
+```
+
+A D15 row should therefore store:
+
+```csv
+dc_perm_estimate,dc_trans_estimate,dc_perm_validated,dc_trans_validated,dc_source,dc_status
+```
 
 Example:
 
-```yaml
-report_policy:
-  allow_claim_supported_only_if:
-    confidence_at_least: medium
-    no_high_severity_open_items: true
-
-  wording:
-    low_confidence_prefix: "Current demo evidence suggests"
-    high_confidence_prefix: "Evidence supports"
-
-  warnings:
-    show_emulation_warning: true
-    show_low_sample_warning: true
-    show_open_high_severity_warning: true
+```text
+dc_source = "exploration_estimate"
+dc_status = "needs_campaign_validation"
 ```
 
-This prevents overclaiming.
+or:
+
+```text
+dc_source = "fault_campaign_result"
+dc_status = "validated_with_open_unresolved"
+```
+
+This prevents a misleading FMEDA row where a single DC number appears without its evidence quality.
+
+---
+
+## 11. Residual FIT: The Remaining Risk After Coverage
+
+Residual FIT is the failure-rate contribution that remains after diagnostic coverage is credited.
+
+A conceptual formula is:
+
+```text
+residual_fit = allocated_fit * (1 - diagnostic_coverage)
+```
+
+In real FMEDA work, the calculation may be split by:
+
+```text
+permanent vs transient
+single-point vs residual fault
+latent fault
+safe fault
+multiple-point fault
+failure mode
+safety mechanism
+part and sub-part
+ASIL target
+```
+
+D15 should preserve the split rather than collapse everything too early.
+
+Suggested fields:
+
+```csv
+lambda_perm_allocated
+lambda_trans_allocated
+dc_perm_credit
+dc_trans_credit
+residual_fit_perm
+residual_fit_trans
+residual_fit_total
+```
+
+Example conceptual row:
+
+```csv
+fm_id,lambda_perm_allocated,dc_perm_credit,residual_fit_perm
+FM_STATE_CORRUPTION,10.0,0.90,1.0
+```
+
+This is not enough for signoff, but it is enough to illustrate the data relationship.
+
+---
+
+## 12. Permanent and Transient Faults Must Remain Separate
+
+A permanent fault is persistent.
+
+Examples:
+
+```text
+stuck-at fault
+permanent short
+permanent open
+permanent logic defect
+```
+
+A transient fault is temporary.
+
+Examples:
+
+```text
+single event upset
+soft error
+temporary bit flip
+radiation-induced upset
+```
+
+D15 should not merge them too early because:
+
+```text
+they may use different FIT models
+they may have different fault populations
+they may require different safety mechanisms
+they may produce different diagnostic coverage
+they may affect SPFM, LFM, or PMHF differently
+```
+
+A strong FMEDA row keeps permanent and transient values side by side:
+
+```csv
+failure_mode,lambda_perm,lambda_trans,dc_perm,dc_trans,residual_perm,residual_trans
+```
+
+This also helps explain why one safety mechanism may be strong against transient corruption but weak against permanent logic defects.
+
+---
+
+## 13. Safe, Detected, Unsafe, and Unresolved Outcomes
+
+D13 classified fault outcomes into:
+
+```text
+detected
+safe
+unsafe
+unresolved
+```
+
+D15 must translate these outcomes into FMEDA meaning.
+
+A practical interpretation is:
+
+```text
+detected
+    fault affected behavior and alarm or diagnostic response occurred
+
+safe
+    fault did not affect safety-relevant behavior or was naturally masked
+
+unsafe
+    fault affected safety-relevant behavior without acceptable detection or control
+
+unresolved
+    evidence is insufficient to decide
+```
+
+D15 should not treat `unresolved` as safe.
+
+A useful policy is:
+
+```text
+detected -> may support DC credit
+safe -> may reduce dangerous contribution, but must be justified
+unsafe -> contributes to residual risk
+unresolved -> remains open for D17 closure
+```
+
+```mermaid
+flowchart TD
+    A[Fault Outcome] --> B{Class}
+    B -->|Detected| C[Supports DC credit]
+    B -->|Safe| D[May support safe-fault argument]
+    B -->|Unsafe| E[Residual risk]
+    B -->|Unresolved| F[Closure action]
+```
+
+---
+
+## 14. FMEDA Is a Join of Multiple Evidence Streams
+
+D15 is best understood as a join operation.
+
+```mermaid
+flowchart LR
+    A[D04 Structural Model] --> J[FMEDA Join]
+    B[D07 Safety Mechanism Map] --> J
+    C[D13 Fault Outcome Classification] --> J
+    D[D14 Final Metric Bridge] --> J
+    E[D05 Common Database Manifest] --> J
+    J --> F[D15 FMEDA Data Model]
+```
+
+The join must preserve traceability.
 
 For example:
 
 ```text
-Bad:
-  The design is safe.
-
-Better:
-  Current demo evidence shows endpoint parity detects selected counter-state faults,
-  but alarm path and diagnostic state rows remain review-required.
+FMEDA row 001
+    part: control block
+    sub-part: state machine
+    failure mode: wrong state transition
+    safety mechanism: endpoint parity
+    evidence:
+        D04 endpoint inventory
+        D07 EP-to-SM map
+        D13 detected fault list
+        D14 residual metric bridge
 ```
 
-The report generator should help enforce disciplined wording.
+A row without evidence source is weak. A row with evidence links becomes reviewable.
 
 ---
 
-## 27. Audience Profiles
+## 15. Evidence Quality Levels
 
-Different audiences need different reports.
+Not all evidence has the same strength.
 
-Possible profiles:
+D15 can classify evidence quality into levels:
 
 ```text
-engineering_deep_dive
-management_summary
-customer_demo
-github_methodology
-internal_review
+L0: manual assumption
+L1: structural inference
+L2: what-if exploration estimate
+L3: parsed campaign outcome
+L4: validated final metric session
+L5: reviewed FMEDA approval
+```
+
+Example mapping:
+
+```csv
+evidence_source,evidence_level,meaning
+D04 endpoint inventory,L1,structural evidence
+D06 what-if estimate,L2,planning estimate
+D13 parsed outcome,L3,fault campaign evidence or deterministic review evidence
+D14 final metrics,L4,metric integration evidence
+manual review,L5,approved safety argument
+```
+
+This prevents overclaiming.
+
+If a row is based only on L2 evidence, it should not be presented as a fully validated DC result.
+
+---
+
+## 16. Allocating Lambda to Failure Modes
+
+A major FMEDA task is allocating failure rate to failure modes.
+
+A simplified allocation method is:
+
+```text
+part lambda
+    -> sub-part lambda
+        -> failure-mode lambda
+```
+
+Possible allocation bases include:
+
+```text
+gate count
+flip-flop count
+endpoint contribution
+DCE contribution
+fault population weight
+manual expert judgment
+validated campaign data
+```
+
+D15 should record the allocation basis.
+
+Example:
+
+```csv
+failure_mode_id,lambda_allocated,allocation_basis,evidence_source
+FM_STATE_CORRUPTION,12.5,endpoint_fit_weight,D04+D14
+FM_PROTOCOL_ERROR,5.2,protocol_endpoint_weight,D07+D14
+FM_MEMORY_DATA_ERROR,20.0,memory_bit_weight,D04+D14
+```
+
+The number itself is not enough. The allocation method is part of the safety argument.
+
+---
+
+## 17. FIT-Weighted DC vs Fault-Count DC
+
+Two DC calculations may produce different results.
+
+Fault-count DC:
+
+```text
+covered faults / total faults
+```
+
+FIT-weighted DC:
+
+```text
+covered FIT contribution / total FIT contribution
+```
+
+If many low-risk faults are detected but a few high-FIT faults remain unsafe, fault-count DC can look good while residual risk remains high.
+
+D15 should prefer FIT-aware interpretation whenever final metrics are available.
+
+```mermaid
+flowchart TD
+    A[Fault Outcomes] --> B[Fault Count DC]
+    A --> C[FIT-weighted DC]
+    C --> D[Residual FIT]
+    D --> E[FMEDA Metric Review]
+```
+
+A reviewable data model should store both if available:
+
+```csv
+dc_fault_count
+dc_fit_weighted
+residual_fit
+```
+
+This makes the distinction visible.
+
+---
+
+## 18. Failure Mode to Safety Mechanism Traceability
+
+D07 generated mapping candidates such as:
+
+```text
+failure mode -> endpoint -> safety mechanism -> alarm
+```
+
+D15 converts this into FMEDA traceability:
+
+```text
+failure mode -> diagnostic mechanism -> DC claim -> residual FIT
 ```
 
 Example:
 
-```yaml
-audience_profile:
-  name: github_methodology
-  include_detailed_flow: true
-  include_mermaid_diagrams: true
-  include_limitations: true
-  include_raw_table_links: true
-  include_management_summary: false
+```csv
+failure_mode_id,sm_id,alarm_id,dc_claim,evidence
+FM_PROTOCOL_HANDSHAKE_CORRUPTION,SM_PROTOCOL_PARITY,ALM_PROTOCOL,0.90,D07+D13
 ```
 
-For this article series, the default profile should be:
+The key is that the safety mechanism must be associated with the failure mode, not just with a signal name.
+
+A signal-level map answers:
 
 ```text
-github_methodology
+Which endpoint has a mechanism?
 ```
 
-It should explain the workflow and evidence structure, not just present final metrics.
+An FMEDA map answers:
+
+```text
+Which failure mode is mitigated by this mechanism?
+```
 
 ---
 
-## 28. Tool Architecture
+## 19. Alarm and Observe Point Evidence in FMEDA
 
-The generic tool `safeic-report` can be implemented as a staged pipeline.
+D10 defined alarm and observe point boundaries.
 
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-report]
-    B[report_config.yaml] --> T
-    C[D14 Evidence Package] --> T
-    D[Report Template] --> T
+D15 should carry that context because DC depends on observation policy.
 
-    T --> E[Load Evidence Index]
-    E --> F[Load Metrics and FMEDA Tables]
-    F --> G[Load Review Items and Assumptions]
-    G --> H[Build Report Data Model]
-    H --> I[Render Markdown Sections]
-    I --> J[Generate Report Warnings]
-    J --> K[Write Report and Summary]
+Important fields:
+
+```csv
+alarm_signal
+observe_point
+ftti_window
+outcome_rule
+alarm_required
+alarm_evidence_status
 ```
-
-**Figure 5. `safeic-report` reads the evidence package, builds a report data model, renders sections, and emits review-ready documents.**
-
-Suggested internal modules:
-
-```text
-safeic_report/
-  cli.py
-  manifest.py
-  load_config.py
-  load_package.py
-  data_model.py
-  metrics_section.py
-  fmeda_section.py
-  campaign_section.py
-  findings.py
-  assumptions.py
-  traceability.py
-  warnings.py
-  render_markdown.py
-  report_summary.py
-```
-
-Responsibilities:
-
-| Module | Responsibility |
-|---|---|
-| `load_package.py` | Read D14 evidence package |
-| `data_model.py` | Build unified report data |
-| `metrics_section.py` | Render metric tables and interpretation |
-| `fmeda_section.py` | Render FMEDA summary |
-| `campaign_section.py` | Render campaign and outcome summary |
-| `findings.py` | Generate key findings |
-| `assumptions.py` | Render assumptions and limitations |
-| `traceability.py` | Summarize evidence traceability |
-| `warnings.py` | Generate report warnings |
-| `render_markdown.py` | Render final Markdown |
-| `report_summary.py` | Generate short summary |
-
----
-
-## 29. D15 Directory Structure
-
-Suggested directory:
-
-```text
-D15_safety_report_generation/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    report_config.yaml
-    report_template.md
-
-  package/
-    evidence_index.csv
-    package_status.csv
-    assumption_register.csv
-    traceability_matrix.csv
-    claim_traceability.csv
-
-    metrics/
-      measured_dc_by_endpoint.csv
-      measured_dc_by_failure_mode.csv
-      measured_residual_fit.csv
-      safety_metric_summary.csv
-      estimated_vs_measured_dc.csv
-
-    fmeda/
-      fmeda_table.csv
-      fmeda_review_items.csv
-
-    campaign/
-      campaign_status.csv
-      fault_outcomes.csv
-      outcome_summary.csv
-
-  outputs/
-    safety_report.md
-    safety_report_summary.md
-    review_action_list.md
-    metric_tables_for_review.csv
-    report_warnings.csv
-    report_manifest.yaml
-```
-
-D15 consumes the package and generates reports.
-
-It should not rerun campaign or recompute metrics unless explicitly configured.
-
----
-
-## 30. D15 Manifest
 
 Example:
 
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D15_safety_report_generation
-  top_module: toy_counter
-
-inputs:
-  report_config: inputs/report_config.yaml
-  report_template: inputs/report_template.md
-  evidence_package_dir: package
-
-outputs:
-  report: outputs/safety_report.md
-  summary: outputs/safety_report_summary.md
-  action_list: outputs/review_action_list.md
-  metric_tables: outputs/metric_tables_for_review.csv
-  warnings: outputs/report_warnings.csv
-  report_manifest: outputs/report_manifest.yaml
+```text
+If an alarm is required but not bound to a real signal, the DC row should be marked as review.
 ```
 
-The manifest makes report generation reproducible.
+If an observe point is missing, classification may be incomplete.
+
+This prevents a common problem:
+
+```text
+The safety mechanism is listed, but there is no observable diagnostic response.
+```
+
+FMEDA must connect the mechanism to its observable effect.
 
 ---
 
-## 31. D15 Execution Flow
+## 20. FTTI and Timing Sensitivity
+
+FTTI means Fault Tolerant Time Interval.
+
+It describes the time budget in which a fault must be detected or controlled before the safety goal is violated.
+
+D15 should not only record whether an alarm fired. It should also record whether timing is acceptable.
+
+Suggested fields:
+
+```csv
+ftti_cycles
+alarm_latency_cycles
+latency_margin
+ftti_status
+```
+
+Conceptual logic:
+
+```text
+if alarm_latency <= ftti_window:
+    timing_status = satisfied
+else:
+    timing_status = violation
+```
+
+This matters because a late alarm may not support the intended diagnostic coverage.
+
+```mermaid
+sequenceDiagram
+    participant F as Fault Injection
+    participant O as Observe Point
+    participant A as Alarm
+    participant T as FTTI Limit
+    F->>O: behavior may diverge
+    F->>A: alarm expected
+    A-->>T: must arrive before limit
+```
+
+---
+
+## 21. Unresolved Faults in FMEDA
+
+Unresolved faults should be visible.
+
+D15 should produce an unresolved table that can be consumed by D17.
+
+Fields:
+
+```csv
+fault_id
+failure_mode_id
+part_id
+subpart_id
+endpoint
+current_classification
+reason
+recommended_action
+owner
+closure_status
+```
+
+Recommended actions may include:
+
+```text
+extend VCD activity window
+add observe point
+bind alarm signal
+improve safety mechanism map
+rerun fault campaign
+review fault as safe by expert judgment
+mark as residual risk
+```
+
+Unresolved does not mean failed product. It means the evidence is not yet complete.
+
+The FMEDA model should make that gap explicit.
+
+---
+
+## 22. Safe Fault Treatment
+
+Safe faults can support the safety argument, but only if their definition is controlled.
+
+A fault may be safe because:
+
+```text
+it does not propagate
+it affects non-safety-critical logic
+it is masked by logic
+it is overwritten before observation
+it changes an irrelevant signal
+the design reaches a safe state
+```
+
+D15 should record the safe-fault rationale.
+
+Example fields:
+
+```csv
+safe_fault_count
+safe_fit
+safe_rationale
+safe_evidence_source
+```
+
+A weak row says:
+
+```text
+safe
+```
+
+A stronger row says:
+
+```text
+safe because it does not reach the safety-relevant observe boundary during the validated activity window
+```
+
+That difference matters during review.
+
+---
+
+## 23. Unsafe Fault Treatment
+
+Unsafe faults are the strongest signal that closure is needed.
+
+D15 should not average unsafe faults away.
+
+For each unsafe contribution, record:
+
+```csv
+failure_mode_id
+fault_id
+allocated_fit
+safety_mechanism
+expected_alarm
+actual_alarm_status
+observe_point
+residual_fit_contribution
+closure_action
+```
+
+Unsafe rows usually lead to:
+
+```text
+add safety mechanism
+improve alarm binding
+add redundancy
+improve test stimulus
+change classification policy
+accept residual risk with justification
+```
+
+D17 will use these rows as the primary closure target.
+
+---
+
+## 24. A Suggested D15 FMEDA Row Schema
+
+A practical D15 row schema can be:
+
+```csv
+fmeda_row_id,
+part_id,
+part_name,
+subpart_id,
+subpart_name,
+instance_path,
+failure_mode_id,
+failure_mode_name,
+local_effect,
+system_effect,
+lambda_perm_allocated,
+lambda_trans_allocated,
+sm_id,
+sm_name,
+alarm_signal,
+observe_point,
+dc_perm,
+dc_trans,
+residual_fit_perm,
+residual_fit_trans,
+residual_fit_total,
+detected_count,
+safe_count,
+unsafe_count,
+unresolved_count,
+evidence_level,
+evidence_sources,
+review_status
+```
+
+This is not the only possible schema, but it captures the required relationships.
+
+It can be split into normalized tables for better engineering use, then exported into a flat CSV for review.
+
+---
+
+## 25. Normalized Tables vs Spreadsheet Export
+
+A normalized model avoids duplication.
 
 ```mermaid
 flowchart TD
-    A[Load Manifest] --> B[Load Report Config]
-    B --> C[Load Evidence Package]
-    C --> D[Validate Required Report Inputs]
-    D --> E[Load Metrics]
-    E --> F[Load FMEDA and Review Items]
-    F --> G[Load Assumptions and Traceability]
-    G --> H[Build Report Data Model]
-    H --> I[Generate Key Findings]
-    I --> J[Render Markdown Report]
-    J --> K[Generate Summary and Action List]
-    K --> L[Write Report Warnings]
+    A[part.csv] --> F[fmeda_rows.csv]
+    B[subpart.csv] --> F
+    C[failure_mode.csv] --> F
+    D[safety_mechanism.csv] --> F
+    E[evidence_link.csv] --> F
+    F --> G[fmeda_export.csv]
 ```
 
-**Figure 6. D15 execution flow: load package, validate inputs, build report data, render report, and generate warnings.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-report \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D15_safety_report_generation
-echo "Running $DEMO"
-
-safeic-report \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
+Recommended internal tables:
 
 ```text
-outputs/safety_report.md
-outputs/safety_report_summary.md
-outputs/review_action_list.md
-outputs/metric_tables_for_review.csv
-outputs/report_warnings.csv
-outputs/report_manifest.yaml
+part_catalog.csv
+subpart_catalog.csv
+instance_to_subpart_map.csv
+failure_mode_catalog.csv
+safety_mechanism_catalog.csv
+coverage_credit_table.csv
+residual_fit_table.csv
+evidence_link_table.csv
+fmeda_flat_export.csv
 ```
+
+The flat export is convenient for human review, but the normalized tables are better for automation.
 
 ---
 
-## 32. Validation Rules
+## 26. D15 Inputs
 
-`safeic-report` should validate:
-
-```text
-report_config.yaml exists
-evidence package directory exists
-evidence_index.csv exists
-fmeda_table.csv exists if FMEDA section enabled
-measured DC tables exist if metric section enabled
-fault_outcomes.csv exists if campaign section enabled
-assumption_register.csv exists if assumptions section enabled
-review_items.csv exists if review section enabled
-report template exists
-output directory is writable
-all required placeholders can be resolved
-```
-
-Example messages:
+D15 should read from previous stages:
 
 ```text
-[PASS] report config loaded
-[PASS] evidence package found
-[PASS] FMEDA table loaded
-[PASS] measured DC by failure mode loaded
-[WARN] campaign mode is emulation; report will include limitation note
-[WARN] measured DC confidence is LOW for multiple groups
-[ERROR] report template references unknown placeholder {{ metrics.unknown_table }}
+D04 structural endpoint and DCE catalog
+D05 common database manifest and object catalog
+D07 failure-mode to safety-mechanism map
+D10 alarm / observe boundary contract
+D13 fault outcome classification
+D14 final metric bridge and residual metric seed
 ```
 
-Report generation should fail on invalid templates but warn on low-confidence data.
+A robust input manifest looks like:
+
+```csv
+input_group,artifact,purpose
+structural,D04 endpoint inventory,part/sub-part mapping seed
+database,D05 session manifest,evidence source identity
+mapping,D07 EP-to-SM map,safety mechanism traceability
+observation,D10 observation contract,alarm and observe policy
+outcome,D13 classified faults,outcome evidence
+metrics,D14 final metrics summary,residual FIT basis
+```
+
+This keeps D15 from becoming an isolated spreadsheet generator.
 
 ---
 
-## 33. Common Mistakes
+## 27. D15 Outputs
 
-### 33.1 Reporting Metrics Without Context
+Expected D15 outputs include:
 
-Measured DC must be reported with scope, sample size, confidence, and policy.
+```text
+part_catalog.csv
+subpart_catalog.csv
+instance_to_subpart_map.csv
+failure_mode_catalog.csv
+fmeda_row_table.csv
+coverage_credit_table.csv
+residual_fit_table.csv
+fmeda_flat_export.csv
+fmeda_review_dashboard.md
+fmeda_open_items.csv
+d15_handoff_to_d16.csv
+d15_handoff_to_d17.csv
+d15_quality_gate.csv
+evidence_index.csv
+demo_summary.md
+```
 
-### 33.2 Hiding Unsafe Findings
+The most important output is `fmeda_flat_export.csv`.
 
-Unsafe faults and review-required FMEDA rows should appear in the main report.
+That file is the human-readable FMEDA-style table.
 
-### 33.3 Hiding Limitations
+The most important engineering output is `evidence_index.csv`.
 
-Demo scope, small sample size, and emulation mode should be explicitly stated.
-
-### 33.4 Mixing Estimated, Measured, and Selected DC
-
-Always label these separately.
-
-### 33.5 Producing a Report That Cannot Be Traced
-
-Every major finding should link back to evidence artifacts.
-
-### 33.6 Overclaiming Safety
-
-A report generated from methodology demo data should not claim production safety compliance.
-
-### 33.7 Making the Report Too Long Without Summary
-
-A long report must still start with an executive summary and key findings.
+That file says which upstream artifacts support each FMEDA table.
 
 ---
 
-## 34. How D15 Connects to Later Demos
+## 28. The D15 Demo Architecture
 
-D15 creates a report from one evidence package.
+The D15 demo should work as a model builder.
 
-Later demos can compare iterations, track regressions, and compare tool outputs.
+```mermaid
+flowchart TD
+    A[Load D14 final metrics] --> B[Load D13 outcomes]
+    C[Load D07 failure-mode map] --> B
+    D[Load D04 structure] --> E[Build part/sub-part hierarchy]
+    B --> F[Allocate outcomes to failure modes]
+    E --> F
+    F --> G[Compute residual FIT table]
+    G --> H[Build FMEDA flat export]
+    H --> I[Run quality gates]
+    I --> J[Generate D16/D17 handoff]
+```
+
+The demo should not hide the difference between:
+
+```text
+computed values
+estimated values
+review-only placeholders
+missing evidence
+```
+
+That distinction is essential for credibility.
+
+---
+
+## 29. Quality Gates for D15
+
+D15 should check at least:
+
+```text
+every FMEDA row has a part
+every FMEDA row has a sub-part
+every FMEDA row has a failure mode
+every row has a failure-rate source
+every row has a safety mechanism status
+every claimed DC value has an evidence source
+every residual FIT value can be traced to lambda and DC
+unsafe rows are carried forward
+unresolved rows are carried forward
+flat export and normalized tables are consistent
+D16 handoff exists
+D17 closure handoff exists
+```
+
+Example quality gate categories:
+
+```text
+FAIL
+    missing part/sub-part
+    missing failure mode
+    residual FIT cannot be computed
+    unsafe/unresolved evidence dropped
+
+WARN
+    manual allocation
+    estimated DC only
+    alarm binding still review-level
+    low evidence level
+```
+
+A strong FMEDA model is not one that has no open items. It is one that does not hide them.
+
+---
+
+## 30. How D15 Feeds D16
+
+D16 will discuss top-down FMEDA flow.
+
+D15 prepares:
+
+```text
+part hierarchy
+sub-part hierarchy
+failure modes
+safety mechanism maps
+coverage metrics
+review status
+FMEDA export seed
+```
+
+D16 can then focus on workflow:
+
+```text
+create FMEDA project
+create part/sub-part structure
+associate instances
+associate failure modes
+load safety mechanism maps
+run per-failure-mode analysis
+review safety metrics
+export FMEDA results
+```
+
+Without D15, D16 would start from an empty GUI concept. With D15, D16 starts from structured evidence.
+
+---
+
+## 31. How D15 Feeds D17
+
+D17 is about diagnostic coverage closure.
+
+D15 provides the closure backlog:
+
+```text
+unsafe rows
+unresolved rows
+low-DC rows
+missing alarm rows
+missing observe point rows
+estimated-only DC rows
+manual-allocation rows
+```
+
+A closure backlog should include:
+
+```csv
+open_item_id,fmeda_row_id,issue_type,severity,recommended_action,owner,status
+```
+
+This converts FMEDA from a static document into an engineering loop.
 
 ```mermaid
 flowchart LR
-    A[D15 Safety Report] --> B[D16 Regression and Trend Tracking]
-    A --> C[D17 Commercial Tool Comparison]
-    A --> D[D18 Website / Demo Publication]
-    B --> E[Metric Trend Report]
-    C --> F[Tool Comparison Report]
-    D --> G[Public Methodology Demo]
+    A[D15 FMEDA Open Items] --> B[D17 Closure Planning]
+    B --> C[Add SM / Improve Context / Rerun Campaign]
+    C --> D[D13 / D14 Reclassification]
+    D --> E[D15 FMEDA Refresh]
 ```
-
-**Figure 7. D15 creates the single-run report foundation for later trend analysis and tool comparison.**
-
-A report for one run is useful.
-
-A sequence of reports across iterations is much more powerful.
 
 ---
 
-## 35. Recommended Implementation Stages
+## 32. Part/Sub-Part Naming Guidelines
 
-D15 can be implemented in stages.
+Naming matters because FMEDA tables are reviewed by people from different teams.
 
-### Stage 1: Static Markdown Report
-
-Read key CSV files and generate `safety_report.md`.
-
-Deliverables:
+Good names:
 
 ```text
-safety_report.md
-report_warnings.csv
+P_CONTROL
+SP_CONTROL_FSM
+SP_CONTROL_STATUS_REGISTER
+P_BUS_INTERFACE
+SP_BUS_HANDSHAKE
+SP_BUS_DATA_PATH
 ```
 
-### Stage 2: Template-Based Report
-
-Add `report_template.md` and placeholder rendering.
-
-Deliverables:
+Weak names:
 
 ```text
-safety_report.md
-report_manifest.yaml
+part1
+subpart2
+block_x
+misc_logic
 ```
 
-### Stage 3: Key Findings Generator
-
-Automatically derive key findings from metrics and review items.
-
-Deliverables:
+A good naming convention should include:
 
 ```text
-safety_report_summary.md
-review_action_list.md
+stable ID
+human-readable name
+design hierarchy mapping
+owner
+safety relevance
+review status
 ```
 
-### Stage 4: Traceability Integration
+Example:
 
-Add traceability links into report sections.
-
-Deliverables:
-
-```text
-traceability_summary.md
+```csv
+subpart_id,subpart_name,parent_part,owner,safety_relevance
+SP_BUS_HANDSHAKE,Bus handshake control,P_BUS_INTERFACE,design_team,ASIL_relevant
 ```
-
-### Stage 5: Multi-Profile Reporting
-
-Support GitHub, engineering review, and management summary profiles.
-
-Deliverables:
-
-```text
-github_report.md
-engineering_review_report.md
-management_summary.md
-```
-
-This staged approach makes D15 immediately useful while keeping the architecture extensible.
 
 ---
 
-## 36. Summary
+## 33. Failure Mode Naming Guidelines
 
-Safety report generation turns a structured evidence package into a readable engineering report.
+Failure mode names should describe functional failure, not raw signal names.
 
-The D15 demo:
-
-```text
-D15_safety_report_generation
-```
-
-introduces the generic tool:
+Good examples:
 
 ```text
-safeic-report
+FM_STATE_CORRUPTION
+FM_WRONG_DATA_OUTPUT
+FM_MISSING_ALARM
+FM_PROTOCOL_HANDSHAKE_ERROR
+FM_LATENT_REGISTER_CORRUPTION
 ```
 
-The tool consumes:
+Weak examples:
 
 ```text
-D14 evidence package
-report_config.yaml
-report_template.md
-metrics
-FMEDA tables
-fault campaign summaries
-assumptions
-traceability
-review items
+count_bit_0_fault
+net_123_fault
+u1_n45_error
 ```
 
-and generates:
+The raw fault location belongs in the fault table. The failure mode should be stable across implementation changes.
 
-```text
-safety_report.md
-safety_report_summary.md
-review_action_list.md
-metric_tables_for_review.csv
-report_warnings.csv
-report_manifest.yaml
-```
-
-The central lesson is:
-
-> A safety report should explain evidence, not merely copy data. It must state scope, assumptions, metrics, confidence, unsafe findings, FMEDA status, traceability, limitations, and next actions.
-
-D15 makes the safety workflow readable and review-ready.
+This allows FMEDA to survive RTL refactoring.
 
 ---
 
-## 37. D15 Demo Checklist
+## 34. Safety Mechanism Naming Guidelines
 
-For `D15_safety_report_generation`, the expected deliverables are:
+Safety mechanism naming should separate the mechanism family from the specific instance.
 
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/report_config.yaml
-[ ] inputs/report_template.md
-
-[ ] package/evidence_index.csv
-[ ] package/package_status.csv
-[ ] package/assumption_register.csv
-[ ] package/traceability_matrix.csv
-[ ] package/claim_traceability.csv
-
-[ ] package/metrics/measured_dc_by_endpoint.csv
-[ ] package/metrics/measured_dc_by_failure_mode.csv
-[ ] package/metrics/measured_residual_fit.csv
-[ ] package/metrics/safety_metric_summary.csv
-[ ] package/metrics/estimated_vs_measured_dc.csv
-
-[ ] package/fmeda/fmeda_table.csv
-[ ] package/fmeda/fmeda_review_items.csv
-
-[ ] package/campaign/campaign_status.csv
-[ ] package/campaign/fault_outcomes.csv
-[ ] package/campaign/outcome_summary.csv
-
-[ ] outputs/safety_report.md
-[ ] outputs/safety_report_summary.md
-[ ] outputs/review_action_list.md
-[ ] outputs/metric_tables_for_review.csv
-[ ] outputs/report_warnings.csv
-[ ] outputs/report_manifest.yaml
-```
-
-A successful D15 run should answer:
+Example:
 
 ```text
-What is the report scope?
-Which evidence package was used?
-What are the key metrics?
-Which failure modes dominate residual FIT?
-Which safety mechanisms appear effective?
-Which faults remain unsafe?
-Which FMEDA rows require review?
-Which assumptions and limitations apply?
-Which evidence files support the main findings?
-Which review actions should be taken next?
-Is the report suitable for GitHub methodology presentation or engineering review?
+SM_ENDPOINT_PARITY
+SM_BUS_PROTOCOL_PARITY
+SM_COUNTER_DUPLICATION_COMPARE
+SM_MEMORY_ECC
+SM_WATCHDOG_TIMEOUT
 ```
+
+Each mechanism should carry:
+
+```text
+mechanism family
+covered failure modes
+alarm behavior
+expected DC
+evidence source
+implementation status
+```
+
+A mechanism name without behavior is not enough.
+
+---
+
+## 35. Handling Third-Party IP and Black Boxes
+
+FMEDA frequently includes blocks where internal implementation is not fully visible.
+
+Examples:
+
+```text
+third-party IP
+memory macro
+analog block
+licensed interface block
+encrypted RTL
+black-box safety island
+```
+
+D15 should support custom values:
+
+```csv
+part_id,subpart_id,lambda_override,dc_override,evidence_source,justification
+```
+
+But overrides must be labeled.
+
+Possible statuses:
+
+```text
+supplier_provided
+expert_judgment
+analysis_estimate
+campaign_validated
+not_available
+```
+
+The review risk is not that overrides exist. The risk is that overrides are not traceable.
+
+---
+
+## 36. Manual Judgment Fields
+
+FMEDA always contains engineering judgment.
+
+D15 should represent it explicitly:
+
+```csv
+review_owner
+review_decision
+review_comment
+assumption_id
+justification
+```
+
+Example:
+
+```text
+review_decision = accept_with_assumption
+assumption_id = ASM_003
+justification = fault is outside safety-related operating mode
+```
+
+This makes assumptions reviewable and revisitable.
+
+---
+
+## 37. Data Versioning and Run Identity
+
+Every FMEDA result depends on run identity.
+
+Important fields:
+
+```text
+design version
+D03 fit standard
+mission profile
+D14 metric source
+fault campaign context
+D13 outcome source
+D10 observation contract
+FMEDA schema version
+```
+
+A row should not simply say:
+
+```text
+residual FIT = 0.5
+```
+
+It should be traceable to:
+
+```text
+residual FIT = 0.5 under a specific design, FIT standard, safety context, and outcome evidence set
+```
+
+This is especially important when comparing IEC 62380-style and SN 29500-style FIT assumptions.
+
+---
+
+## 38. Example FMEDA Row
+
+A simplified row:
+
+```csv
+fmeda_row_id,part,subpart,failure_mode,sm,dc_perm,residual_fit,status
+FMEDA_001,Control Block,State Machine,Wrong state transition,Endpoint parity,0.90,0.12,review
+```
+
+A better row:
+
+```csv
+fmeda_row_id,part_id,subpart_id,instance_path,failure_mode_id,local_effect,system_effect,lambda_perm_allocated,sm_id,alarm_signal,observe_point,dc_perm_validated,residual_fit_perm,evidence_sources,review_status
+FMEDA_001,P_CTRL,SP_FSM,top.ctrl.fsm,FM_STATE_CORRUPTION,illegal state,wrong control decision,1.2,SM_ENDPOINT_PARITY,alarm_ctrl_fsm,safe_state_o,0.90,0.12,D04+D07+D13+D14,review
+```
+
+The second row is longer, but it is much more useful.
+
+---
+
+## 39. Demo Command Model
+
+The D15 demo should be runnable as a local evidence builder:
+
+```bash
+cd D15_fmeda_data_model_part_subpart_failure_mode_sm_dc_residual_fit
+csh scripts/run_demo.csh
+```
+
+Expected external roots:
+
+```text
+D14_ROOT
+D13_ROOT
+D10_ROOT
+D07_ROOT
+D05_ROOT
+D04_ROOT
+```
+
+The demo should generate reviewable tables and markdown summaries, not launch new fault campaigns by default.
+
+D15 is primarily a data-model stage.
+
+---
+
+## 40. Key Takeaways
+
+D15 is the point where safety evidence becomes a structured FMEDA model.
+
+The central ideas are:
+
+```text
+Part and sub-part define ownership.
+Failure mode defines functional meaning.
+Safety mechanism defines diagnostic intent.
+DC defines credited coverage.
+Residual FIT defines remaining risk.
+Fault outcomes provide validation evidence.
+Common database sessions and evidence files provide traceability.
+Unsafe and unresolved rows must be preserved for closure.
+```
+
+A safety flow is not credible because it produces many files.
+
+It is credible when those files can be joined into a coherent argument:
+
+```text
+This part can fail in this way.
+This safety mechanism is intended to detect or control it.
+This fault evidence supports the claimed diagnostic coverage.
+This residual FIT remains.
+These open items must be closed.
+```
+
+That is the purpose of D15.
+
+D16 will use this model to move into a top-down FMEDA workflow.
