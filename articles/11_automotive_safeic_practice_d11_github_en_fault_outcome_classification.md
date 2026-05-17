@@ -1,1604 +1,1131 @@
-# [Automotive Safe-IC Practice 11] Fault Outcome Classification: From Raw Campaign Results to Detected, Safe, Unsafe, and Unresolved
+# Automotive Safe-IC Practice 11: Fault Campaign Setup — Building the Fault-Campaign Input Package
+Author: Darren H. Chen
+Direction: Automotive chip functional safety analysis and fault injection
+Demo: D11_fault_campaign_setup_input_package
+Tags: ISO 26262, Safe-IC, Fault Campaign, Fault Injection, VCD, Fault List, Alarm List, Observe Point, FTTI, Good Machine, Evidence Traceability
 
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D11_fault_outcome_classification  
-**Tags**: Automotive Chip, Functional Safety, Fault Injection, Fault Campaign, Fault Classification, Detected Fault, Safe Fault, Unsafe Fault, Unresolved Fault, Diagnostic Coverage, FMEDA
+## 1. From Analysis Artifacts to an Executable Campaign Package
+
+A functional safety flow becomes concrete when the abstract evidence produced by safety analysis is converted into a fault-campaign input package. Before this point, the flow has been mostly analytical and preparatory: base FIT rate, FIT-standard sensitivity, endpoint and startpoint structure, common database sessions, candidate safety mechanisms, failure-mode mapping, fault-list generation, simulation safety context, and observation boundary definition.
+
+D11 is the point where those artifacts are no longer independent files. They are assembled into one coherent package that can be consumed by a fault campaign engine in the next stage.
+
+A fault campaign package answers several practical questions:
+
+```text
+Which design boundary will be used?
+Which RTL or netlist filelist defines that boundary?
+Which fault list will be injected?
+Which VCD or simulation context will drive the good-machine behavior?
+Which alarms are credited as safety-mechanism responses?
+Which observe points define the behavior boundary?
+Which time window defines the fault-tolerant time interval?
+Which database session or evidence registry will receive campaign metadata?
+Which run mode will be used in D12?
+```
+
+If any of these answers are implicit, the campaign becomes hard to reproduce. If they are inconsistent, the results of D12 and D13 may be technically meaningless even if the tool produces output files. D11 therefore acts as the packaging and contract stage for the safety verification part of the flow.
+
+The engineering objective is simple:
+
+```text
+D08 fault list
++ D09 simulation safety context
++ D10 alarm / observe boundary
++ D05 database identity
++ D01-D04 design and structural context
+= D11 fault campaign input package
+```
+
+D11 does not classify final fault outcomes. It prepares the input conditions under which D12 can execute fault injection and D13 can classify detected, safe, unsafe, and unresolved outcomes.
 
 ---
 
-## 1. Why This Article Matters
+## 2. D11 in the 20-Demo Safe-IC Flow
 
-In the previous article, we executed or emulated a fault campaign.
+D11 sits after the observation boundary has been defined and before actual fault injection starts.
 
-D10 produced raw execution evidence:
-
-```text
-campaign_status.csv
-raw_fault_results.csv
-alarm_trace.csv
-observe_trace.csv
-per-fault status.json
-golden traces
-faulted traces
+```mermaid
+flowchart TD
+    D08[D08 Fault List Generation] --> D09[D09 Simulation Safety Context]
+    D09 --> D10[D10 Alarm List and Observe Point Boundary]
+    D10 --> D11[D11 Fault Campaign Setup]
+    D11 --> D12[D12 Fault Injection Execution]
+    D12 --> D13[D13 Fault Outcome Classification]
+    D13 --> D14[D14 Fault Campaign Result Writeback]
+    D14 --> D15[D15 FMEDA Data Model]
 ```
 
-However, raw results are not yet safety conclusions.
+**Figure 1. D11 converts upstream evidence into a fault-campaign input package.**
 
-A simulator run can complete successfully, but the injected fault may still be:
-
-```text
-detected
-safe
-unsafe
-unresolved
-```
-
-The eleventh demo in this repository is:
+This position matters because D11 is not allowed to invent safety semantics. It must inherit them from upstream stages:
 
 ```text
-D11_fault_outcome_classification
+D08 decides what faults are in scope.
+D09 decides what waveform context represents good-machine behavior.
+D10 decides which alarm and observe boundaries are meaningful.
+D11 decides how these pieces are packaged into a run-ready campaign setup.
 ```
 
-The generic tool introduced in this article is:
+The downstream stages then consume D11:
 
 ```text
-safeic-classify
+D12 executes the campaign.
+D13 interprets outcomes.
+D14 writes results back into metric and database evidence.
+D15 uses the result as part of the FMEDA evidence model.
 ```
 
-The purpose of `safeic-classify` is to convert raw fault campaign data into structured fault outcomes using:
-
-```text
-fault_list.csv
-vcd_context.json
-campaign_status.csv
-raw_fault_results.csv
-golden traces
-faulted alarm traces
-faulted observe traces
-detection windows
-classification policy
-```
-
-The central idea is:
-
-> Fault outcome classification is the step that turns raw simulation behavior into functional safety evidence. It must separate execution status, alarm behavior, observable deviation, golden comparison, and evidence completeness.
+In a real safety project, this separation prevents a common mistake: mixing setup policy, execution policy, and result interpretation in one script. Keeping D11 focused on setup makes the flow easier to review.
 
 ---
 
-## 2. Where D11 Fits in the Flow
+## 3. What “Fault Campaign Setup” Means
 
-D11 sits after campaign execution and before measured diagnostic coverage.
+A fault campaign setup is not merely a command line. It is a structured description of the verification experiment.
+
+The setup includes:
+
+```text
+design input package
+fault list
+VCD / simulation safety context
+alarm list
+observe point specification
+injection timing policy
+fault-tolerant time interval policy
+campaign mode policy
+parallelization policy
+database and evidence policy
+quality gate policy
+```
+
+A command is only one projection of that setup. A GUI session, database session, run manifest, and batch script can all represent the same setup.
+
+For engineering purposes, D11 should produce both machine-readable and human-reviewable artifacts:
+
+```text
+campaign_setup.ini
+campaign_manifest.yaml
+campaign_input_manifest.csv
+campaign_readiness_matrix.csv
+d11_handoff_to_d12.csv
+d11_handoff_to_d13.csv
+evidence_index.csv
+```
+
+The setup is valid only when all required artifacts are present and mutually consistent.
+
+---
+
+## 4. The Input Contract for a Fault Campaign
+
+A fault campaign needs at least five conceptual input classes:
+
+```text
+Design boundary
+Fault list
+Simulation context
+Alarm list
+Observation boundary
+```
+
+In practice, it also needs run-control metadata:
+
+```text
+campaign mode
+output directory
+log policy
+database session
+resource policy
+seed / reproducibility policy
+```
+
+A clean D11 input contract can be represented as follows:
 
 ```mermaid
 flowchart LR
-    A[D10 Raw Campaign Results] --> B[D11 Fault Outcome Classification]
-    C[D09 VCD Safety Context] --> B
-    D[D08 Fault List] --> B
-    B --> E[Fault Outcome Table]
-    E --> F[D12 Measured Diagnostic Coverage]
-    F --> G[FMEDA Update]
+    A[Design Boundary] --> P[Campaign Package]
+    B[Fault List] --> P
+    C[VCD / Good Machine Context] --> P
+    D[Alarm List] --> P
+    E[Observe Points] --> P
+    F[FTTI Window] --> P
+    G[Database Session] --> P
+    H[Run Policy] --> P
+    P --> X[D12 Fault Injection Execution]
 ```
 
-**Figure 1. D11 converts raw campaign evidence into classified outcomes that can later be used for measured DC and FMEDA.**
+**Figure 2. A campaign package is a contract, not a loose group of files.**
 
-D10 answers:
-
-```text
-Did the run execute?
-What alarm traces and observe traces were captured?
-```
-
-D11 answers:
-
-```text
-Was the fault detected?
-Was the fault safe?
-Was the fault unsafe?
-Was the result unresolved?
-Why was it classified that way?
-```
-
-This distinction is critical.
-
-A fault campaign is not useful until results are classified with a clear policy.
+If the package does not preserve this contract, D12 becomes fragile. A campaign may run with the wrong filelist, a stale VCD, an alarm list that does not match the design, or a fault list derived from a different structural boundary.
 
 ---
 
-## 3. Execution Status Is Not Fault Outcome
+## 5. Design Boundary Protocol
 
-Before classification, we must separate two different concepts.
+The design boundary tells the fault campaign engine what hardware model will be used during injection.
 
-### 3.1 Execution Status
-
-Execution status describes whether the simulation run completed.
-
-Examples:
+A design boundary usually contains:
 
 ```text
-PASS
-SIM_ERROR
-TIMEOUT
-INVALID_INPUT
-UNSUPPORTED_FAULT
-SKIPPED
+filelist
+top module
+clock definition
+reset assumptions
+black-box policy
+library or mapping policy
+hierarchical instance path for injection
 ```
 
-### 3.2 Fault Outcome
+In D11, the filelist should not be a casual copy of an earlier filelist. It should be a campaign-ready filelist.
 
-Fault outcome describes the safety meaning of the injected fault.
-
-Examples:
+Important checks include:
 
 ```text
-detected
-safe
-unsafe
-unresolved
-not_classified
+All paths are resolvable from the campaign root.
+The top module is consistent with upstream analysis.
+The RTL or netlist boundary matches the fault-list generation boundary.
+The clock definition matches the VCD signal naming.
+The injection instance path refers to the same design hierarchy used by the simulation context.
 ```
 
-A run can have:
+A typical generated artifact might be:
 
 ```text
-run_status = PASS
-fault_outcome = unsafe
+outputs/campaign_inputs/filelist.absolute.f
 ```
 
-or:
-
-```text
-run_status = PASS
-fault_outcome = detected
-```
-
-or:
-
-```text
-run_status = SIM_ERROR
-fault_outcome = not_classified
-```
-
-```mermaid
-flowchart TD
-    A[Faulted Run] --> B{Run Completed?}
-    B -- No --> C[Execution Problem]
-    C --> D[not_classified]
-    B -- Yes --> E[Analyze Alarm and Observe Traces]
-    E --> F[Fault Outcome]
-```
-
-**Figure 2. A completed simulation is only a prerequisite for classification; it is not a safety outcome.**
-
-This is why `safeic-classify` consumes both `campaign_status.csv` and raw traces.
+The reason for using an absolute or root-normalized filelist is practical: fault campaigns are often launched from a different working directory than the analysis stage. If a relative path is interpreted from the wrong directory, the campaign fails before injection begins or, worse, silently uses the wrong input.
 
 ---
 
-## 4. The Four Core Outcomes
+## 6. Fault List Protocol
 
-A simple and useful classification set is:
+The fault list tells the campaign engine what faults to inject.
 
-```text
-detected
-safe
-unsafe
-unresolved
-```
+D08 has already generated a campaign-ready fault list. D11 does not reinterpret the fault model; it checks and packages the result.
 
-### 4.1 Detected
-
-A fault is detected if the relevant diagnostic mechanism reports the fault within the allowed detection window.
-
-Example:
-
-```text
-Fault:
-  toy_counter.count[0] transient_flip
-
-Expected alarm:
-  toy_counter.alarm
-
-Observed:
-  alarm asserted within detection window
-
-Outcome:
-  detected
-```
-
-### 4.2 Safe
-
-A fault is safe if it does not cause a safety-relevant deviation at the observe points, or its effect is masked/controlled without requiring diagnostic credit.
-
-Example:
-
-```text
-Fault injected into inactive logic.
-No relevant observe point deviation.
-No alarm required.
-
-Outcome:
-  safe
-```
-
-### 4.3 Unsafe
-
-A fault is unsafe if it causes a relevant deviation without being detected or controlled.
-
-Example:
-
-```text
-Fault changes safety-related output.
-Expected alarm does not assert.
-Deviation appears within valid observe window.
-
-Outcome:
-  unsafe
-```
-
-### 4.4 Unresolved
-
-A fault is unresolved if the evidence is insufficient to decide.
-
-Reasons include:
-
-```text
-missing observe point
-missing alarm signal
-X/Z in active window
-simulation log incomplete
-fault effect ambiguous
-detection window unavailable
-golden baseline unavailable
-```
-
-Unresolved is not the same as safe.
-
-It means:
-
-```text
-the campaign result cannot support a strong safety conclusion
-```
-
----
-
-## 5. Classification Is Policy-Driven
-
-Different projects may use slightly different classification rules.
-
-Therefore, D11 must be policy-driven.
-
-Example `classification_policy.yaml`:
-
-```yaml
-classification_policy:
-  outcomes:
-    detected: true
-    safe: true
-    unsafe: true
-    unresolved: true
-
-  detected_rule:
-    require_expected_alarm: true
-    require_alarm_within_detection_window: true
-
-  unsafe_rule:
-    observe_deviation_without_alarm: true
-    require_safety_relevant_observe_point: true
-
-  safe_rule:
-    no_observe_deviation: true
-    no_alarm_required: false
-    allow_no_effect_as_safe: true
-
-  unresolved_rule:
-    missing_alarm: unresolved
-    missing_observe_point: unresolved
-    xz_in_active_window: unresolved
-    sim_error: not_classified
-
-  timing:
-    use_detection_windows: true
-    allow_late_alarm_as_detected: false
-```
-
-The policy should be explicit because classification results feed measured DC and FMEDA.
-
----
-
-## 6. Inputs to Fault Classification
-
-D11 consumes artifacts from D08, D09, and D10.
-
-```text
-D08:
-  fault_list.csv
-
-D09:
-  vcd_context.json
-  injection_windows.csv
-  detection_windows.csv
-  alarm_baseline.csv
-  observe_context.csv
-
-D10:
-  campaign_status.csv
-  raw_fault_results.csv
-  per-fault alarm_trace.csv
-  per-fault observe_trace.csv
-```
-
-Suggested input directory:
-
-```text
-D11_fault_outcome_classification/
-  inputs/
-    fault_list.csv
-    vcd_context.json
-    campaign_status.csv
-    raw_fault_results.csv
-    classification_policy.yaml
-
-  runs/
-    golden/
-      golden_alarm_trace.csv
-      golden_observe_trace.csv
-
-    F001/
-      alarm_trace.csv
-      observe_trace.csv
-      status.json
-
-    F002/
-      alarm_trace.csv
-      observe_trace.csv
-      status.json
-```
-
-The classifier should not rely on a single CSV if detailed traces are available.
-
-A summary CSV is useful, but trace-backed classification is stronger.
-
----
-
-## 7. Classification Decision Tree
-
-A simplified classification decision tree is:
-
-```mermaid
-flowchart TD
-    A[Fault Run] --> B{Run Status PASS?}
-    B -- No --> C[not_classified]
-    B -- Yes --> D{Required Evidence Available?}
-    D -- No --> E[unresolved]
-    D -- Yes --> F{Expected Alarm Asserted in Detection Window?}
-    F -- Yes --> G[detected]
-    F -- No --> H{Safety-Relevant Observe Deviation?}
-    H -- Yes --> I[unsafe]
-    H -- No --> J{No Effect or Masked?}
-    J -- Yes --> K[safe]
-    J -- No --> L[unresolved]
-```
-
-**Figure 3. A simple classification decision tree separates execution problems, missing evidence, alarm detection, unsafe deviation, and safe/no-effect behavior.**
-
-This tree is intentionally conservative.
-
-When evidence is missing, the result should become unresolved rather than safe.
-
----
-
-## 8. Alarm-Based Detection
-
-Many diagnostic mechanisms are represented by alarms.
-
-A detected classification usually requires:
-
-```text
-expected alarm exists
-alarm is present in traces
-alarm is inactive in golden baseline
-alarm asserts in the faulted run
-alarm asserts within detection window
-alarm polarity is known
-```
-
-Example alarm trace summary:
-
-```csv
-fault_id,expected_alarm,present,asserted,first_assert_time,within_detection_window
-F001,toy_counter.alarm,true,true,65,true
-F002,toy_counter.alarm,true,true,75,true
-F004,toy_counter.alarm,true,false,,false
-```
-
-Detected classification:
-
-```csv
-fault_id,outcome,reason
-F001,detected,expected alarm asserted within detection window
-F002,detected,expected alarm asserted within detection window
-F004,unsafe,alarm stuck-at fault prevented expected diagnostic reporting
-```
-
-A key rule is:
-
-> Alarm assertion is diagnostic evidence only if the alarm is expected, present, correctly interpreted, and timely.
-
----
-
-## 9. Detection Window Matters
-
-An alarm that asserts too late may not count as detected for the intended safety requirement.
-
-Example:
-
-```text
-fault injection time:
-  60 ns
-
-detection window:
-  60 ns to 70 ns
-
-alarm first assertion:
-  90 ns
-```
-
-Depending on policy:
-
-```text
-strict classification:
-  unsafe or unresolved
-
-lenient classification:
-  late_detected
-
-recommended demo classification:
-  unresolved or unsafe with late_alarm flag
-```
-
-D11 can include an extended classification field:
-
-```text
-outcome = unsafe
-subtype = late_alarm
-```
-
-or:
-
-```text
-outcome = unresolved
-evidence_gap = alarm_late
-```
-
-For early demos, keep the main outcome set simple and record late alarm as a reason.
-
-Example:
-
-```csv
-fault_id,outcome,alarm_time,detection_window,reason
-F010,unsafe,90,60:70,alarm asserted after allowed detection window
-```
-
-Timing is not a minor detail. Functional safety often requires response within a fault tolerant time interval or project-specific reaction window.
-
----
-
-## 10. Observe-Point Deviation
-
-An observe point is a signal used to determine whether the injected fault affected relevant behavior.
-
-Examples:
-
-```text
-safety-related output
-state variable
-bus response
-memory data
-diagnostic status
-safe-state indicator
-alarm output
-```
-
-Observe comparison asks:
-
-```text
-Did the faulted run deviate from the golden run?
-Was the deviation in a valid comparison window?
-Was the observe point safety-relevant?
-Was the deviation masked before becoming relevant?
-```
-
-Example observe summary:
-
-```csv
-fault_id,observe_point,changed_from_golden,first_deviation_time,valid_window
-F001,toy_counter.count,true,60,30:200
-F001,toy_counter.alarm,true,65,30:220
-F004,toy_counter.alarm,false,,30:220
-```
-
-A fault can be detected and still cause an observe deviation.
-
-That is not necessarily unsafe if the alarm is timely and the system response is acceptable.
-
-Therefore, classification must consider both:
-
-```text
-alarm evidence
-observable deviation
-```
-
----
-
-## 11. Safe Faults
-
-Safe faults are often misunderstood.
-
-A fault may be safe because:
-
-```text
-it does not propagate to any safety-relevant observe point
-it is masked by logic
-it occurs during inactive operation
-it is overwritten before use
-it affects non-safety-relevant logic
-it causes a deviation only outside valid safety window
-it is controlled by design response without requiring diagnostic credit
-```
-
-Example:
-
-```csv
-fault_id,observe_deviation,alarm_asserted,outcome,reason
-F020,false,false,safe,no safety-relevant observe point deviation
-```
-
-However, the classifier should be conservative.
-
-If the observe point is missing, do not classify as safe.
-
-Use:
-
-```text
-unresolved
-```
-
-because the campaign did not collect enough evidence.
-
----
-
-## 12. Unsafe Faults
-
-Unsafe faults represent the most important evidence for design improvement.
-
-A fault may be unsafe if:
-
-```text
-it causes safety-relevant deviation
-no expected alarm asserts
-alarm asserts too late
-alarm path is stuck or masked
-safe-state response does not occur
-diagnostic mechanism fails
-failure mode is exposed
-```
-
-Example:
-
-```csv
-fault_id,outcome,reason
-F004,unsafe,alarm path stuck-at-0 prevents diagnostic reporting
-F030,unsafe,observe point deviates and no expected alarm observed
-```
-
-Unsafe faults should be traceable to:
-
-```text
-fault node
-failure mode
-endpoint
-expected safety mechanism
-expected alarm
-residual FIT contribution
-recommended design action
-```
-
-D11 should not merely count unsafe faults.
-
-It should explain them.
-
----
-
-## 13. Unresolved Faults
-
-Unresolved faults are common in real campaigns.
-
-Reasons include:
-
-```text
-missing alarm trace
-missing observe point trace
-fault node not observable
-VCD name mapping incomplete
-X/Z values during active window
-simulation timeout
-unsupported fault model
-no valid golden comparison
-fault effect not clearly propagated
-expected alarm not defined
-classification policy conflict
-```
-
-Example:
-
-```csv
-fault_id,outcome,evidence_gap,reason
-F099,unresolved,missing_observe_point,toy_counter.hidden_state not dumped
-F100,unresolved,xz_in_active_window,observe point contains X from 80ns to 90ns
-```
-
-Unresolved faults should not be hidden.
-
-They are evidence gaps and should drive improvements to:
-
-```text
-testbench
-waveform dumping
-name mapping
-fault list quality
-classification policy
-fault campaign execution
-```
-
----
-
-## 14. Not Classified
-
-Some runs should not enter outcome metrics.
-
-Examples:
-
-```text
-SIM_ERROR
-TIMEOUT
-INVALID_INPUT
-UNSUPPORTED_FAULT
-SKIPPED
-```
-
-These should be marked:
-
-```text
-not_classified
-```
-
-Example:
-
-```csv
-fault_id,run_status,outcome,reason
-F200,SIM_ERROR,not_classified,simulation failed
-F201,TIMEOUT,not_classified,run exceeded timeout
-F202,INVALID_INPUT,not_classified,target node not found
-```
-
-This prevents execution failures from being incorrectly treated as unsafe or unresolved safety behavior.
-
-However, the campaign summary should still report these runs because they affect campaign quality.
-
----
-
-## 15. Outcome Subtypes
-
-The main outcome set should remain simple.
-
-But subtypes help engineering review.
-
-Suggested subtypes:
-
-```text
-detected_by_expected_alarm
-detected_by_secondary_alarm
-safe_no_effect
-safe_masked
-safe_inactive_window
-unsafe_no_alarm
-unsafe_late_alarm
-unsafe_alarm_masked
-unresolved_missing_alarm
-unresolved_missing_observe
-unresolved_xz
-unresolved_no_golden
-not_classified_sim_error
-not_classified_timeout
-```
-
-Example:
-
-```csv
-fault_id,outcome,subtype,reason
-F001,detected,detected_by_expected_alarm,alarm asserted at 65ns within 60:70
-F020,safe,safe_no_effect,no observe deviation in valid window
-F030,unsafe,unsafe_no_alarm,observe deviation without alarm
-F099,unresolved,unresolved_missing_observe,observe point not available
-```
-
-Subtypes make the result table much more actionable.
-
----
-
-## 16. Classification Confidence
-
-Some classifications are stronger than others.
-
-A useful tool may assign confidence:
-
-```text
-high
-medium
-low
-```
-
-Example:
-
-```csv
-fault_id,outcome,confidence,reason
-F001,detected,high,expected alarm and observe deviation both captured
-F020,safe,medium,no observe deviation but limited observe points
-F099,unresolved,high,required observe point missing
-```
-
-Confidence can be based on:
-
-```text
-trace availability
-alarm availability
-observe point completeness
-X/Z absence
-golden comparison quality
-timing validity
-policy clarity
-```
-
-This is not mandatory for the first demo, but it improves review quality.
-
----
-
-## 17. Golden vs Faulted Comparison
-
-Classification depends on comparing faulted traces to golden traces.
-
-Comparison modes may include:
-
-```text
-cycle_value
-event_presence
-final_value
-stable_value
-alarm_event
-transaction_field
-safe_state_entered
-```
-
-Example policy:
-
-```yaml
-comparison_policy:
-  default_mode: cycle_value
-
-  observe_points:
-    toy_counter.count:
-      mode: cycle_value
-      valid_window: [30, 200]
-
-    toy_counter.alarm:
-      mode: alarm_event
-      valid_window: [30, 220]
-
-    top.u_ctrl.safe_state:
-      mode: event_presence
-      valid_window: [30, 300]
-```
-
-This allows D11 to classify different signal types correctly.
-
-A data bus and an alarm signal should not be compared in the same way.
-
----
-
-## 18. Alarm Polarity and Baseline
-
-Alarm polarity must be known.
-
-An alarm may be:
-
-```text
-active high
-active low
-level-based
-pulse-based
-sticky/latching
-clear-on-read
-multi-bit encoded
-```
-
-A classifier should avoid assuming all alarms are active high.
-
-Example alarm definition:
-
-```yaml
-alarms:
-  toy_counter.alarm:
-    polarity: active_high
-    type: level
-    sticky: false
-
-  top.u_alarm.fatal_n:
-    polarity: active_low
-    type: level
-    sticky: true
-```
-
-Classification should compare faulted alarm behavior against golden baseline.
-
-If the alarm is active in golden, then an active faulted alarm may not prove detection.
-
----
-
-## 19. Detection by Secondary Alarm
-
-Sometimes the expected alarm does not assert, but another relevant alarm asserts.
-
-Policy options:
-
-```text
-count as detected
-count as detected_secondary
-count as unresolved
-count as unsafe
-```
-
-For traceability, record it separately.
-
-Example:
-
-```csv
-fault_id,expected_alarm,observed_alarm,outcome,subtype
-F050,top.u_mem.ecc_error,top.u_alarm.global_alert,detected,detected_by_secondary_alarm
-```
-
-This can be useful in real systems where local alarms feed a global alert.
-
-But it should be controlled by policy:
-
-```yaml
-secondary_alarm_policy:
-  allow_secondary_alarm_detection: true
-  require_alarm_mapping: true
-```
-
----
-
-## 20. Safe-State Response
-
-Some designs respond to faults by entering a safe state.
-
-In that case, detection may not be represented only by an alarm.
-
-Observe points may include:
-
-```text
-safe_state
-shutdown_req
-reset_req
-degraded_mode
-output_disable
-limp_home_mode
-```
-
-Example classification:
-
-```text
-Fault causes output corruption.
-Alarm does not assert.
-But safe_state asserted within allowed response window.
-```
-
-Depending on policy, this may be:
-
-```text
-detected_controlled
-safe_controlled
-```
-
-For the simplified D11 outcome set, classify as:
-
-```text
-detected
-```
-
-with subtype:
-
-```text
-controlled_by_safe_state
-```
-
-or classify separately later if the project needs more granularity.
-
----
-
-## 21. Classification Output Table
-
-The main D11 output should be:
-
-```text
-fault_outcomes.csv
-```
-
-Recommended columns:
+A fault list entry usually needs several fields:
 
 ```text
 fault_id
-node
 fault_type
-endpoint
-failure_mode
-run_status
-outcome
-subtype
-confidence
-expected_alarm
-observed_alarm
-alarm_time
-detection_window
-observe_deviation
-first_deviation_time
-evidence_gap
-reason
+fault_site
+fault_scope
+fault_mode
+endpoint_reference
+failure_mode_reference
+priority
+source_evidence
 ```
 
-Example:
+Common fault types include:
 
-```csv
-fault_id,node,fault_type,endpoint,failure_mode,run_status,outcome,subtype,confidence,reason
-F001,toy_counter.count[0],transient_flip,toy_counter.count,FM_DATA_CORRUPTION,PASS,detected,detected_by_expected_alarm,high,alarm asserted within detection window
-F004,toy_counter.alarm,stuck_at_0,toy_counter.alarm,FM_ALARM_NOT_ASSERTED,PASS,unsafe,unsafe_no_alarm,high,alarm path fault prevents detection
-F020,toy_counter.unused,stuck_at_0,toy_counter.count,FM_DATA_CORRUPTION,PASS,safe,safe_no_effect,medium,no observe deviation in valid window
-F099,toy_counter.hidden_state,transient_flip,toy_counter.count,FM_DATA_CORRUPTION,PASS,unresolved,unresolved_missing_observe,high,observe point missing
+```text
+SA0: stuck-at-zero fault
+SA1: stuck-at-one fault
+transient bit flip
+transition or time-delay fault
+user-defined or technology-specific fault
 ```
 
-This table is the main handoff to measured DC computation.
+D11 should separate the conceptual fault list from the tool-facing fault list:
+
+```text
+campaign_fault_list.csv       human-reviewable, traceable
+campaign_fault_list.flt       tool-facing representation
+fault_list_manifest.csv       index and checksum
+```
+
+This separation makes the setup auditable. The tool-facing list can be concise, while the CSV manifest can preserve traceability to D04, D06, D07, and D08.
 
 ---
 
-## 22. Classification Summary
+## 7. Simulation Safety Context Protocol
 
-A summary by outcome is needed.
+The simulation safety context provides the time-varying behavior used during fault injection.
 
-Example:
+D09 produced a good-machine context, typically represented by a VCD and associated metadata:
 
-```csv
-outcome,count,percentage
-detected,20,50.0
-safe,10,25.0
-unsafe,6,15.0
-unresolved,4,10.0
-not_classified,0,0.0
+```text
+good_machine.vcd
+vcd_signal_catalog.csv
+activity_window_report.csv
+ftti_window_plan.csv
+safety_context_manifest.csv
 ```
 
-A summary by failure mode is more useful:
+The VCD should not be treated as just a waveform file. In a fault campaign, it is the behavioral environment for injection. It defines:
 
-```csv
-failure_mode,detected,safe,unsafe,unresolved,total
-FM_DATA_CORRUPTION,12,5,2,1,20
-FM_ALARM_NOT_ASSERTED,1,0,4,0,5
-FM_DIAGNOSTIC_STATE_CORRUPTION,2,1,0,2,5
+```text
+which registers and signals are active
+when reset is released
+when safety-relevant operation starts
+when faults may be injected
+which signals can be used as compare or observe references
 ```
 
-A summary by safety mechanism:
+D11 checks whether the VCD context is compatible with the fault list and observation policy.
 
-```csv
-safety_mechanism,detected,unsafe,unresolved,total
-endpoint_parity,12,1,0,13
-none,0,5,1,6
-redundant_alarm,5,0,1,6
+Key questions include:
+
+```text
+Does the VCD contain the signals required by the campaign?
+Does the VCD cover the fault injection window?
+Does the reset window match the campaign start policy?
+Do observe points appear in the VCD or in a known mapped form?
+Do alarm signals appear in the VCD or in the design boundary?
 ```
 
-These summaries help identify weak mechanisms and weak failure modes.
+When a synthetic VCD is used for a public demo, D11 should mark it as a demonstration context. When a real simulator-generated VCD is used, D11 should record the simulator source, test name, and waveform manifest.
 
 ---
 
-## 23. Evidence Gaps Report
+## 8. Good Machine as the Golden Reference
 
-Unresolved and not-classified results should be summarized separately.
+The term “Good Machine” means the behavior of the design without injected faults under the same stimulus context.
 
-Example:
+It serves as the golden reference for later comparison:
 
-```csv
-evidence_gap,count,recommended_action
-missing_observe_point,3,add waveform dump or observe monitor
-missing_alarm,2,dump alarm signal or update alarm mapping
-xz_in_active_window,1,fix testbench initialization
-sim_error,2,debug simulator or fault injection hook
-no_detection_window,1,update VCD context extraction
+```text
+fault-free behavior
+vs.
+fault-injected behavior
 ```
 
-This report is important because unresolved faults are often fixable by improving the campaign infrastructure.
+The campaign engine or downstream classifier can use the good-machine context to decide whether a fault changed the machine state, propagated to an observe point, or triggered an alarm.
 
-A high unresolved rate usually means the campaign is not yet mature enough for strong safety conclusions.
+D11 should capture the identity of the good-machine context:
+
+```text
+good_machine_vcd
+good_machine_trace_id
+simulation_window
+reset_window
+activity_window
+reference_hash
+```
+
+This prevents a subtle error: using a fault list derived from one design version but a VCD produced from another.
 
 ---
 
-## 24. The `safeic-classify` Tool Architecture
+## 9. Alarm List Protocol
 
-The generic tool `safeic-classify` can be implemented as a staged pipeline.
+An alarm list contains the safety response signals credited as detection mechanisms.
+
+An alarm signal may represent:
+
+```text
+parity mismatch
+ECC error
+lockstep comparator mismatch
+range-check violation
+protocol integrity check failure
+watchdog timeout
+central safety aggregator output
+```
+
+D10 has already built an alarm list proposal and review table. D11 turns it into a campaign-ready input file.
+
+A typical alarm list should capture:
+
+```text
+alarm_signal
+alarm_group
+related_safety_mechanism
+related_failure_mode
+related_endpoint
+active_level
+latency_policy
+review_status
+```
+
+The tool-facing alarm list may contain only signal names, but the D11 manifest should retain the reason each alarm is included.
+
+This distinction is important because a fault outcome may be credited as “detected” only when the alarm semantics are meaningful for the safety mechanism under analysis.
+
+---
+
+## 10. Observe Point Protocol
+
+An observe point defines where the campaign watches for behavioral divergence.
+
+Observe points can be:
+
+```text
+top-level outputs
+protocol status signals
+architectural state outputs
+safety-controller interface signals
+selected internal state points
+```
+
+Observe points are not the same as alarms.
+
+An alarm answers:
+
+```text
+Did the safety mechanism report the fault?
+```
+
+An observe point answers:
+
+```text
+Did the fault affect the behavior boundary being monitored?
+```
+
+This distinction is central to outcome classification.
 
 ```mermaid
 flowchart TD
-    A[manifest.yaml] --> T[safeic-classify]
-    B[fault_list.csv] --> T
-    C[vcd_context.json] --> T
-    D[campaign_status.csv] --> T
-    E[raw_fault_results.csv] --> T
-    F[golden traces] --> T
-    G[faulted traces] --> T
-    H[classification_policy.yaml] --> T
-
-    T --> I[Validate Evidence]
-    I --> J[Compare Alarm Behavior]
-    J --> K[Compare Observe Points]
-    K --> L[Apply Classification Rules]
-    L --> M[fault_outcomes.csv]
-    L --> N[classification_summary.md]
-    L --> O[evidence_gaps.csv]
+    F[Injected Fault] --> S[State / Logic Propagation]
+    S --> A[Alarm Signal]
+    S --> O[Observe Point]
+    A --> D[Detected Classification Evidence]
+    O --> U[Safe / Unsafe / Unresolved Evidence]
 ```
 
-**Figure 4. `safeic-classify` validates evidence, compares alarm and observe behavior, applies rules, and produces classified outcomes.**
+**Figure 3. Alarm and observe point evidence answer different questions.**
 
-Suggested internal modules:
+D11 packages observe points from D10 into a stable file, usually alongside a review table and boundary matrix.
+
+---
+
+## 11. Fault-Tolerant Time Interval Policy
+
+The fault-tolerant time interval, or FTTI, defines the maximum allowed time between fault occurrence and fault control.
+
+In a campaign setup, FTTI influences:
 
 ```text
-safeic_classify/
-  cli.py
-  manifest.py
-  load_inputs.py
-  validate_evidence.py
-  alarm_compare.py
-  observe_compare.py
-  decision_tree.py
-  subtype.py
-  confidence.py
-  rollup.py
-  report.py
+injection window
+alarm observation window
+state comparison window
+classification boundary
+simulation length
 ```
 
-Responsibilities:
+If the FTTI is too short, a valid safety mechanism may appear late and be misclassified as not detected. If it is too long, the campaign may over-credit slow responses that do not meet the product safety requirement.
 
-| Module | Responsibility |
-|---|---|
-| `validate_evidence.py` | Check run status, missing signals, missing traces |
-| `alarm_compare.py` | Evaluate expected alarm and detection windows |
-| `observe_compare.py` | Compare golden and faulted observe behavior |
-| `decision_tree.py` | Apply classification rules |
-| `subtype.py` | Assign detailed subtype |
-| `confidence.py` | Estimate evidence confidence |
-| `rollup.py` | Summarize by outcome, failure mode, and mechanism |
-| `report.py` | Generate CSV and Markdown outputs |
-
----
-
-## 25. D11 Directory Structure
-
-Suggested directory:
+D11 should package FTTI as an explicit policy:
 
 ```text
-D11_fault_outcome_classification/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    fault_list.csv
-    vcd_context.json
-    campaign_status.csv
-    raw_fault_results.csv
-    classification_policy.yaml
-
-  runs/
-    golden/
-      golden_alarm_trace.csv
-      golden_observe_trace.csv
-
-    F001/
-      alarm_trace.csv
-      observe_trace.csv
-      status.json
-
-    F002/
-      alarm_trace.csv
-      observe_trace.csv
-      status.json
-
-  outputs/
-    fault_outcomes.csv
-    outcome_summary.csv
-    outcome_by_failure_mode.csv
-    outcome_by_safety_mechanism.csv
-    evidence_gaps.csv
-    classification_summary.md
-    classification_warnings.csv
+fault_type
+fault_group
+injection_start_time
+injection_end_time
+observation_start_time
+observation_end_time
+ftti_cycles
+ftti_time_units
+source_policy
 ```
 
-D11 should not rerun simulations.
-
-It classifies existing evidence.
+This policy is later consumed by D12 and D13.
 
 ---
 
-## 26. D11 Manifest
+## 12. Time Units and Timescale Alignment
 
-Example:
+A fault campaign often combines files from different tools:
 
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D11_fault_outcome_classification
-  top_module: toy_counter
-
-inputs:
-  fault_list: inputs/fault_list.csv
-  vcd_context: inputs/vcd_context.json
-  campaign_status: inputs/campaign_status.csv
-  raw_fault_results: inputs/raw_fault_results.csv
-  classification_policy: inputs/classification_policy.yaml
-
-traces:
-  run_dir: runs
-  golden_alarm_trace: runs/golden/golden_alarm_trace.csv
-  golden_observe_trace: runs/golden/golden_observe_trace.csv
-
-outputs:
-  fault_outcomes: outputs/fault_outcomes.csv
-  outcome_summary: outputs/outcome_summary.csv
-  by_failure_mode: outputs/outcome_by_failure_mode.csv
-  by_safety_mechanism: outputs/outcome_by_safety_mechanism.csv
-  evidence_gaps: outputs/evidence_gaps.csv
-  summary: outputs/classification_summary.md
+```text
+RTL or netlist
+VCD
+fault list
+alarm list
+observe point file
+campaign configuration
 ```
 
-The manifest ensures classification can be reproduced without rerunning the campaign.
+These artifacts must agree on time units.
+
+A VCD might use:
+
+```text
+$timescale 1ns $end
+```
+
+A campaign setup might specify injection time in cycles or absolute time. A clock file might identify clock names but not periods. D09 may have produced an FTTI plan in cycles. D11 must normalize these assumptions.
+
+A good D11 package records:
+
+```text
+vcd_timescale
+clock_period
+cycle_to_time_conversion
+injection_time_unit
+ftti_time_unit
+simulation_end_time
+```
+
+This prevents off-by-one-cycle and wrong-timescale errors in D12.
 
 ---
 
-## 27. D11 Execution Flow
+## 13. Campaign Run Mode Policy
 
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load Fault List]
-    B --> C[Load VCD Context]
-    C --> D[Load Campaign Status]
-    D --> E[Load Raw Fault Results]
-    E --> F[Load Golden and Faulted Traces]
-    F --> G[Validate Evidence]
-    G --> H[Evaluate Alarm Behavior]
-    H --> I[Evaluate Observe Deviation]
-    I --> J[Apply Classification Decision Tree]
-    J --> K[Assign Subtype and Confidence]
-    K --> L[Generate Rollups]
-    L --> M[Generate Reports]
+A fault campaign can run in a debug-oriented single-run mode or a distributed parallel mode.
+
+For small fault lists, a single-run mode is easier to debug:
+
+```text
+campaign_mode = single
 ```
 
-**Figure 5. D11 execution flow: load evidence, validate it, evaluate alarm and observe behavior, classify, and report.**
+For large fault lists, a distributed mode is more practical:
 
-Example bash script:
+```text
+campaign_mode = distributed
+parallel_jobs = N
+max_concurrent_faults = M
+```
+
+D11 should not hard-code one mode as universally correct. Instead, it should generate a policy layer:
+
+```text
+mode
+parallelism
+chunk_size
+resource_class
+retry_policy
+license_policy
+log_policy
+```
+
+D12 can then execute using the selected policy.
+
+---
+
+## 14. Single Mode vs. Distributed Mode
+
+The choice between single and distributed execution is not just a performance choice. It affects debug behavior and evidence management.
+
+Single mode is useful when:
+
+```text
+fault list is short
+new setup is being debugged
+one fault needs waveform inspection
+tool options are being validated
+```
+
+Distributed mode is useful when:
+
+```text
+fault list is large
+faults are independent enough to parallelize
+runtime is the bottleneck
+resource scheduling is available
+```
+
+D11 can prepare both:
+
+```text
+campaign_setup.single.ini
+campaign_setup.distributed.ini
+```
+
+The command handoff can select one for D12:
+
+```text
+outputs/d11_handoff_to_d12.csv
+```
+
+This keeps D11 reusable for both educational demos and scaled engineering runs.
+
+---
+
+## 15. Campaign Setup File Structure
+
+A campaign setup file should be readable and stable.
+
+A neutral example:
+
+```ini
+# inputs/campaign/campaign_setup.ini
+
+mode = campaign_setup
+campaign_mode = single
+
+top = toy_counter
+filelist = inputs/design/filelist.absolute.f
+clock_definition = inputs/design/toy_counter.clk
+
+fault_list = inputs/faults/d08_campaign_ready.flt
+sim_vcd = inputs/simulation/good_machine.vcd
+alarm_list = inputs/alarms/d10_alarm_list.alarm
+observe_points = inputs/observe/d10_observe_points.obs
+
+ftti_policy = inputs/timing/ftti_boundary_plan.csv
+safety_context = inputs/simulation/safety_context_manifest.csv
+
+database = outputs/db/safeic_campaign.fdb
+session = D11_CAMPAIGN_SETUP
+
+output_dir = outputs/native/campaign_setup_preview
+```
+
+The exact names can vary by implementation, but the principles should remain:
+
+```text
+one file declares the campaign identity
+inputs are explicit
+outputs are explicit
+policy is explicit
+database session is explicit
+```
+
+---
+
+## 16. Command Projection of the Setup
+
+D11 may generate a command template for D12, but the command should be a projection of the setup, not the source of truth.
+
+A neutral command template might look like this:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-classify \
-  --manifest manifest.yaml \
-  --output-dir outputs
+safeic_fault_engine \
+  --mode campaign_single \
+  --config inputs/campaign/campaign_setup.ini \
+  --filelist inputs/design/filelist.absolute.f \
+  --fault-list inputs/faults/d08_campaign_ready.flt \
+  --vcd inputs/simulation/good_machine.vcd \
+  --alarm-list inputs/alarms/d10_alarm_list.alarm \
+  --observe-points inputs/observe/d10_observe_points.obs \
+  --output-dir outputs/native/campaign_run
 ```
 
-Example csh script:
+The article uses a neutral executable name because the engineering concept is independent of the local installation path. In an actual environment, this would be mapped to the installed fault-campaign backend through local configuration.
 
-```csh
-#!/bin/csh -f
-
-set DEMO = D11_fault_outcome_classification
-echo "Running $DEMO"
-
-safeic-classify \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
+D11 should output this command as a reviewable script:
 
 ```text
-outputs/fault_outcomes.csv
-outputs/outcome_summary.csv
-outputs/outcome_by_failure_mode.csv
-outputs/outcome_by_safety_mechanism.csv
-outputs/evidence_gaps.csv
-outputs/classification_summary.md
-outputs/classification_warnings.csv
+outputs/commands/run_campaign_single.csh
+outputs/commands/run_campaign_distributed.csh
 ```
 
 ---
 
-## 28. Example `classification_policy.yaml`
+## 17. Database Session Policy
 
-```yaml
-classification_policy:
-  main_outcomes:
-    - detected
-    - safe
-    - unsafe
-    - unresolved
-    - not_classified
+The common safety database should be treated as a structured evidence container.
 
-  run_status:
-    classify_only_if_pass: true
-    non_pass_outcome: not_classified
-
-  detected:
-    require_expected_alarm: true
-    require_alarm_present: true
-    require_alarm_within_detection_window: true
-    allow_secondary_alarm: false
-
-  unsafe:
-    observe_deviation_without_detection: true
-    late_alarm_counts_as_unsafe: true
-
-  safe:
-    no_observe_deviation_counts_as_safe: true
-    require_observe_point_present: true
-
-  unresolved:
-    missing_alarm: true
-    missing_observe_point: true
-    xz_in_active_window: true
-    missing_detection_window: true
-
-  confidence:
-    enable: true
-```
-
-This policy is intentionally explicit and conservative.
-
----
-
-## 29. Example `fault_outcomes.csv`
-
-```csv
-fault_id,node,fault_type,endpoint,failure_mode,run_status,outcome,subtype,confidence,reason
-F001,toy_counter.count[0],transient_flip,toy_counter.count,FM_DATA_CORRUPTION,PASS,detected,detected_by_expected_alarm,high,alarm asserted at 65ns within 60:70
-F002,toy_counter.count[1],transient_flip,toy_counter.count,FM_DATA_CORRUPTION,PASS,detected,detected_by_expected_alarm,high,alarm asserted at 75ns within 70:80
-F003,toy_counter.count_parity,stuck_at_0,toy_counter.count_parity,FM_DIAGNOSTIC_STATE_CORRUPTION,PASS,unsafe,unsafe_no_alarm,high,diagnostic state corrupted and no alarm observed
-F004,toy_counter.alarm,stuck_at_0,toy_counter.alarm,FM_ALARM_NOT_ASSERTED,PASS,unsafe,unsafe_no_alarm,high,alarm stuck inactive
-F005,toy_counter.alarm,stuck_at_1,toy_counter.alarm,FM_FALSE_ALARM,PASS,detected,detected_by_observed_alarm,medium,false alarm behavior observed
-```
-
-This file is the main machine-readable classification result.
-
----
-
-## 30. Example `classification_summary.md`
-
-```md
-# D11 Fault Outcome Classification Summary
-
-Project: automotive_safeic_practice
-Demo: D11_fault_outcome_classification
-Top: toy_counter
-
-## Outcome Summary
-
-Total classified faults: 5
-
-- detected: 3
-- safe: 0
-- unsafe: 2
-- unresolved: 0
-- not_classified: 0
-
-## Key Unsafe Faults
-
-1. F003: toy_counter.count_parity stuck_at_0
-   - Failure mode: FM_DIAGNOSTIC_STATE_CORRUPTION
-   - Reason: diagnostic state corrupted and no alarm observed
-
-2. F004: toy_counter.alarm stuck_at_0
-   - Failure mode: FM_ALARM_NOT_ASSERTED
-   - Reason: alarm stuck inactive
-
-## Evidence Quality
-
-- Missing alarms: 0
-- Missing observe points: 0
-- X/Z evidence gaps: 0
-
-## Next Step
-
-Use D12 to compute measured diagnostic coverage from fault_outcomes.csv.
-```
-
-This summary is designed for review before measured DC computation.
-
----
-
-## 31. Validation Rules
-
-`safeic-classify` should validate:
+D11 should define:
 
 ```text
-fault_list.csv exists
-campaign_status.csv exists
-raw_fault_results.csv exists
-classification_policy.yaml exists
-fault IDs match across inputs
-each PASS run has trace evidence or raw result evidence
-expected alarms are present or explicitly missing
-observe points are present or explicitly missing
-detection windows exist when required
-golden baseline exists
-X/Z context is available
-outcome values are valid
-subtype values are valid
+database_file
+setup_session
+fault_list_session
+campaign_result_session
+final_metric_session
 ```
 
-Example messages:
-
-```text
-[PASS] fault F001 exists in fault list and raw results
-[PASS] F001 expected alarm toy_counter.alarm asserted within detection window
-[WARN] F020 has no observe trace; classification set to unresolved
-[WARN] F021 alarm asserted after detection window
-[ERROR] raw result references unknown fault_id F999
-[ERROR] classification policy missing detected rule
-```
-
-The classifier should fail on inconsistent IDs and unsupported policy values.
-
----
-
-## 32. Common Mistakes
-
-### 32.1 Treating Alarm Assertion as Always Detected
-
-Alarm assertion only counts if:
-
-```text
-it is the expected or allowed alarm
-it occurs within the detection window
-it is not already active in golden baseline
-its polarity is known
-```
-
-### 32.2 Treating No Deviation as Always Safe
-
-No deviation is safe only if observe points are sufficient and valid.
-
-Missing observe points should lead to unresolved.
-
-### 32.3 Counting Simulation Failures as Unsafe Faults
-
-Simulation errors are execution problems, not safety outcomes.
-
-### 32.4 Ignoring Late Alarms
-
-A late alarm may not satisfy the safety requirement.
-
-Timing must be included.
-
-### 32.5 Hiding Unresolved Faults
-
-Unresolved faults are evidence gaps.
-
-They should be visible and fixed where possible.
-
-### 32.6 Mixing Estimated DC and Measured Outcomes
-
-D11 produces measured outcomes.
-
-D06 produced estimated coverage.
-
-These should be compared later, not mixed.
-
----
-
-## 33. How D11 Connects to Measured Diagnostic Coverage
-
-D11 produces classified outcomes.
-
-D12 will compute measured DC.
-
-A simplified measured DC can be based on:
-
-```text
-detected
-unsafe
-safe
-unresolved
-```
-
-Example:
-
-```text
-measured_dc = detected / (detected + unsafe)
-```
-
-Some methodologies may treat safe faults separately.
-
-For this demo flow, D11 should not hardcode final metric formulas.
-
-It should provide the outcome table needed by D12.
+An example session model:
 
 ```mermaid
 flowchart LR
-    A[D11 Fault Outcomes] --> B[D12 Measured DC]
-    B --> C[Estimated vs Measured Comparison]
-    C --> D[FMEDA Update]
+    A[D05 Evidence Center] --> DB[(Common Safety DB)]
+    B[D08 Fault List Session] --> DB
+    C[D11 Campaign Setup Session] --> DB
+    D[D12 Campaign Result Session] --> DB
+    E[D14 Final Metric Session] --> DB
+    DB --> F[D15 FMEDA Evidence]
 ```
 
-**Figure 6. D11 creates the outcome evidence required for measured diagnostic coverage.**
+**Figure 4. D11 adds a campaign setup session to the shared evidence graph.**
+
+Even if the demo primarily uses CSV files, the database identity should be present. This makes the later D14 and D15 flows more realistic.
 
 ---
 
-## 34. Recommended Implementation Stages
+## 18. Evidence Manifests and Checksums
 
-D11 can be implemented in stages.
+D11 should generate an evidence manifest that records every input artifact used in the setup.
 
-### Stage 1: Rule-Based Classification from Raw Results
-
-Classify using `raw_fault_results.csv`.
-
-Deliverables:
+A typical manifest row might include:
 
 ```text
-fault_outcomes.csv
-classification_summary.md
+artifact_id
+artifact_role
+source_demo
+source_path
+campaign_path
+exists
+size_bytes
+sha256
+used_by
 ```
 
-### Stage 2: Trace-Backed Alarm Evaluation
+The checksum is important because campaign evidence is sensitive to stale files. If the fault list changes after D11 setup but before D12 execution, the run should be considered a different campaign.
 
-Read per-fault alarm traces and detection windows.
-
-Deliverables:
+Recommended output:
 
 ```text
-alarm_evaluation.csv
+outputs/campaign_input_manifest.csv
 ```
 
-### Stage 3: Observe Point Comparison
-
-Compare golden and faulted observe traces.
-
-Deliverables:
-
-```text
-observe_evaluation.csv
-```
-
-### Stage 4: Evidence Gap Reporting
-
-Summarize unresolved and not-classified reasons.
-
-Deliverables:
-
-```text
-evidence_gaps.csv
-```
-
-### Stage 5: Confidence and Rollups
-
-Add confidence and roll up by failure mode and safety mechanism.
-
-Deliverables:
-
-```text
-outcome_by_failure_mode.csv
-outcome_by_safety_mechanism.csv
-```
-
-This staged path makes D11 useful even before full waveform-based comparison is implemented.
+This is one of the most useful files for reviewers because it turns the campaign setup into a traceable evidence package.
 
 ---
 
-## 35. Summary
+## 19. Readiness Matrix
 
-Fault outcome classification is the step that turns raw campaign execution data into functional safety evidence.
+A readiness matrix answers whether the campaign can be executed.
 
-The D11 demo:
-
-```text
-D11_fault_outcome_classification
-```
-
-introduces the generic tool:
+Example checks:
 
 ```text
-safeic-classify
+filelist exists
+VCD exists
+fault list exists
+alarm list exists
+observe point file exists
+FTTI plan exists
+all referenced alarm signals are known
+all referenced observe points are known
+VCD timescale is known
+fault list is non-empty
+campaign mode is selected
+output directory is writable
 ```
 
-The tool consumes:
+A campaign should not proceed if critical items are missing.
+
+A D11 readiness matrix might contain:
 
 ```text
-fault_list.csv
-vcd_context.json
-campaign_status.csv
-raw_fault_results.csv
-golden traces
-faulted traces
-classification_policy.yaml
+check_id
+severity
+status
+artifact
+message
+suggested_action
 ```
 
-and generates:
+Severity levels can be:
 
 ```text
-fault_outcomes.csv
-outcome_summary.csv
-outcome_by_failure_mode.csv
-outcome_by_safety_mechanism.csv
-evidence_gaps.csv
-classification_summary.md
-classification_warnings.csv
+FAIL: execution should not proceed
+WARN: execution can proceed, but review is needed
+INFO: metadata or traceability note
 ```
 
-The central lesson is:
-
-> Classification must be conservative, traceable, and policy-driven. A fault should be called detected, safe, unsafe, or unresolved only after checking execution status, alarm behavior, observe-point deviation, golden baseline, timing windows, and evidence completeness.
-
-This is the final step before measured diagnostic coverage computation.
+D11 quality gates are stricter than earlier planning stages because D12 will perform expensive execution.
 
 ---
 
-## 36. D11 Demo Checklist
+## 20. Fault List and VCD Compatibility
 
-For `D11_fault_outcome_classification`, the expected deliverables are:
+A frequent campaign setup problem is fault/VCD mismatch.
 
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/fault_list.csv
-[ ] inputs/vcd_context.json
-[ ] inputs/campaign_status.csv
-[ ] inputs/raw_fault_results.csv
-[ ] inputs/classification_policy.yaml
-
-[ ] runs/golden/golden_alarm_trace.csv
-[ ] runs/golden/golden_observe_trace.csv
-
-[ ] runs/F001/alarm_trace.csv
-[ ] runs/F001/observe_trace.csv
-[ ] runs/F001/status.json
-
-[ ] outputs/fault_outcomes.csv
-[ ] outputs/outcome_summary.csv
-[ ] outputs/outcome_by_failure_mode.csv
-[ ] outputs/outcome_by_safety_mechanism.csv
-[ ] outputs/evidence_gaps.csv
-[ ] outputs/classification_summary.md
-[ ] outputs/classification_warnings.csv
-```
-
-A successful D11 run should answer:
+Examples:
 
 ```text
-Which faults were detected?
-Which faults were safe?
-Which faults were unsafe?
-Which faults were unresolved?
-Which runs were not classified due to execution problems?
-Which alarms provided detection evidence?
-Which observe points showed deviation?
-Which faults have missing evidence?
-Which failure modes contain unsafe or unresolved results?
-Can the output be used by D12 to compute measured diagnostic coverage?
+fault site not present in the design hierarchy
+fault site derived from a different RTL snapshot
+state element inactive throughout the VCD
+fault injection time outside VCD range
+fault list targets an endpoint with no observe boundary
 ```
+
+D11 should not deeply simulate each fault. But it can perform preflight checks:
+
+```text
+fault list count
+fault type distribution
+fault scope distribution
+endpoint coverage
+VCD activity overlap
+injection window coverage
+```
+
+This can be summarized in:
+
+```text
+outputs/fault_vcd_compatibility.csv
+```
+
+The goal is to catch obvious setup errors before D12 consumes compute resources.
+
+---
+
+## 21. Alarm and Observe Compatibility
+
+D10 produced alarms and observe points. D11 checks them in campaign context.
+
+Compatibility checks include:
+
+```text
+alarm list is non-empty when detection credit is expected
+alarm signal names are normalized
+alarm active level is known
+observe point list is non-empty
+observe points are present in the signal catalog or mapping table
+observe points are not all identical to alarms
+alarm latency policy is linked to FTTI
+```
+
+This matters because detected and unsafe outcomes are interpreted differently:
+
+```text
+alarm fires within window -> detected evidence
+observe point diverges without valid alarm -> unsafe evidence
+no meaningful propagation -> safe or unresolved depending on context
+```
+
+D11 does not perform classification, but it prepares the observation contract for D13.
+
+---
+
+## 22. Injection Timing Plan
+
+D11 should define where in time faults may be injected.
+
+A minimal injection plan contains:
+
+```text
+fault_group
+start_cycle
+end_cycle
+step
+allowed_during_reset
+allowed_after_reset
+allowed_only_when_active
+```
+
+For safety campaigns, it is usually dangerous to inject during reset unless reset behavior is explicitly part of the safety concept. Most campaigns begin after reset release and after the design enters a meaningful operating state.
+
+A more advanced plan can use activity windows from D09:
+
+```text
+inject only when target endpoint is active
+inject only during transaction window
+inject near protocol boundary
+inject in representative safety-critical operation phase
+```
+
+D11 packages this policy but leaves execution to D12.
+
+---
+
+## 23. Campaign Chunking Strategy
+
+Large campaigns need chunking.
+
+A chunking strategy splits faults into smaller batches:
+
+```text
+by fault type
+by endpoint group
+by failure mode
+by priority
+by estimated runtime
+by activity window
+```
+
+D11 can produce:
+
+```text
+outputs/campaign_chunks.csv
+```
+
+Example fields:
+
+```text
+chunk_id
+fault_count
+fault_type
+priority_range
+recommended_mode
+estimated_runtime_class
+output_subdir
+```
+
+Chunking is part of setup, not execution. D12 uses it to decide how to run campaigns efficiently.
+
+---
+
+## 24. Debug Package vs. Production Package
+
+A debug package and a production package serve different purposes.
+
+Debug package:
+
+```text
+small fault subset
+single mode
+verbose logs
+waveform dump enabled
+short runtime
+manual inspection friendly
+```
+
+Production package:
+
+```text
+full or sampled fault list
+distributed mode
+controlled log volume
+stable output naming
+common database writeback
+resource-aware scheduling
+```
+
+D11 should be able to prepare both.
+
+```mermaid
+flowchart TD
+    P[D11 Campaign Package] --> D[Debug Package]
+    P --> R[Regression Package]
+    P --> S[Signoff Candidate Package]
+    D --> D12[D12 Execution]
+    R --> D12
+    S --> D12
+```
+
+**Figure 5. One setup model can produce multiple execution packages.**
+
+For the demo series, a debug-scale package is enough. The directory structure should still be scalable.
+
+---
+
+## 25. Handling Synthetic vs. Real VCD Context
+
+D09 may produce a synthetic VCD in a public demo or a real VCD in an internal engineering environment.
+
+D11 should not hide this distinction.
+
+Recommended metadata:
+
+```text
+vcd_origin = synthetic | simulator_generated | imported
+simulator_name = optional
+simulation_test = optional
+stimulus_name = optional
+coverage_scope = optional
+```
+
+A synthetic VCD is useful for demonstrating the data contract. A real VCD is needed for meaningful campaign evidence.
+
+This distinction should be carried into D12 and D13 so that no one mistakes a format demonstration for a safety result.
+
+---
+
+## 26. Handling Tool-Specific Options Without Polluting the Article Flow
+
+Real engines have many implementation-specific options. D11 should isolate them in configuration files rather than scattering them across scripts.
+
+A useful pattern is:
+
+```text
+configs/campaign_backend_profile.csv
+configs/campaign_option_policy.csv
+inputs/campaign/campaign_setup.ini
+outputs/commands/run_campaign_single.csh
+```
+
+The article-level flow can remain stable:
+
+```text
+safeic_fault_engine reads campaign_setup.ini
+```
+
+The local environment can map this to the installed backend and required options.
+
+This is especially important for public demos. The public package should explain the engineering protocol without exposing private installation paths or vendor-specific run logs.
+
+---
+
+## 27. Quality Gate Philosophy
+
+D11 quality gates should be conservative.
+
+A campaign setup should fail if:
+
+```text
+fault list is missing or empty
+VCD is missing
+alarm list is missing when detection is expected
+observe point file is missing
+filelist cannot be resolved
+clock definition is missing
+FTTI policy is missing
+campaign mode is undefined
+evidence manifest cannot be generated
+```
+
+It may warn if:
+
+```text
+some observe points are review-only
+some alarms are proposed rather than confirmed
+VCD origin is synthetic
+some fault groups have low activity coverage
+parallel mode is requested without resource profile
+```
+
+D11 should not treat all warnings as fatal. But every warning should be classified and recorded.
+
+---
+
+## 28. D11 Output Package Layout
+
+A clean D11 package can use the following layout:
+
+```text
+D11_fault_campaign_setup_input_package/
+  inputs/
+    from_D08/
+    from_D09/
+    from_D10/
+    campaign/
+      campaign_setup.ini
+    design/
+      filelist.absolute.f
+      clock_definition.clk
+    faults/
+      campaign_fault_list.flt
+    simulation/
+      good_machine.vcd
+      safety_context_manifest.csv
+    alarms/
+      alarm_list.alarm
+    observe/
+      observe_points.obs
+    timing/
+      ftti_boundary_plan.csv
+  outputs/
+    campaign_input_manifest.csv
+    campaign_readiness_matrix.csv
+    campaign_setup_summary.csv
+    campaign_chunks.csv
+    fault_vcd_compatibility.csv
+    alarm_observe_compatibility.csv
+    commands/
+      run_campaign_single.csh
+      run_campaign_distributed.csh
+    d11_handoff_to_d12.csv
+    d11_handoff_to_d13.csv
+    d11_handoff_to_d14.csv
+    d11_quality_gate.csv
+    evidence_index.csv
+    demo_summary.md
+  logs/
+```
+
+This layout is intentionally explicit. D11 is the last stage before execution; ambiguity here becomes expensive in D12.
+
+---
+
+## 29. D11 Handoff to D12
+
+D12 needs an execution-ready handoff.
+
+Recommended D11-to-D12 fields:
+
+```text
+campaign_id
+setup_file
+command_script
+campaign_mode
+filelist
+fault_list
+vcd_file
+alarm_list
+observe_point_file
+ftti_policy
+output_dir
+database_file
+database_session
+expected_status_file
+```
+
+This enables D12 to operate as a runner rather than a setup repair stage.
+
+A clean handoff prevents D12 from doing too much:
+
+```text
+D11 prepares.
+D12 executes.
+D13 classifies.
+```
+
+---
+
+## 30. D11 Handoff to D13 and D14
+
+D13 needs the observation contract:
+
+```text
+alarm semantics
+observe point semantics
+FTTI boundary
+safe / unsafe comparison policy
+unresolved fault policy
+```
+
+D14 needs database and result writeback context:
+
+```text
+campaign result session
+fault list source session
+metric recalculation session
+final evidence target
+```
+
+Therefore D11 should produce:
+
+```text
+d11_handoff_to_d13.csv
+d11_handoff_to_d14.csv
+```
+
+This may feel early, but it prevents D13 and D14 from reverse-engineering setup assumptions from logs.
+
+---
+
+## 31. Review Checklist
+
+Before D12 starts, a reviewer should be able to answer:
+
+```text
+Is this the intended design boundary?
+Is the fault list derived from the correct upstream analysis?
+Is the VCD the intended good-machine context?
+Are alarms known and justified?
+Are observe points meaningful?
+Is the FTTI window explicitly defined?
+Is campaign mode selected?
+Are output directories and database sessions unique?
+Are manifests and checksums recorded?
+Are warnings classified?
+```
+
+If the answer is unclear, the campaign should not proceed.
+
+D11 is a safety verification setup checkpoint, not just a file-copy operation.
+
+---
+
+## 32. Methodology Summary
+
+D11 transforms a set of upstream safety artifacts into a campaign-ready package.
+
+The key idea is contract-driven packaging:
+
+```text
+D08 defines what to inject.
+D09 defines the good-machine context.
+D10 defines what to observe and what alarm response means.
+D11 packages these into a fault campaign setup.
+D12 executes the campaign.
+D13 classifies outcomes.
+D14 writes results back into final metric evidence.
+```
+
+A mature D11 implementation should preserve traceability from every campaign input back to its source stage, normalize file paths, verify readiness, separate debug and production policies, and prepare handoff files for downstream execution and classification.
+
+This is the stage where safety verification stops being a collection of concepts and becomes a reproducible experiment.
