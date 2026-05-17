@@ -1,1699 +1,1029 @@
-# [Automotive Safe-IC Practice 16] Regression and Trend Tracking: Turning Safety Analysis into an Iterative Engineering Loop
+# [Automotive Safe-IC Practice 16] Top-down FMEDA Flow: From Safety Architecture to Executable Metric Evidence
 
 **Author**: Darren H. Chen  
 **Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D16_regression_and_trend_tracking  
-**Tags**: Automotive Chip, Functional Safety, Safety Regression, Fault Injection Regression, Diagnostic Coverage Trend, Residual FIT Trend, FMEDA Delta, Evidence Package, CI, Safety Metrics
+**Demo**: `D16_top_down_fmeda_flow`  
+**Tags**: Automotive Chip, Functional Safety, ISO 26262, FMEDA, Top-down FMEDA, Safety Architecture, Safety Mechanism, Diagnostic Coverage, Residual FIT, SPFM, LFM, PMHF, Evidence Flow
 
 ---
 
-## 1. Why This Article Matters
+## 1. From Rows of Data to an Executable Safety Architecture
 
-In the previous article, we generated a review-ready safety engineering report from a structured evidence package.
-
-D15 produced outputs such as:
+By the time a project reaches D16, the flow has already built a large amount of evidence:
 
 ```text
-safety_report.md
-safety_report_summary.md
-review_action_list.md
-metric_tables_for_review.csv
-report_warnings.csv
-report_manifest.yaml
+D01  Analysis input package
+D02  Base FIT rate and contribution view
+D03  FIT standard and mission-profile comparison
+D04  Endpoint / startpoint / DCE structural model
+D05  Common database evidence center
+D06  What-if safety mechanism exploration
+D07  Failure-mode to endpoint / SM mapping
+D08  Fault-list generation
+D09  Simulation safety context
+D10  Alarm list and observe-point boundary
+D11  Fault campaign setup package
+D12  Fault injection execution planning
+D13  Fault outcome classification
+D14  Result writeback and final metric bridge
+D15  FMEDA data model
 ```
 
-That report describes one analysis snapshot.
+D15 organized the FMEDA data model. D16 goes one step further: it turns that data model into a **top-down FMEDA flow**.
 
-However, real safety engineering is not a one-shot activity.
+The difference is important.
 
-A design evolves.  
-Safety mechanisms change.  
-Fault lists change.  
-Campaign results change.  
-Measured diagnostic coverage changes.  
-FMEDA rows change.  
-Residual FIT changes.  
-Review items are opened, fixed, and reopened.
-
-The next question is:
-
-> How do we track safety analysis results across design iterations and detect regressions?
-
-The sixteenth demo in this repository is:
+A data model says:
 
 ```text
-D16_regression_and_trend_tracking
+These are the parts, sub-parts, failure modes, safety mechanisms, diagnostic coverage values, and residual FIT values.
 ```
 
-The generic tool introduced in this article is:
+A top-down FMEDA flow asks:
 
 ```text
-safeic-regress
+Can we start from the safety architecture, decompose the design into reviewable parts, attach failure modes and safety mechanisms, run analysis for each relevant branch, and roll the metrics back up to the top-level safety goal?
 ```
 
-The purpose of `safeic-regress` is to compare multiple safety evidence packages or safety reports across iterations:
-
-```text
-baseline evidence package
-current evidence package
-baseline FMEDA table
-current FMEDA table
-baseline measured DC
-current measured DC
-baseline fault outcomes
-current fault outcomes
-review action history
-trend policy
-regression policy
-```
-
-and generate:
-
-```text
-regression_summary.md
-metric_trend.csv
-dc_trend_by_failure_mode.csv
-residual_fit_trend.csv
-fmeda_delta_trend.csv
-fault_outcome_delta.csv
-review_item_trend.csv
-regression_alerts.csv
-```
-
-The central idea is:
-
-> Functional safety analysis becomes much more valuable when it is tracked as an iterative engineering loop rather than a single report.
+This is the moment where FMEDA stops being only a spreadsheet-like artifact and becomes an executable engineering workflow.
 
 ---
 
-## 2. Where D16 Fits in the Flow
+## 2. Where D16 Sits in the Series
 
-D16 is the first multi-iteration demo.
-
-```mermaid
-flowchart LR
-    A[Evidence Package v1] --> C[D16 Regression and Trend Tracking]
-    B[Evidence Package v2] --> C
-    C --> D[Metric Trend]
-    C --> E[FMEDA Delta Trend]
-    C --> F[Regression Alerts]
-    C --> G[Review Item Trend]
-```
-
-**Figure 1. D16 compares evidence packages or reports across iterations and generates trend and regression outputs.**
-
-D15 answered:
-
-```text
-What does this one evidence package mean?
-```
-
-D16 answers:
-
-```text
-What changed since the previous package?
-Did diagnostic coverage improve or regress?
-Did residual FIT increase or decrease?
-Were unsafe faults fixed?
-Did new unsafe faults appear?
-Did review items close or remain open?
-Did evidence quality improve?
-```
-
-This is the transition from single-run reporting to continuous safety improvement.
-
----
-
-## 3. Why Safety Regression Is Different from Normal Regression
-
-Normal design regression often asks:
-
-```text
-Did tests pass?
-Did timing pass?
-Did lint pass?
-Did simulation pass?
-```
-
-Safety regression asks deeper questions:
-
-```text
-Did diagnostic coverage change?
-Did residual FIT change?
-Did a previously detected fault become unsafe?
-Did a previously reviewed FMEDA row become review-required?
-Did a safety mechanism stop detecting faults?
-Did the campaign lose observability?
-Did evidence quality become weaker?
-```
-
-A test can still pass while safety evidence regresses.
-
-Example:
-
-```text
-RTL simulation passes.
-Fault campaign runs.
-But alarm path stuck-at fault changes from detected to unsafe.
-```
-
-That is a safety regression.
+D16 sits after D15 because it needs a structured FMEDA model. It also sits before D17 because diagnostic coverage closure needs a structured list of unresolved or insufficiently covered items.
 
 ```mermaid
 flowchart TD
-    A[Normal Regression PASS] --> B{Safety Evidence Changed?}
-    B -- No --> C[No Safety Regression]
-    B -- Yes --> D[Safety Trend Analysis]
-    D --> E{Worse?}
-    E -- Yes --> F[Safety Regression Alert]
-    E -- No --> G[Improvement or Neutral Change]
+    D14[D14 Result Writeback and Final Metrics] --> D15[D15 FMEDA Data Model]
+    D15 --> D16[D16 Top-down FMEDA Flow]
+    D16 --> D17[D17 Diagnostic Coverage Closure]
+    D16 --> REV[Safety Review Package]
+    D16 --> GUI[GUI / Review Session]
 ```
 
-**Figure 2. Safety regression focuses on evidence and metric changes, not only pass/fail execution.**
+**Figure 1. D16 transforms the FMEDA data model into a top-down metric evaluation workflow.**
 
-D16 therefore needs to compare structured evidence, not only logs.
-
----
-
-## 4. What Is an Iteration?
-
-An iteration is a versioned safety-analysis snapshot.
-
-It may correspond to:
+D16 is not only about pressing a Run button in a graphical environment. It is about defining a repeatable relation between:
 
 ```text
-new RTL version
-new safety mechanism implementation
-new fault list
-new simulation campaign
-new classification policy
-new measurement policy
-new FMEDA update
-new evidence package
-new report
-```
-
-A simple iteration record:
-
-```yaml
-iteration:
-  id: iter_2026_05_01
-  design_version: toy_counter_v1
-  evidence_package: packages/iter_2026_05_01
-  report: reports/iter_2026_05_01/safety_report.md
-  tag: baseline
-```
-
-Another iteration:
-
-```yaml
-iteration:
-  id: iter_2026_05_08
-  design_version: toy_counter_v2_alarm_fix
-  evidence_package: packages/iter_2026_05_08
-  report: reports/iter_2026_05_08/safety_report.md
-  tag: alarm_path_fix
-```
-
-D16 compares these iterations.
-
----
-
-## 5. Baseline and Current
-
-Regression analysis usually compares:
-
-```text
-baseline
-current
-```
-
-The baseline is the reference snapshot.
-
-The current package is the new snapshot.
-
-Example:
-
-```text
-baseline:
-  D14 package generated before alarm-path fix
-
-current:
-  D14 package generated after alarm-path fix
-```
-
-```mermaid
-flowchart LR
-    A[Baseline Package] --> C[Compare]
-    B[Current Package] --> C
-    C --> D[Improvement]
-    C --> E[Regression]
-    C --> F[Neutral Change]
-    C --> G[New Evidence Gap]
-```
-
-**Figure 3. D16 compares a baseline package and a current package to classify changes.**
-
-The baseline is not necessarily perfect.
-
-It is simply the chosen reference point.
-
----
-
-## 6. What Should Be Compared?
-
-D16 should compare multiple dimensions:
-
-```text
-diagnostic coverage
-residual FIT
-fault outcomes
-FMEDA rows
-review items
-evidence quality
-execution quality
-assumptions
-policies
-traceability completeness
-```
-
-A useful regression tool should not only compare one metric.
-
-For example, measured DC may improve, but evidence quality may degrade due to higher unresolved ratio.
-
-Example:
-
-```text
-measured DC improves from 0.80 to 0.90
-unresolved ratio increases from 0.02 to 0.40
-```
-
-This is not a clean improvement.
-
-D16 should flag it for review.
-
----
-
-## 7. Metric Trend
-
-A metric trend tracks values across iterations.
-
-Example:
-
-```csv
-iteration,total_base_fit,total_residual_fit,weighted_selected_dc,unsafe_faults,unresolved_faults,review_required_rows
-iter_001,0.078,0.0204,0.738,2,0,2
-iter_002,0.078,0.0104,0.867,1,0,1
-iter_003,0.078,0.0064,0.918,0,1,1
-```
-
-This shows improvement, but also one unresolved fault in `iter_003`.
-
-```mermaid
-flowchart LR
-    A[Iteration 1 Metrics] --> B[Trend Table]
-    C[Iteration 2 Metrics] --> B
-    D[Iteration 3 Metrics] --> B
-    B --> E[Regression Alerts]
-```
-
-**Figure 4. Metric trend tables show how safety evidence evolves across iterations.**
-
-For the first implementation, trend can be stored as CSV.
-
-Later, it can be plotted or rendered into dashboards.
-
----
-
-## 8. Diagnostic Coverage Trend
-
-Diagnostic coverage trend should be tracked by meaningful groups:
-
-```text
-overall
-endpoint
-failure mode
-safety mechanism
+safety goal
 part
 sub-part
+instance
+failure mode
+safety mechanism
+endpoint map
+metric result
+review action
 ```
-
-Example:
-
-```csv
-iteration,group_type,group_id,measured_dc,selected_dc,confidence
-iter_001,failure_mode,FM_ALARM_NOT_ASSERTED,0.000,0.000,LOW
-iter_002,failure_mode,FM_ALARM_NOT_ASSERTED,0.500,0.000,LOW
-iter_003,failure_mode,FM_ALARM_NOT_ASSERTED,0.900,0.850,MEDIUM
-```
-
-This tells a story:
-
-```text
-iteration 1:
-  alarm-not-asserted is uncovered
-
-iteration 2:
-  measured behavior improves but confidence is low
-
-iteration 3:
-  measured confidence becomes acceptable and selected DC is updated
-```
-
-The trend must distinguish:
-
-```text
-measured_dc
-selected_dc
-confidence
-```
-
-Otherwise the report may overstate improvement.
 
 ---
 
-## 9. Residual FIT Trend
+## 3. The Core Idea of Top-down FMEDA
 
-Residual FIT trend is often more useful than coverage trend.
+There are two common ways to build FMEDA evidence.
 
-Example:
-
-```csv
-iteration,failure_mode,base_fit,selected_dc,residual_fit
-iter_001,FM_ALARM_NOT_ASSERTED,0.010,0.000,0.0100
-iter_002,FM_ALARM_NOT_ASSERTED,0.010,0.500,0.0050
-iter_003,FM_ALARM_NOT_ASSERTED,0.010,0.850,0.0015
-```
-
-A reduction in residual FIT indicates risk reduction.
-
-But the trend should also track why it changed:
+The first is bottom-up:
 
 ```text
-design change
-new safety mechanism
-policy change
-campaign expansion
-manual review
-FIT model change
+extract structural elements
+compute FIT contribution
+classify faults
+aggregate metrics
+map results back to FMEDA rows
 ```
 
-Example:
-
-```csv
-iteration,failure_mode,residual_fit,change_reason
-iter_002,FM_ALARM_NOT_ASSERTED,0.0050,alarm path monitor added
-iter_003,FM_ALARM_NOT_ASSERTED,0.0015,campaign expanded and selected DC updated
-```
-
-This makes the trend explainable.
-
----
-
-## 10. Fault Outcome Delta
-
-One of the most important regression checks is fault outcome delta.
-
-A fault can change from:
+The second is top-down:
 
 ```text
-unsafe -> detected
-unsafe -> safe
-detected -> unsafe
-detected -> unresolved
-unresolved -> detected
+start from safety architecture
+create part and sub-part hierarchy
+assign failure modes
+bind instances and safety mechanisms
+run metric evaluation per safety branch
+roll up evidence to the top-level item
 ```
 
-Some changes are improvements.
-
-Some are regressions.
-
-Example:
-
-```csv
-fault_id,baseline_outcome,current_outcome,delta_class
-F004,unsafe,detected,improvement
-F010,detected,unsafe,regression
-F020,unresolved,detected,improvement
-F030,detected,unresolved,evidence_regression
-```
+D16 focuses on the second path.
 
 ```mermaid
 flowchart TD
-    A[Baseline Fault Outcome] --> C{Compare}
-    B[Current Fault Outcome] --> C
-    C --> D[Improvement]
-    C --> E[Regression]
-    C --> F[Evidence Regression]
-    C --> G[No Change]
+    A[Safety Goal / Item Boundary] --> B[Part]
+    B --> C[Sub-part]
+    C --> D[Instance / Endpoint Scope]
+    D --> E[Failure Mode]
+    E --> F[Safety Mechanism Map]
+    F --> G[Metric Evaluation]
+    G --> H[Part-level Metrics]
+    H --> I[Top-level FMEDA Metrics]
 ```
 
-**Figure 5. Fault outcome delta identifies improvements, regressions, and evidence-quality changes at fault level.**
-
-A detected-to-unsafe change should trigger a high-severity alert.
+**Figure 2. Top-down FMEDA starts from the product safety architecture and descends into design evidence.**
 
 ---
 
-## 11. Fault Matching Across Iterations
+## 4. Top-down Does Not Mean Manual Guessing
 
-Faults must be matched across iterations.
+A weak top-down FMEDA is only a spreadsheet built from assumptions.
 
-The simplest key is:
+A strong top-down FMEDA is different. It still starts from architecture, but every important row should be connected to design evidence.
 
-```text
-fault_id
-```
-
-But fault IDs may change when the fault list is regenerated.
-
-More robust matching can use:
+For example:
 
 ```text
-node
-fault_type
-endpoint
-failure_mode
-safety_mechanism
-fault_model
-injection_mode
+Part: Control Logic
+Sub-part: Counter State Control
+Failure mode: wrong state transition
+Safety mechanism: endpoint parity or state duplication
+Design evidence: endpoint inventory, DCE, fault outcome classification, residual FIT allocation
 ```
 
-Example matching key:
+The top-down part is the safety decomposition.
 
-```text
-node + fault_type + failure_mode + endpoint
-```
+The evidence part comes from previous demos.
 
-Policy example:
-
-```yaml
-fault_matching:
-  primary_key: fault_id
-  fallback_keys:
-    - node
-    - fault_type
-    - endpoint
-    - failure_mode
-```
-
-The tool should report unmatched faults:
-
-```text
-new faults
-removed faults
-renamed faults
-unmatched faults
-```
-
-Unmatched faults can be normal when the design changes, but they must be visible.
+D16 connects the two.
 
 ---
 
-## 12. FMEDA Row Delta
+## 5. Architectural FMEDA vs Detailed FMEDA
 
-FMEDA rows can also change.
+A top-down FMEDA can be used at different project stages.
 
-Changes to track:
+| Flow Type | Typical Timing | Data Source | Purpose |
+|---|---|---|---|
+| Architectural FMEDA | Before full RTL or before final netlist | block diagram, estimated complexity, assumed DC | feasibility and safety concept exploration |
+| Detailed FMEDA | RTL / netlist available | real design hierarchy, structural analysis, fault campaign evidence | evidence package for safety review |
+
+D16 is closer to a detailed FMEDA flow because earlier demos already produced structural, fault-list, fault-outcome, and final-metric evidence.
+
+However, the same structure also explains architectural FMEDA. The key difference is evidence strength.
+
+```mermaid
+flowchart LR
+    A[Architectural FMEDA] --> B[Estimated FIT / Assumed DC]
+    C[Detailed FMEDA] --> D[Design-based FIT / Measured or Classified DC]
+    B --> E[Early Safety Architecture]
+    D --> F[Reviewable Metric Evidence]
+```
+
+**Figure 3. Architectural and detailed FMEDA share the same safety hierarchy but differ in evidence strength.**
+
+---
+
+## 6. The Objects Managed by D16
+
+D16 uses several object types.
 
 ```text
-row added
-row removed
-base FIT changed
-estimated DC changed
-measured DC changed
-selected DC changed
-residual FIT changed
-review status changed
-evidence source changed
-unsafe fault count changed
+Project
+Session
+Part
+Sub-part
+Instance
+Endpoint
+Failure mode
+Safety mechanism map
+Coverage source
+Metric result
+Review action
 ```
+
+These objects are not just names. They form a graph.
+
+```mermaid
+flowchart TD
+    P[Project] --> S[Session]
+    S --> Part[Part]
+    Part --> Sub[Sub-part]
+    Sub --> Inst[Instance]
+    Inst --> EP[Endpoint Scope]
+    Sub --> FM[Failure Mode]
+    FM --> SM[Safety Mechanism Map]
+    SM --> MET[Metric Result]
+    MET --> ACT[Review Action]
+```
+
+**Figure 4. D16 treats FMEDA as a graph of objects rather than a flat table.**
+
+This graph is what makes top-down FMEDA manageable.
+
+---
+
+## 7. Project and Session
+
+A project is the container of the safety study.
+
+A session is a specific analysis context inside that project.
+
+A useful session identity should include:
+
+```text
+item name
+design version
+FIT standard
+mission profile
+analysis mode
+FMEDA flow mode
+evidence database session
+run date or revision tag
+```
+
+D16 should not mix all evidence into a single anonymous result folder.
+
+A good session identity helps answer:
+
+```text
+Which design was analyzed?
+Which reliability model was used?
+Which failure modes were selected?
+Which safety mechanism maps were active?
+Which evidence database session was read?
+Which metric rollup was produced?
+```
+
+---
+
+## 8. Part and Sub-part
+
+A part is a high-level safety-relevant component in the FMEDA hierarchy.
+
+A sub-part is a smaller unit under a part.
 
 Example:
 
-```csv
-row_id,field,baseline_value,current_value,delta_class
-R003,selected_dc,0.000,0.850,improvement
-R003,residual_fit,0.0100,0.0015,improvement
-R003,review_status,review_required,reviewed,improvement
-R005,row_status,missing,added,new_row
+```text
+Part: Timer / Counter Function
+  Sub-part: Counter State Register
+  Sub-part: Enable Control Logic
+  Sub-part: Alarm Generation Logic
 ```
 
-FMEDA delta tracking is important because FMEDA is the table that safety reviewers often inspect first.
+The part/sub-part hierarchy should not blindly mirror RTL hierarchy. It should reflect how the safety architecture is reviewed.
+
+Sometimes one RTL module maps cleanly to one sub-part. Sometimes one sub-part spans multiple instances. Sometimes one RTL instance must be split into multiple FMEDA rows because different failure modes have different safety relevance.
 
 ---
 
-## 13. Review Item Trend
+## 9. Instance Binding
 
-Review items should not remain invisible across iterations.
+A top-down FMEDA becomes executable only when a sub-part is linked to design scope.
 
-D16 should track:
+That link is usually an instance path, endpoint scope, or DCE scope.
 
 ```text
-new review items
-closed review items
-reopened review items
-persistent review items
-severity changes
-owner changes
-due date changes
+FMEDA sub-part
+    -> design instance
+    -> endpoint set
+    -> DCE / structural contribution
+    -> safety mechanism map
 ```
 
-Example:
+If the instance binding is wrong, the top-down FMEDA may compute metrics for the wrong design scope.
 
-```csv
-item_id,baseline_status,current_status,delta_class
-I001,open,closed,closed
-I002,open,open,persistent
-I003,missing,open,new
-I004,closed,open,reopened
-```
-
-A reopened high-severity item should generate a strong alert.
-
-Review item trend makes safety improvement visible as engineering work.
+Therefore D16 must treat instance binding as a first-class evidence object.
 
 ---
 
-## 14. Evidence Quality Trend
+## 10. Failure Mode in Top-down FMEDA
 
-Evidence quality should also be tracked.
-
-Metrics include:
-
-```text
-unresolved ratio
-not-classified ratio
-missing artifact count
-low-confidence metric count
-scope mismatch count
-open high-severity review items
-policy change count
-```
-
-Example:
-
-```csv
-iteration,unresolved_ratio,not_classified_ratio,missing_artifacts,low_confidence_groups,open_high_items
-iter_001,0.00,0.00,0,3,1
-iter_002,0.05,0.00,0,2,1
-iter_003,0.20,0.02,1,1,0
-```
-
-A trend can improve in one area and regress in another.
-
-D16 should avoid simplistic pass/fail conclusions.
-
----
-
-## 15. Policy Changes Across Iterations
-
-Metric changes can be caused by policy changes.
+A failure mode describes how a part or sub-part can fail in a way relevant to the safety goal.
 
 Examples:
 
 ```text
-safe faults included in denominator in one run but excluded in another
-late alarms counted as detected in one run but unsafe in another
-FIT-weighted DC enabled in one run but not another
-low-confidence measured DC allowed in one run but not another
+wrong state transition
+wrong data output
+lost alarm assertion
+incorrect handshake response
+latent register corruption
+unsafe control output
 ```
 
-D16 must compare policy files or at least record policy hashes.
+A failure mode should not be too vague.
 
-Example:
-
-```csv
-policy_name,baseline_hash,current_hash,status
-classification_policy,abc123,abc123,unchanged
-measurement_policy,def456,789abc,changed
-fmeda_update_policy,111aaa,111aaa,unchanged
-```
-
-If a metric changed and the policy also changed, the trend interpretation must mention it.
+Weak row:
 
 ```text
-Measured DC changed from 0.60 to 0.72, but measurement policy changed.
-Review is required before treating the change as design improvement.
+Sub-part: Counter
+Failure mode: fails
 ```
+
+Stronger row:
+
+```text
+Sub-part: Counter State Register
+Failure mode: state corruption causes incorrect counter value at safety-relevant output
+```
+
+A precise failure mode makes it possible to attach a meaningful safety mechanism and diagnostic coverage assumption.
 
 ---
 
-## 16. Regression Severity
+## 11. Failure Mode Distribution
 
-Not all changes have the same severity.
+In FMEDA, a part's total failure rate may be distributed across several failure modes.
 
-Suggested severity levels:
-
-```text
-INFO
-LOW
-MEDIUM
-HIGH
-CRITICAL
-```
-
-Example severity rules:
-
-```yaml
-regression_policy:
-  critical:
-    - detected_to_unsafe
-    - reviewed_to_review_required_with_residual_fit_increase
-
-  high:
-    - residual_fit_increase_above_threshold
-    - new_unsafe_failure_mode
-    - high_severity_review_item_reopened
-
-  medium:
-    - measured_dc_drop_above_threshold
-    - unresolved_ratio_increase_above_threshold
-    - policy_changed_with_metric_change
-
-  low:
-    - confidence_drop
-    - new_low_severity_review_item
-```
-
-This helps prioritize engineering response.
-
----
-
-## 17. Regression Alerts
-
-D16 should generate `regression_alerts.csv`.
-
-Example:
-
-```csv
-alert_id,severity,category,item,baseline,current,message
-A001,CRITICAL,fault_outcome,F010,detected,unsafe,previously detected fault became unsafe
-A002,HIGH,residual_fit,FM_ALARM_NOT_ASSERTED,0.0015,0.0100,residual FIT increased above threshold
-A003,MEDIUM,evidence_quality,unresolved_ratio,0.02,0.20,unresolved ratio increased
-A004,MEDIUM,policy,measurement_policy,abc123,def456,policy changed with metric trend
-```
-
-Alerts should be concise and actionable.
-
-A good alert should tell:
+Conceptually:
 
 ```text
-what changed
-why it matters
-where to look
-what to do next
+part FIT = sum(failure-mode FIT contributions)
 ```
 
----
-
-## 18. Trend Summary Report
-
-The human-readable trend report should include:
+A failure mode distribution answers:
 
 ```text
-baseline iteration
-current iteration
-overall status
-key improvements
-key regressions
-metric trend
-fault outcome delta
-FMEDA row delta
-review item trend
-evidence quality trend
-policy changes
-recommended actions
+How much of this part's random hardware failure exposure belongs to each failure mode?
 ```
 
 Example:
 
-```md
-# D16 Regression and Trend Tracking Summary
+| Failure Mode | Distribution |
+|---|---:|
+| state corruption | 45% |
+| output corruption | 35% |
+| alarm path corruption | 20% |
 
-Baseline: iter_001  
-Current: iter_002  
-
-## Overall Status
-
-Status: REVIEW_REQUIRED
-
-## Improvements
-
-- FM_ALARM_NOT_ASSERTED measured DC improved from 0.000 to 0.500.
-- Fault F004 changed from unsafe to detected.
-
-## Regressions
-
-- Measurement confidence remains LOW.
-- One high-severity review item remains open.
-
-## Required Actions
-
-1. Expand the alarm-path campaign.
-2. Keep FMEDA selected DC unchanged until confidence improves.
-3. Review measurement policy consistency.
-```
-
-This is the main review artifact for a safety iteration.
+The distribution must be reviewable because it directly affects residual FIT.
 
 ---
 
-## 19. Trend Database
+## 12. Safety Mechanism Map
 
-D16 can maintain a simple trend database.
+A safety mechanism map links a failure mode or endpoint scope to a diagnostic mechanism.
 
-For a demo, this can be CSV-based.
-
-Example layout:
+Conceptually:
 
 ```text
-trend_db/
-  iterations.csv
-  metric_trend.csv
-  dc_trend_by_failure_mode.csv
-  residual_fit_trend.csv
-  review_item_history.csv
-  policy_hash_history.csv
+failure mode
+    -> endpoint / instance
+        -> safety mechanism
+            -> diagnostic coverage
+            -> alarm / observe evidence
 ```
 
-Example `iterations.csv`:
+D07 created mapping proposals. D16 uses those mappings inside a top-down FMEDA session.
 
-```csv
-iteration_id,date,design_version,package_path,report_path,tag
-iter_001,2026-05-01,toy_counter_v1,packages/iter_001,reports/iter_001,baseline
-iter_002,2026-05-08,toy_counter_v2,packages/iter_002,reports/iter_002,alarm_fix
+This is the key transition:
+
+```text
+D07: mapping proposal
+D15: FMEDA model
+D16: top-down FMEDA execution flow
 ```
-
-A simple CSV trend database is enough for GitHub demos.
-
-Later, it can evolve into SQLite or a dashboard backend.
 
 ---
 
-## 20. CI Integration
+## 13. Endpoint Path Context
 
-Safety regression tracking can be integrated into CI.
+Endpoint paths matter in a top-down flow.
 
-A CI flow may run:
+When a safety mechanism map is associated with a sub-part or instance, endpoint paths must be interpreted relative to the selected module or instance scope.
+
+A path mismatch can create subtle errors:
 
 ```text
-build design
-run safety preflight
-generate fault list
-run selected campaign
-classify outcomes
-compute measured DC
-update FMEDA
-package evidence
-generate report
-compare with baseline
-fail or warn on regression
+map created for top-level endpoint
+but applied to sub-module instance
 ```
+
+or:
+
+```text
+map created for local module scope
+but evaluated from top-level hierarchy
+```
+
+D16 should explicitly track:
+
+```text
+map_scope
+module_scope
+instance_scope
+endpoint_path_style
+path_resolution_status
+```
+
+---
+
+## 14. Metric Evaluation per Failure Mode
+
+A top-down FMEDA flow often evaluates each failure mode separately.
+
+The reason is simple: each failure mode can have a different safety mechanism map, diagnostic coverage, and evidence source.
 
 ```mermaid
 flowchart TD
-    A[Commit / Tag] --> B[Run Safety Flow]
-    B --> C[Generate Evidence Package]
-    C --> D[Generate Safety Report]
-    D --> E[Compare Against Baseline]
-    E --> F{Regression?}
-    F -- No --> G[Pass / Archive]
-    F -- Yes --> H[Warn or Fail CI]
+    FM1[Failure Mode 1] --> RUN1[Metric Evaluation]
+    FM2[Failure Mode 2] --> RUN2[Metric Evaluation]
+    FM3[Failure Mode 3] --> RUN3[Metric Evaluation]
+    RUN1 --> ROLL[FMEDA Rollup]
+    RUN2 --> ROLL
+    RUN3 --> ROLL
 ```
 
-**Figure 6. Safety regression tracking can become a CI gate for safety evidence quality.**
+**Figure 5. Running metric evaluation per failure mode avoids mixing unrelated diagnostic assumptions.**
 
-For early usage, D16 can be run manually.
-
-Later, it can be used as a lightweight CI check.
+This is one reason D16 is more structured than a simple spreadsheet calculation.
 
 ---
 
-## 21. What Should Fail CI?
+## 15. Rollup Logic
 
-Not every warning should fail CI.
+The rollup step aggregates metrics from sub-parts to parts, and from parts to the item level.
 
-Possible CI fail conditions:
-
-```text
-detected fault becomes unsafe
-new critical review item appears
-residual FIT increases above threshold
-selected DC drops below threshold
-FMEDA row becomes evidence_missing
-required artifact missing
-policy file changes without review approval
-```
-
-Possible warning-only conditions:
+A simplified flow:
 
 ```text
-confidence remains low
-sample size still small
-new low-severity review item
-new assumption added
-non-critical metric change
+endpoint evidence
+    -> failure-mode metric
+        -> sub-part metric
+            -> part metric
+                -> top-level metric
 ```
 
-Example policy:
+The rollup must preserve traceability.
 
-```yaml
-ci_policy:
-  fail_on:
-    - critical_regression_alert
-    - missing_required_artifact
-    - detected_to_unsafe
-    - residual_fit_increase_gt_threshold
+A top-level SPFM or LFM value is not enough. Reviewers also need to know:
 
-  warn_on:
-    - low_confidence
-    - policy_change
-    - unresolved_ratio_increase
+```text
+Which failure modes contributed most residual FIT?
+Which sub-parts have weak diagnostic coverage?
+Which safety mechanisms were credited?
+Which faults remain unresolved?
+Which rows need closure actions?
 ```
-
-CI should be strict enough to catch dangerous regressions but not so strict that it blocks every exploratory analysis.
 
 ---
 
-## 22. Baseline Selection
+## 16. Diagnostic Coverage in Top-down FMEDA
 
-Choosing the baseline matters.
+Diagnostic Coverage (DC) is the portion of relevant faults covered by a safety mechanism.
 
-Possible baseline strategies:
+In D16, DC can enter the FMEDA row from different sources:
 
 ```text
-last successful package
-last reviewed package
-release candidate package
-golden reference package
-specific tag
-specific date
-manual baseline
+assumed DC from safety concept
+estimated DC from safety exploration
+classified DC from fault campaign outcome
+copied DC from a lower-level database session
+custom DC for third-party IP
 ```
 
-Example:
+These sources should not be mixed without labels.
 
-```yaml
-baseline_selection:
-  mode: last_reviewed
-  fallback: latest
+A D16 row should carry a field such as:
+
+```text
+dc_source = assumed | estimated | measured | copied_session | custom_3rd_party
 ```
 
-A safety baseline should usually be reviewed.
-
-Comparing against an unreviewed baseline can produce misleading regression conclusions.
+This prevents accidental over-crediting.
 
 ---
 
-## 23. Handling Design Changes
+## 17. Residual FIT Rollup
 
-When the design changes, some faults and FMEDA rows may disappear or be renamed.
+Residual FIT is the failure rate that remains after diagnostic coverage is credited.
 
-D16 should classify:
+A simplified formula:
 
 ```text
-matched
-added
-removed
-renamed
-unmatched
+residual_fit = allocated_fit * (1 - diagnostic_coverage)
 ```
 
-Example:
+In a real FMEDA row, the calculation may split permanent and transient contributions:
 
-```csv
-object_type,object_id,delta_class,comment
-fault,F010,removed,node no longer exists
-fault,F120,added,new alarm monitor fault
-fmeda_row,R003,matched,same failure mode and part
-fmeda_row,R010,added,new watchdog row
+```text
+residual_fit_perm = lambda_perm * distribution_perm * (1 - dc_perm)
+residual_fit_tran = lambda_tran * distribution_tran * (1 - dc_tran)
 ```
 
-Added or removed objects are not automatically good or bad.
+D16 should not hide this decomposition.
 
-They require context.
+A top-down FMEDA is useful because it can show where residual FIT is coming from:
+
+```text
+Part A -> Sub-part A1 -> Failure Mode A1.2 -> weak DC -> residual FIT hotspot
+```
 
 ---
 
-## 24. Handling Tool or Policy Changes
+## 18. SPFM, LFM, and PMHF in the Top-down View
 
-If tool behavior changes, trends may be affected.
+D16 is not only about DC.
 
-D16 should record:
-
-```text
-tool version
-script version
-policy hash
-configuration hash
-evidence package hash
-```
-
-Example:
-
-```csv
-item,baseline,current,status
-safeic-classify_version,0.1.0,0.1.1,changed
-classification_policy_hash,aaa111,aaa111,unchanged
-measurement_policy_hash,bbb222,ccc333,changed
-```
-
-This is important because a metric change may come from:
+The top-level safety review often needs architectural metrics such as:
 
 ```text
-design change
-fault list change
-classification policy change
-tool bug fix
-campaign expansion
+SPFM: Single Point Fault Metric
+LFM: Latent Fault Metric
+PMHF: Probabilistic Metric for Hardware Failures
 ```
 
-The trend report should be honest about uncertainty.
+A practical interpretation:
 
----
-
-## 25. Core Inputs for D16
-
-Suggested inputs:
-
-```text
-inputs/
-  regression_config.yaml
-  trend_policy.yaml
-  baseline/
-    evidence_package/
-    safety_report.md
-  current/
-    evidence_package/
-    safety_report.md
-```
-
-The evidence packages should contain:
-
-```text
-fmeda_table.csv
-safety_metric_summary.csv
-measured_dc_by_failure_mode.csv
-measured_dc_by_endpoint.csv
-measured_residual_fit.csv
-fault_outcomes.csv
-review_items.csv
-assumption_register.csv
-package_status.csv
-artifact_hashes.csv
-```
-
-D16 should use the package outputs rather than raw scattered files.
-
----
-
-## 26. Main Outputs for D16
-
-Suggested outputs:
-
-```text
-outputs/
-  regression_summary.md
-  regression_alerts.csv
-  metric_trend.csv
-  dc_trend_by_failure_mode.csv
-  dc_trend_by_endpoint.csv
-  residual_fit_trend.csv
-  fault_outcome_delta.csv
-  fmeda_delta_trend.csv
-  review_item_trend.csv
-  evidence_quality_trend.csv
-  policy_delta.csv
-  trend_manifest.yaml
-```
-
-Each output has a clear purpose:
-
-| Output | Purpose |
+| Metric | Practical Question |
 |---|---|
-| `regression_summary.md` | Human-readable trend report |
-| `regression_alerts.csv` | Prioritized regression warnings |
-| `metric_trend.csv` | Top-level metric comparison |
-| `dc_trend_by_failure_mode.csv` | Measured/selected DC by failure mode |
-| `residual_fit_trend.csv` | Residual risk change |
-| `fault_outcome_delta.csv` | Fault-level outcome changes |
-| `fmeda_delta_trend.csv` | FMEDA row changes |
-| `review_item_trend.csv` | Review action changes |
-| `policy_delta.csv` | Policy or configuration changes |
+| SPFM | How much of the single-point failure risk has been eliminated or covered? |
+| LFM | How much latent multi-point failure risk has been controlled? |
+| PMHF | Is the residual random hardware failure rate low enough for the safety goal? |
+
+D16 should make these metrics traceable to FMEDA rows instead of treating them as black-box numbers.
 
 ---
 
-## 27. Example `regression_config.yaml`
+## 19. Third-party IP and Custom Values
 
-```yaml
-regression:
-  name: toy_counter_alarm_fix_regression
-  baseline_iteration: iter_001
-  current_iteration: iter_002
+Top-down FMEDA must often include third-party blocks.
 
-inputs:
-  baseline_package: inputs/baseline/evidence_package
-  current_package: inputs/current/evidence_package
+These blocks may not expose internal RTL or fault campaign evidence.
 
-matching:
-  fault_matching:
-    primary_key: fault_id
-    fallback_keys:
-      - node
-      - fault_type
-      - endpoint
-      - failure_mode
-
-  fmeda_matching:
-    primary_key: row_id
-    fallback_keys:
-      - part
-      - subpart
-      - failure_mode
-      - design_object
-
-outputs:
-  summary: outputs/regression_summary.md
-  alerts: outputs/regression_alerts.csv
-```
-
-This keeps comparison reproducible.
-
----
-
-## 28. Example `trend_policy.yaml`
-
-```yaml
-trend_policy:
-  thresholds:
-    measured_dc_drop_warn: 0.05
-    measured_dc_drop_fail: 0.10
-    residual_fit_increase_warn: 0.001
-    residual_fit_increase_fail: 0.005
-    unresolved_ratio_increase_warn: 0.10
-
-  severity:
-    detected_to_unsafe: CRITICAL
-    unsafe_to_detected: INFO
-    unsafe_to_safe: INFO
-    detected_to_unresolved: HIGH
-    unresolved_to_detected: INFO
-    new_unsafe_fault: HIGH
-    high_review_item_reopened: HIGH
-
-  policy_change:
-    warn_if_policy_hash_changed: true
-    require_review_if_metric_changed_with_policy_change: true
-
-  ci:
-    fail_on_critical_alert: true
-    fail_on_missing_required_artifact: true
-    warn_on_low_confidence: true
-```
-
-Thresholds should be project-specific.
-
-For a public demo, use simple defaults.
-
----
-
-## 29. Tool Architecture
-
-The generic tool `safeic-regress` can be implemented as a staged pipeline.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-regress]
-    B[regression_config.yaml] --> T
-    C[trend_policy.yaml] --> T
-    D[Baseline Evidence Package] --> T
-    E[Current Evidence Package] --> T
-
-    T --> F[Load Packages]
-    F --> G[Validate Comparable Inputs]
-    G --> H[Match Faults and FMEDA Rows]
-    H --> I[Compare Metrics]
-    I --> J[Compare Fault Outcomes]
-    J --> K[Compare FMEDA Rows]
-    K --> L[Compare Review Items]
-    L --> M[Compare Policies]
-    M --> N[Generate Alerts]
-    N --> O[Generate Trend Reports]
-```
-
-**Figure 7. `safeic-regress` loads two evidence packages, compares metrics and evidence, generates alerts, and writes trend reports.**
-
-Suggested internal modules:
+In that case, the FMEDA may use custom values such as:
 
 ```text
-safeic_regress/
-  cli.py
-  manifest.py
-  load_config.py
-  load_package.py
-  validate_compare.py
-  match_faults.py
-  match_fmeda.py
-  metric_compare.py
-  outcome_delta.py
-  fmeda_delta.py
-  review_delta.py
-  policy_delta.py
-  severity.py
-  trend_db.py
-  report.py
+block name
+lambda
+safe lambda
+diagnostic coverage
+latent diagnostic coverage
+evidence reference
+supplier assumption
+review status
 ```
 
-Responsibilities:
-
-| Module | Responsibility |
-|---|---|
-| `load_package.py` | Read D14 evidence package structure |
-| `validate_compare.py` | Check whether two packages are comparable |
-| `match_faults.py` | Match faults across iterations |
-| `match_fmeda.py` | Match FMEDA rows across iterations |
-| `metric_compare.py` | Compare DC, residual FIT, and summary metrics |
-| `outcome_delta.py` | Compare fault outcomes |
-| `fmeda_delta.py` | Compare FMEDA row changes |
-| `review_delta.py` | Compare review item status |
-| `policy_delta.py` | Compare policy hashes and configs |
-| `severity.py` | Assign regression alert severity |
-| `trend_db.py` | Update trend history |
-| `report.py` | Generate CSV and Markdown outputs |
-
----
-
-## 30. D16 Directory Structure
-
-Suggested directory:
-
-```text
-D16_regression_and_trend_tracking/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    regression_config.yaml
-    trend_policy.yaml
-
-    baseline/
-      evidence_package/
-        package_manifest.yaml
-        package_status.csv
-        metrics/
-          measured_dc_by_failure_mode.csv
-          measured_residual_fit.csv
-          safety_metric_summary.csv
-        fmeda/
-          fmeda_table.csv
-          fmeda_review_items.csv
-        campaign/
-          fault_outcomes.csv
-        policies/
-          classification_policy.yaml
-          measurement_policy.yaml
-
-    current/
-      evidence_package/
-        package_manifest.yaml
-        package_status.csv
-        metrics/
-          measured_dc_by_failure_mode.csv
-          measured_residual_fit.csv
-          safety_metric_summary.csv
-        fmeda/
-          fmeda_table.csv
-          fmeda_review_items.csv
-        campaign/
-          fault_outcomes.csv
-        policies/
-          classification_policy.yaml
-          measurement_policy.yaml
-
-  outputs/
-    regression_summary.md
-    regression_alerts.csv
-    metric_trend.csv
-    dc_trend_by_failure_mode.csv
-    residual_fit_trend.csv
-    fault_outcome_delta.csv
-    fmeda_delta_trend.csv
-    review_item_trend.csv
-    policy_delta.csv
-    trend_manifest.yaml
-```
-
-This structure makes baseline/current comparison explicit.
-
----
-
-## 31. D16 Manifest
-
-Example:
-
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D16_regression_and_trend_tracking
-  top_module: toy_counter
-
-inputs:
-  regression_config: inputs/regression_config.yaml
-  trend_policy: inputs/trend_policy.yaml
-  baseline_package: inputs/baseline/evidence_package
-  current_package: inputs/current/evidence_package
-
-outputs:
-  summary: outputs/regression_summary.md
-  alerts: outputs/regression_alerts.csv
-  metric_trend: outputs/metric_trend.csv
-  dc_trend_by_failure_mode: outputs/dc_trend_by_failure_mode.csv
-  residual_fit_trend: outputs/residual_fit_trend.csv
-  fault_outcome_delta: outputs/fault_outcome_delta.csv
-  fmeda_delta_trend: outputs/fmeda_delta_trend.csv
-  review_item_trend: outputs/review_item_trend.csv
-  policy_delta: outputs/policy_delta.csv
-  trend_manifest: outputs/trend_manifest.yaml
-```
-
-The manifest defines exactly what is compared and where results are written.
-
----
-
-## 32. D16 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load Regression Config]
-    B --> C[Load Trend Policy]
-    C --> D[Load Baseline Package]
-    D --> E[Load Current Package]
-    E --> F[Validate Comparability]
-    F --> G[Compare Top-Level Metrics]
-    G --> H[Compare DC by Group]
-    H --> I[Compare Residual FIT]
-    I --> J[Compare Fault Outcomes]
-    J --> K[Compare FMEDA Rows]
-    K --> L[Compare Review Items]
-    L --> M[Compare Policies]
-    M --> N[Generate Regression Alerts]
-    N --> O[Generate Trend Summary]
-```
-
-**Figure 8. D16 execution flow: load packages, validate, compare metrics and evidence, generate alerts, and write trend summary.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-regress \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D16_regression_and_trend_tracking
-echo "Running $DEMO"
-
-safeic-regress \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
-
-```text
-outputs/regression_summary.md
-outputs/regression_alerts.csv
-outputs/metric_trend.csv
-outputs/dc_trend_by_failure_mode.csv
-outputs/residual_fit_trend.csv
-outputs/fault_outcome_delta.csv
-outputs/fmeda_delta_trend.csv
-outputs/review_item_trend.csv
-outputs/policy_delta.csv
-outputs/trend_manifest.yaml
-```
-
----
-
-## 33. Example `metric_trend.csv`
-
-```csv
-metric,baseline,current,delta,delta_class
-total_base_fit,0.078,0.078,0.000,no_change
-total_residual_fit,0.0204,0.0104,-0.0100,improvement
-weighted_selected_dc,0.738,0.867,0.129,improvement
-rows_review_required,2,1,-1,improvement
-unsafe_faults,2,1,-1,improvement
-unresolved_faults,0,0,0,no_change
-```
-
-This provides a compact top-level view.
-
----
-
-## 34. Example `fault_outcome_delta.csv`
-
-```csv
-fault_id,node,failure_mode,baseline_outcome,current_outcome,delta_class,severity
-F001,toy_counter.count[0],FM_DATA_CORRUPTION,detected,detected,no_change,INFO
-F003,toy_counter.count_parity,FM_DIAGNOSTIC_STATE_CORRUPTION,unsafe,unsafe,no_change,HIGH
-F004,toy_counter.alarm,FM_ALARM_NOT_ASSERTED,unsafe,detected,improvement,INFO
-F010,toy_counter.alarm_mask,FM_DIAGNOSTIC_MASKED,missing,unsafe,new_unsafe_fault,HIGH
-```
-
-This table tells the detailed story behind metric changes.
-
----
-
-## 35. Example `regression_alerts.csv`
-
-```csv
-alert_id,severity,category,item,message,recommended_action
-A001,HIGH,new_unsafe_fault,F010,new unsafe alarm-mask fault appeared,review alarm mask protection
-A002,MEDIUM,review_item,I002,diagnostic state issue remains open,add diagnostic state protection or justify residual risk
-A003,LOW,confidence,FM_ALARM_NOT_ASSERTED,measured confidence is still low,expand campaign sample size
-```
-
-This is the action-driving output.
-
----
-
-## 36. Example `regression_summary.md`
-
-```md
-# D16 Regression and Trend Tracking Summary
-
-Baseline: iter_001  
-Current: iter_002  
-Design: toy_counter  
-
-## Overall Status
-
-Status: REVIEW_REQUIRED
-
-## Top-Level Metric Changes
-
-- Total residual FIT decreased from 0.0204 to 0.0104.
-- Weighted selected DC increased from 0.738 to 0.867.
-- Unsafe faults decreased from 2 to 1.
-- Review-required FMEDA rows decreased from 2 to 1.
-
-## Improvements
-
-1. Fault F004 changed from unsafe to detected.
-2. FM_ALARM_NOT_ASSERTED residual FIT decreased.
-
-## Remaining Issues
-
-1. Diagnostic state corruption remains unsafe.
-2. A new alarm-mask unsafe fault appeared.
-3. Measured confidence remains low for alarm-path coverage.
-
-## Recommended Actions
-
-1. Add or justify diagnostic state protection.
-2. Review new alarm-mask fault F010.
-3. Expand campaign sample size before increasing selected DC further.
-```
-
-A summary should be clear enough for review discussion.
-
----
-
-## 37. Validation Rules
-
-`safeic-regress` should validate:
-
-```text
-baseline package exists
-current package exists
-required metric files exist
-required FMEDA files exist
-required fault outcome files exist
-policy files exist or missing status is reported
-iteration IDs are defined
-fault matching policy is valid
-FMEDA matching policy is valid
-trend thresholds are valid
-numeric metrics can be parsed
-review item statuses are valid
-```
-
-Example messages:
-
-```text
-[PASS] baseline package loaded
-[PASS] current package loaded
-[PASS] measured DC tables loaded for both packages
-[PASS] FMEDA rows matched: 3 matched, 1 added, 0 removed
-[WARN] measurement policy hash changed
-[WARN] new unsafe fault F010 found
-[ERROR] current package missing fmeda_table.csv
-```
-
-The tool should refuse to compare incomplete packages when required artifacts are missing.
-
----
-
-## 38. Common Mistakes
-
-### 38.1 Comparing Only One Metric
-
-A measured DC increase may hide residual FIT, confidence, or unresolved evidence regressions.
-
-### 38.2 Ignoring Policy Changes
-
-Metric changes are hard to interpret if classification or measurement policies changed.
-
-### 38.3 Treating Added Faults as Regressions Automatically
-
-New faults may simply reflect expanded coverage.
-
-Classify them carefully.
-
-### 38.4 Ignoring Persistent Review Items
-
-A review item that remains open across multiple iterations is important.
-
-### 38.5 Hiding Evidence Quality Regression
-
-Unresolved ratio and missing artifacts matter.
-
-### 38.6 Using an Unreviewed Baseline
-
-A weak baseline can make trend conclusions misleading.
-
-### 38.7 Failing CI on Every Warning
-
-Not every warning is a blocker.
-
-Critical safety regressions should fail; exploratory warnings may not.
-
----
-
-## 39. How D16 Connects to Later Demos
-
-D16 enables iteration-aware safety engineering.
-
-Later demos can use regression outputs for tool comparison, dashboarding, and publication.
+A third-party block should never be silently absorbed into the top-level metric. It should be visible as a controlled assumption.
 
 ```mermaid
 flowchart LR
-    A[D16 Regression Tracking] --> B[D17 Commercial Tool Comparison]
-    A --> C[D18 Dashboard / Website Demo]
-    A --> D[D19 CI Automation]
-    B --> E[Comparison Report]
-    C --> F[Interactive Trend View]
-    D --> G[Automated Safety Regression Gate]
+    A[Top-level FMEDA] --> B[Internal Design Evidence]
+    A --> C[Third-party IP Custom Values]
+    C --> D[Assumption Register]
+    D --> E[Review Action]
 ```
 
-**Figure 9. D16 provides the trend and regression foundation for comparison, dashboarding, and automation.**
-
-Once regression tracking exists, the workflow becomes much more credible as an engineering platform.
+**Figure 6. Third-party IP evidence must be carried as explicit assumptions.**
 
 ---
 
-## 40. Recommended Implementation Stages
+## 20. Session Copy and Hierarchical Reuse
 
-D16 can be implemented in stages.
+In a hierarchical design, lower-level analysis results may be copied or referenced by a top-level FMEDA session.
 
-### Stage 1: Two-Package Metric Comparison
+This is useful when an IP block has already been analyzed.
 
-Compare baseline and current package metrics.
-
-Deliverables:
+But reuse requires consistency checks:
 
 ```text
-metric_trend.csv
-regression_summary.md
+same design revision?
+same FIT standard?
+same mission profile?
+same safety mechanism assumptions?
+same DC source?
+same part/sub-part interpretation?
 ```
 
-### Stage 2: Fault Outcome Delta
+D16 should generate a session reuse manifest.
 
-Compare classified outcomes across iterations.
+Example fields:
 
-Deliverables:
-
-```text
-fault_outcome_delta.csv
-regression_alerts.csv
+```csv
+source_session,target_part,target_subpart,fit_standard,mission_profile,copy_status,review_status
+IP_COUNTER_BFR,CounterFunction,CounterCore,iec_62380,passenger_profile,copied,review_required
 ```
-
-### Stage 3: FMEDA Row Delta
-
-Compare FMEDA row values and review statuses.
-
-Deliverables:
-
-```text
-fmeda_delta_trend.csv
-```
-
-### Stage 4: Review Item and Policy Delta
-
-Track review item changes and policy hash changes.
-
-Deliverables:
-
-```text
-review_item_trend.csv
-policy_delta.csv
-```
-
-### Stage 5: Trend Database and CI Mode
-
-Maintain historical trend tables and CI pass/warn/fail status.
-
-Deliverables:
-
-```text
-trend_db/
-ci_status.csv
-```
-
-This staged implementation makes D16 useful immediately and extensible toward automation.
 
 ---
 
-## 41. Summary
+## 21. Batch-like Execution vs Interactive GUI Work
 
-Regression and trend tracking turns safety analysis from a one-shot report into an iterative engineering loop.
+Top-down FMEDA can be performed interactively in a graphical environment.
 
-The D16 demo:
-
-```text
-D16_regression_and_trend_tracking
-```
-
-introduces the generic tool:
+However, a robust engineering flow should also produce batch-like evidence:
 
 ```text
-safeic-regress
+session manifest
+part/sub-part import table
+failure-mode map
+instance binding table
+safety-mechanism map
+metric summary
+quality gate
+review queue
 ```
 
-The tool consumes:
+Interactive work is useful for review and visualization.
 
-```text
-baseline evidence package
-current evidence package
-regression_config.yaml
-trend_policy.yaml
-```
+Batch-like artifacts are useful for reproducibility.
 
-and generates:
-
-```text
-regression_summary.md
-regression_alerts.csv
-metric_trend.csv
-dc_trend_by_failure_mode.csv
-dc_trend_by_endpoint.csv
-residual_fit_trend.csv
-fault_outcome_delta.csv
-fmeda_delta_trend.csv
-review_item_trend.csv
-policy_delta.csv
-trend_manifest.yaml
-```
-
-The central lesson is:
-
-> Safety evidence must be tracked over time. A single report explains one snapshot, but regression and trend tracking shows whether the safety argument is improving, regressing, or becoming less certain.
-
-D16 makes the safety workflow iterative, auditable, and ready for CI-style automation.
+D16 should support both.
 
 ---
 
-## 42. D16 Demo Checklist
+## 22. D16 Demo Architecture
 
-For `D16_regression_and_trend_tracking`, the expected deliverables are:
+The D16 demo is designed as a bridge from D15 FMEDA data model to a top-down FMEDA session package.
+
+```mermaid
+flowchart TD
+    A[D15 FMEDA Model] --> B[D16 Top-down Session Builder]
+    C[D14 Final Metrics] --> B
+    D[D07 SM Map] --> B
+    E[D05 Common DB Manifest] --> B
+    B --> F[Top-down FMEDA Import Tables]
+    B --> G[Session Run Matrix]
+    B --> H[Metric Rollup Preview]
+    B --> I[Review Queue]
+    I --> J[D17 Closure]
+```
+
+**Figure 7. D16 builds the top-down FMEDA execution package from prior evidence.**
+
+---
+
+## 23. Suggested D16 Demo Inputs
+
+D16 should consume:
+
+```text
+D15 fmeda_model.json
+D15 fmeda_flat_table.csv
+D15 fmeda_traceability_matrix.csv
+D14 final_metrics_summary.csv
+D14 fmeda_metric_seed.csv
+D07 failure_mode_to_sm_map.csv
+D07 ep_to_sm_map_review.csv
+D05 common_db_session_manifest.csv
+D04 structural_endpoint_inventory.csv
+```
+
+These inputs allow D16 to construct a top-down view without inventing its own safety data.
+
+---
+
+## 24. Suggested D16 Demo Outputs
+
+A useful D16 demo should produce:
+
+```text
+outputs/topdown_project_manifest.csv
+outputs/topdown_session_manifest.csv
+outputs/topdown_part_tree.csv
+outputs/topdown_instance_binding.csv
+outputs/topdown_failure_mode_plan.csv
+outputs/topdown_sm_map_binding.csv
+outputs/topdown_run_matrix.csv
+outputs/topdown_metric_rollup.csv
+outputs/topdown_metric_rollup.md
+outputs/topdown_assumption_register.csv
+outputs/topdown_review_queue.csv
+outputs/d16_handoff_to_d17.csv
+outputs/d16_quality_gate.csv
+outputs/evidence_index.csv
+outputs/demo_summary.md
+```
+
+These outputs make the flow reviewable even if the graphical review step happens later.
+
+---
+
+## 25. Top-down Project Manifest
+
+The project manifest records the overall identity of the top-down FMEDA study.
+
+Important fields:
+
+```text
+project_id
+item_name
+design_revision
+fmeda_model_source
+metric_source
+fit_standard
+mission_profile
+common_database_reference
+review_owner
+status
+```
+
+This is the anchor of the D16 evidence package.
+
+---
+
+## 26. Top-down Part Tree
+
+The part tree describes how the design is decomposed for FMEDA review.
+
+Example:
+
+```csv
+part_id,parent_id,object_type,name,description
+P_TOP,,part,Toy Counter Safety Item,top-level item boundary
+P_CTRL,P_TOP,part,Counter Control,control and state update logic
+SP_STATE,P_CTRL,sub_part,Counter State Register,state storage and update
+SP_ALARM,P_CTRL,sub_part,Alarm Generation,alarm-like output logic
+```
+
+The part tree should be stable enough to survive design reviews.
+
+---
+
+## 27. Instance Binding Table
+
+The instance binding table connects FMEDA sub-parts to design hierarchy.
+
+Example:
+
+```csv
+subpart_id,instance_path,module_scope,binding_type,binding_status
+SP_STATE,top.counter_state,toy_counter,register_group,resolved
+SP_ALARM,top.alarm_logic,toy_counter,logic_cone,review_required
+```
+
+If the design is flat, the binding can still be expressed as endpoint or signal scope.
+
+---
+
+## 28. Failure Mode Plan
+
+The failure mode plan describes which failure modes are evaluated under each sub-part.
+
+Example:
+
+```csv
+subpart_id,failure_mode_id,failure_mode_description,distribution_perm,distribution_tran
+SP_STATE,FM_STATE_CORRUPTION,state bit corruption causes wrong count,0.60,0.50
+SP_ALARM,FM_ALARM_MISSED,alarm does not assert when required,0.40,0.50
+```
+
+The failure mode distribution should be reviewable and traceable to a safety architecture assumption or previous metric evidence.
+
+---
+
+## 29. SM Map Binding
+
+The SM map binding attaches a safety mechanism map to a failure mode or instance scope.
+
+Example:
+
+```csv
+failure_mode_id,subpart_id,map_id,mechanism_family,alarm_binding,dc_source,status
+FM_STATE_CORRUPTION,SP_STATE,MAP_STATE_PARITY,endpoint_parity,sm_alarm_state,estimated,review_required
+FM_ALARM_MISSED,SP_ALARM,MAP_ALARM_OBSERVE,alarm_monitor,sm_alarm_alarm_path,measured,accepted
+```
+
+This table is where D07 and D16 connect.
+
+---
+
+## 30. Top-down Run Matrix
+
+The run matrix explains how metric evaluation should be executed.
+
+Each row can represent one failure-mode evaluation.
+
+```csv
+run_id,subpart_id,failure_mode_id,input_session,sm_map,metric_scope,status
+TD_RUN_001,SP_STATE,FM_STATE_CORRUPTION,D15_FMEDA_MODEL,MAP_STATE_PARITY,subpart,ready
+TD_RUN_002,SP_ALARM,FM_ALARM_MISSED,D15_FMEDA_MODEL,MAP_ALARM_OBSERVE,subpart,ready
+```
+
+The run matrix is useful even when actual execution is performed through an interactive environment.
+
+It turns click-based work into reviewable intent.
+
+---
+
+## 31. Metric Rollup Preview
+
+D16 can generate a rollup preview before a formal run.
+
+This preview should not be confused with final safety signoff. It is a consistency and planning artifact.
+
+Example columns:
+
+```text
+part_id
+subpart_id
+failure_mode_id
+allocated_lambda_perm
+allocated_lambda_tran
+dc_perm
+dc_tran
+residual_fit_perm
+residual_fit_tran
+review_status
+```
+
+The rollup preview helps answer:
+
+```text
+Which rows dominate residual FIT?
+Which rows rely on assumed DC?
+Which rows have unresolved fault evidence?
+Which rows need D17 closure?
+```
+
+---
+
+## 32. Assumption Register
+
+A top-down FMEDA must expose assumptions.
+
+Typical assumptions:
+
+```text
+failure mode distribution assumption
+third-party IP custom lambda
+assumed diagnostic coverage
+copied session validity
+endpoint path resolution
+alarm binding completeness
+unresolved fault treatment
+```
+
+An assumption register turns hidden engineering judgment into reviewable evidence.
+
+Example:
+
+```csv
+assumption_id,object,assumption,impact,owner,status
+A001,SP_STATE,DC is estimated from exploration scenario S05,medium,safety_engineer,review_required
+A002,IP_TIMER,lambda copied from supplier document,high,ip_owner,review_required
+```
+
+---
+
+## 33. Review Queue
+
+D16 should create a review queue for items that cannot be automatically accepted.
+
+Examples:
+
+```text
+failure mode distribution not approved
+safety mechanism map unresolved
+alarm binding missing
+custom third-party lambda used
+DC source is assumed rather than measured
+residual FIT exceeds internal threshold
+```
+
+The review queue becomes a direct input to D17 diagnostic coverage closure.
+
+---
+
+## 34. Quality Gate
+
+The D16 quality gate should check at least:
+
+```text
+D15 FMEDA model exists
+part tree is not empty
+sub-parts are linked to parts
+failure modes are linked to sub-parts
+instance or endpoint binding exists
+SM map binding exists for safety-relevant failure modes
+DC source is labeled
+residual FIT rows are present
+assumption register exists
+review queue is generated
+D17 handoff is generated
+```
+
+Quality gate failures should indicate structural incompleteness, not whether the design already passes a safety target.
+
+---
+
+## 35. Common Pitfalls
+
+### 35.1 Treating FMEDA as a Spreadsheet Only
+
+A spreadsheet is a view. The engineering object is the traceable safety model behind it.
+
+### 35.2 Mixing Architectural and Detailed Evidence
+
+Estimated DC and fault-campaign-derived DC must be labeled differently.
+
+### 35.3 Losing Instance Scope
+
+If a sub-part is not bound to an instance, the metric result may not be reproducible.
+
+### 35.4 Reusing Sessions Without Context Checks
+
+Copying coverage from another session is dangerous unless FIT standard, design revision, and mission profile are compatible.
+
+### 35.5 Hiding Third-party IP Assumptions
+
+Custom lambda and DC values must be visible in the assumption register.
+
+### 35.6 Treating Top-level Metrics as Enough
+
+A top-level metric is a summary, not an explanation. D16 must keep row-level evidence.
+
+---
+
+## 36. Review Checklist
+
+A reviewer should be able to answer:
+
+```text
+What is the top-level item boundary?
+What parts and sub-parts are included?
+Which design instances are bound to each sub-part?
+Which failure modes are assigned?
+Which safety mechanisms are credited?
+Where did DC values come from?
+Which rows use assumptions?
+Which rows are supported by fault campaign results?
+Which rows are copied from lower-level sessions?
+Which rows drive residual FIT?
+Which rows require D17 closure?
+```
+
+If these questions cannot be answered, the top-down FMEDA flow is not yet reviewable.
+
+---
+
+## 37. D16 Demo Deliverables
+
+D16 should deliver:
 
 ```text
 [ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
+[ ] scripts/run_demo.csh
+[ ] tools/build_d16_topdown_fmeda_flow.py
 
-[ ] inputs/regression_config.yaml
-[ ] inputs/trend_policy.yaml
+[ ] inputs/from_D15/
+[ ] inputs/from_D14/
+[ ] inputs/from_D07/
+[ ] inputs/from_D05/
+[ ] configs/topdown_partition_rules.csv
+[ ] configs/topdown_review_policy.csv
 
-[ ] inputs/baseline/evidence_package/package_manifest.yaml
-[ ] inputs/baseline/evidence_package/package_status.csv
-[ ] inputs/baseline/evidence_package/metrics/measured_dc_by_failure_mode.csv
-[ ] inputs/baseline/evidence_package/metrics/measured_residual_fit.csv
-[ ] inputs/baseline/evidence_package/metrics/safety_metric_summary.csv
-[ ] inputs/baseline/evidence_package/fmeda/fmeda_table.csv
-[ ] inputs/baseline/evidence_package/fmeda/fmeda_review_items.csv
-[ ] inputs/baseline/evidence_package/campaign/fault_outcomes.csv
-[ ] inputs/baseline/evidence_package/policies/classification_policy.yaml
-[ ] inputs/baseline/evidence_package/policies/measurement_policy.yaml
-
-[ ] inputs/current/evidence_package/package_manifest.yaml
-[ ] inputs/current/evidence_package/package_status.csv
-[ ] inputs/current/evidence_package/metrics/measured_dc_by_failure_mode.csv
-[ ] inputs/current/evidence_package/metrics/measured_residual_fit.csv
-[ ] inputs/current/evidence_package/metrics/safety_metric_summary.csv
-[ ] inputs/current/evidence_package/fmeda/fmeda_table.csv
-[ ] inputs/current/evidence_package/fmeda/fmeda_review_items.csv
-[ ] inputs/current/evidence_package/campaign/fault_outcomes.csv
-[ ] inputs/current/evidence_package/policies/classification_policy.yaml
-[ ] inputs/current/evidence_package/policies/measurement_policy.yaml
-
-[ ] outputs/regression_summary.md
-[ ] outputs/regression_alerts.csv
-[ ] outputs/metric_trend.csv
-[ ] outputs/dc_trend_by_failure_mode.csv
-[ ] outputs/dc_trend_by_endpoint.csv
-[ ] outputs/residual_fit_trend.csv
-[ ] outputs/fault_outcome_delta.csv
-[ ] outputs/fmeda_delta_trend.csv
-[ ] outputs/review_item_trend.csv
-[ ] outputs/policy_delta.csv
-[ ] outputs/trend_manifest.yaml
+[ ] outputs/topdown_project_manifest.csv
+[ ] outputs/topdown_session_manifest.csv
+[ ] outputs/topdown_part_tree.csv
+[ ] outputs/topdown_instance_binding.csv
+[ ] outputs/topdown_failure_mode_plan.csv
+[ ] outputs/topdown_sm_map_binding.csv
+[ ] outputs/topdown_run_matrix.csv
+[ ] outputs/topdown_metric_rollup.csv
+[ ] outputs/topdown_metric_rollup.md
+[ ] outputs/topdown_assumption_register.csv
+[ ] outputs/topdown_review_queue.csv
+[ ] outputs/d16_handoff_to_d17.csv
+[ ] outputs/d16_quality_gate.csv
+[ ] outputs/evidence_index.csv
+[ ] outputs/demo_summary.md
 ```
 
-A successful D16 run should answer:
+---
+
+## 38. Summary
+
+D16 is where the FMEDA data model becomes a top-down workflow.
+
+It starts from safety architecture:
 
 ```text
-What changed between baseline and current safety evidence packages?
-Did measured DC improve or regress?
-Did residual FIT decrease or increase?
-Did any detected fault become unsafe?
-Did any unsafe fault become detected?
-Were new unsafe faults introduced?
-Did FMEDA rows improve or regress?
-Which review items were opened, closed, or reopened?
-Did evidence quality improve or degrade?
-Did policies change between iterations?
-Should the current iteration pass, warn, or fail a safety regression gate?
+part
+sub-part
+failure mode
+safety mechanism
 ```
+
+Then it connects the architecture to design evidence:
+
+```text
+instance binding
+endpoint map
+DCE evidence
+fault outcome classification
+final metric seed
+common database session
+```
+
+Finally, it rolls the evidence back up into reviewable metrics:
+
+```text
+DC
+residual FIT
+SPFM
+LFM
+PMHF
+assumption register
+review queue
+```
+
+A strong top-down FMEDA flow does not replace bottom-up analysis. It organizes bottom-up evidence into a safety architecture that reviewers can understand.
+
+That is why D16 is an important bridge in the series:
+
+```text
+D15 gives the FMEDA data model.
+D16 turns it into an executable top-down review flow.
+D17 uses the review queue to close diagnostic coverage gaps.
+```
+
+At this stage, the safety platform is no longer just producing isolated reports. It is building an integrated, traceable, and reviewable safety case.
