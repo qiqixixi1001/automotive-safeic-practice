@@ -1,1408 +1,1158 @@
-# [Automotive Safe-IC Practice 13] FMEDA Update: From Measured DC and Residual FIT to Traceable Safety Tables
+# Automotive Safe-IC Practice 13: Fault Outcome Classification — detected / safe / unsafe / unresolved
+Author: Darren H. Chen  
+Direction: Automotive chip functional safety analysis and fault-injection verification  
+Demo: D13_fault_outcome_classification_detected_safe_unsafe_unresolved  
+Tags: ISO 26262, Functional Safety, Fault Injection, Fault Campaign, Fault Outcome, Diagnostic Coverage, FMEDA, VCD, Good Machine, Alarm, Observe Point
 
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D13_fmeda_update  
-**Tags**: Automotive Chip, Functional Safety, FMEDA, FIT, Diagnostic Coverage, Measured DC, Residual FIT, Fault Injection, Failure Mode, Safety Mechanism, Safety Metrics
+## 1. From fault execution records to safety evidence
 
----
+D12 executes a fault campaign. D13 answers a different question:
 
-## 1. Why This Article Matters
+> After each fault has been injected and simulated, how should the result be classified so that the campaign can support diagnostic coverage, FMEDA, and final metric calculation?
 
-In the previous article, we computed measured diagnostic coverage from classified fault campaign outcomes.
+A fault campaign produces many low-level records: injected site, fault type, injection time, propagation state, alarm status, observe-point mismatch, simulation termination condition, timeout, black-box propagation, missing waveform, and engine status. These records are not yet safety evidence by themselves. They must be interpreted under a consistent outcome model.
 
-D12 produced evidence such as:
+D13 is therefore the classification stage.
 
-```text
-measured_dc_overall.csv
-measured_dc_by_endpoint.csv
-measured_dc_by_failure_mode.csv
-measured_dc_by_safety_mechanism.csv
-measured_dc_by_part.csv
-estimated_vs_measured_dc.csv
-measured_residual_fit.csv
-measurement_quality.csv
-```
-
-These results are useful, but they are still not the final safety table.
-
-The next question is:
-
-> How do we update FMEDA rows with measured DC, residual FIT, evidence links, and review status?
-
-The thirteenth demo in this repository is:
+It transforms execution artifacts into four engineering outcomes:
 
 ```text
-D13_fmeda_update
+detected
+safe
+unsafe
+unresolved
 ```
 
-The generic tool introduced in this article is:
-
-```text
-safeic-fmeda
-```
-
-The purpose of `safeic-fmeda` is to convert design-level safety evidence into a traceable FMEDA-style table using:
-
-```text
-part/sub-part mapping
-failure mode mapping
-base FIT contribution
-estimated DC
-measured DC
-measured residual FIT
-fault campaign evidence
-safety mechanism mapping
-review policy
-```
-
-and generate:
-
-```text
-fmeda_table.csv
-fmeda_delta.csv
-fmeda_review_items.csv
-safety_metric_summary.csv
-fmeda_summary.md
-```
-
-The central idea is:
-
-> FMEDA update is not a spreadsheet formatting step. It is the step where structural design objects, failure modes, FIT contribution, diagnostic coverage, residual FIT, and validation evidence are joined into a reviewable safety argument.
-
----
-
-## 2. Where D13 Fits in the Flow
-
-D13 sits after measured DC computation.
+The purpose is not to make the design look better. The purpose is to make every fault result reviewable, explainable, traceable, and usable by the next stage.
 
 ```mermaid
 flowchart LR
-    A[D03/D04 FIT Data] --> D[D13 FMEDA Update]
-    B[D05 Structure and Part Map] --> D
-    C[D12 Measured DC and Residual FIT] --> D
-    E[D11 Fault Outcomes] --> D
-    D --> F[FMEDA Table]
-    D --> G[Safety Metric Summary]
-    D --> H[Review Items]
+    A[D12 Fault Injection Execution] --> B[Raw fault result records]
+    B --> C[D13 Fault Outcome Classification]
+    C --> D[Detected fault set]
+    C --> E[Safe fault set]
+    C --> F[Unsafe fault set]
+    C --> G[Unresolved review queue]
+    D --> H[D14 Final metrics]
+    E --> H
+    F --> H
+    G --> I[D17 Closure actions]
 ```
 
-**Figure 1. D13 combines FIT, structure, measured DC, residual FIT, and evidence links into an FMEDA-ready table.**
-
-Earlier demos answered:
-
-```text
-What is the base failure-rate contribution?
-What is the structure?
-What is the estimated DC?
-What was measured by fault injection?
-What residual FIT remains?
-```
-
-D13 answers:
-
-```text
-How should the FMEDA rows be updated?
-Which rows are evidence-backed?
-Which rows remain assumption-based?
-Which rows require review?
-Which residual FIT items dominate the safety metric?
-```
-
-This is the point where the workflow starts looking like a safety engineering deliverable.
+D13 is the bridge between simulation execution and metric evidence.
 
 ---
 
-## 3. What Is FMEDA in This Demo?
+## 2. Position of D13 in the 20-demo Safe-IC flow
 
-In this demo series, FMEDA is treated as a structured table that connects:
+D13 is not an isolated report parser. It sits after the complete setup and execution chain:
 
 ```text
-design part
-sub-part
-failure mode
-base FIT
-safety mechanism
-diagnostic coverage
-residual FIT
-evidence source
-review status
+D08 -> campaign fault list
+D09 -> VCD / good-machine context / FTTI planning
+D10 -> alarm list and observe point boundary
+D11 -> fault campaign input package
+D12 -> fault injection execution
+D13 -> outcome classification
+D14 -> result writeback and final metrics
 ```
 
-A simplified FMEDA row may look like:
+The stage boundary is important.
 
-```csv
-part,subpart,failure_mode,base_fit,safety_mechanism,dc,residual_fit,evidence,review_status
-PART_COUNTER,SUBPART_COUNTER_STATE,FM_DATA_CORRUPTION,0.064,endpoint_parity,0.90,0.0064,D12 measured DC,reviewed
-```
-
-FMEDA is useful because it organizes safety reasoning at a level that can be reviewed.
-
-It connects low-level implementation evidence to higher-level safety metrics.
+D12 is responsible for executing fault campaigns. D13 is responsible for interpreting results. D14 is responsible for feeding classified results back into the safety-analysis / FMEDA metric layer.
 
 ```mermaid
 flowchart TD
-    A[RTL / Netlist Object] --> B[Part / Sub-part]
-    B --> C[Failure Mode]
-    C --> D[Base FIT]
-    C --> E[Safety Mechanism]
-    E --> F[Diagnostic Coverage]
-    F --> G[Residual FIT]
-    G --> H[Safety Metric Summary]
+    D08[D08 Fault List Generation] --> D09[D09 Simulation Safety Context]
+    D09 --> D10[D10 Alarm / Observe Boundary]
+    D10 --> D11[D11 Campaign Input Package]
+    D11 --> D12[D12 Fault Injection Execution]
+    D12 --> D13[D13 Outcome Classification]
+    D13 --> D14[D14 Result Writeback and Final Metrics]
+    D13 --> D17[D17 Diagnostic Coverage Closure]
 ```
 
-**Figure 2. FMEDA joins implementation objects, failure modes, FIT, mechanisms, coverage, and residual risk.**
-
-The D13 goal is not to replace a certified safety process.
-
-The goal is to build an engineering-grade, reproducible bridge from fault injection evidence to FMEDA-style tables.
+This separation keeps the flow auditable. If classification changes, D12 does not need to be rerun immediately. If execution changes, D13 can reclassify using the same policy.
 
 ---
 
-## 4. FMEDA Is an Integration Layer
+## 3. What D13 consumes from upstream stages
 
-FMEDA is not the first place where safety analysis happens.
+D13 needs more than a raw fault report. A classification result is meaningful only when it is connected to the campaign context.
 
-It is an integration layer.
-
-It integrates:
+Typical D13 inputs are:
 
 ```text
-failure-rate modeling
-structural decomposition
-failure mode analysis
-diagnostic coverage estimation
-fault campaign measurement
-residual risk calculation
-engineering review decisions
+D12 execution status and native result directory
+D12 raw fault report index
+D12 shard / job / execution manifest
+D11 campaign input manifest
+D10 alarm list and observe point specification
+D10 fault outcome boundary matrix
+D09 good-machine safety context
+D09 VCD signal catalog and FTTI plan
+D08 campaign fault list
+D07 safety mechanism map
+D05 common evidence registry
 ```
+
+A raw result line such as “alarm fired” is not enough. D13 must know:
+
+```text
+Which fault was injected?
+Which endpoint or fault site does it belong to?
+Which safety mechanism was responsible?
+Was the alarm designated for this fault?
+Was the alarm inside the FTTI window?
+Did the observe point deviate from the good-machine reference?
+Was the deviation safety-relevant?
+Was the fault still propagating when simulation ended?
+Was the fault blocked by a black box or missing activity?
+```
+
+Outcome classification is therefore a context-driven decision, not a single-field lookup.
+
+---
+
+## 4. D13 produces classification artifacts, not final metrics
+
+D13 should not be confused with final metric validation.
+
+D13 produces:
+
+```text
+fault_outcome_classification.csv
+fault_outcome_summary.csv
+detected_fault_set.csv
+safe_fault_set.csv
+unsafe_fault_set.csv
+unresolved_fault_queue.csv
+classification_policy.csv
+classification_evidence_index.csv
+d13_handoff_to_d14.csv
+d13_handoff_to_d17.csv
+```
+
+D14 can then use these classified results to calculate final diagnostic coverage, residual FIT, and audit-oriented metric summaries.
+
+D13 may provide early summary numbers, but it should not claim final SPFM, LFM, or PMHF closure by itself. Those metrics need FIT weighting, FMEDA mapping, unresolved handling, and final database writeback.
+
+---
+
+## 5. The four outcome classes
+
+The classification vocabulary used in this stage has four primary categories.
+
+| Outcome | Short meaning | Evidence question |
+|---|---|---|
+| `detected` | Fault reached a designated safety response | Did the proper alarm or detection point trigger in time? |
+| `safe` | Fault did not create a safety-relevant deviation | Was the fault masked or irrelevant under the stimulus? |
+| `unsafe` | Fault created a deviation without proper detection | Did behavior differ from golden without a valid alarm? |
+| `unresolved` | Available data is insufficient for a final conclusion | Is more simulation, debug, or expert review required? |
+
+These four classes are intentionally simple. The complexity lies in how the decision is reached.
+
+---
+
+## 6. Golden context: the reference that makes classification possible
+
+A fault outcome cannot be classified without a reference.
+
+D09 prepared a good-machine context: a no-fault simulation trace, signal catalog, observe-point plan, and FTTI window plan. D13 compares each faulted run against that reference.
 
 ```mermaid
 flowchart LR
-    A[FIT Model] --> F[FMEDA]
-    B[Structure Model] --> F
-    C[Failure Modes] --> F
-    D[Safety Mechanisms] --> F
-    E[Fault Campaign Evidence] --> F
-    F --> G[Safety Metrics]
-    F --> H[Review Actions]
+    A[Good-machine trace] --> C[Comparator]
+    B[Faulted trace] --> C
+    D[Alarm event timeline] --> C
+    E[Observe point plan] --> C
+    F[FTTI window] --> C
+    C --> G[Outcome decision]
 ```
 
-**Figure 3. FMEDA integrates multiple evidence sources into a safety review table.**
+The golden context answers:
 
-This is why an FMEDA generator must not be a pure spreadsheet writer.
+```text
+What should the design do without a fault?
+Which signals are meaningful to compare?
+At what cycle is comparison valid?
+How long can the design take to detect the fault?
+Which alarms are expected to represent the safety mechanism?
+```
 
-It must validate whether the referenced evidence exists and whether the row is internally consistent.
+Without this baseline, a difference in a waveform is only a difference. It is not automatically a safety failure.
 
 ---
 
-## 5. Core FMEDA Row Fields
+## 7. Alarm, observe point, and FTTI as classification boundaries
 
-A practical FMEDA row should contain at least:
+D10 defines the observation contract.
 
-```text
-row_id
-part_id
-part_name
-subpart_id
-subpart_name
-design_object
-failure_mode
-failure_effect
-base_fit
-safety_mechanism
-estimated_dc
-measured_dc
-selected_dc
-residual_fit
-evidence_source
-evidence_id
-confidence
-review_status
-review_comment
-```
-
-Example:
-
-```csv
-row_id,part,subpart,failure_mode,base_fit,safety_mechanism,selected_dc,residual_fit,evidence_source,review_status
-R001,PART_COUNTER,SUBPART_COUNTER_STATE,FM_DATA_CORRUPTION,0.064,endpoint_parity,0.90,0.0064,D12_measured_dc,review_required
-```
-
-Why both estimated and measured DC?
-
-Because the FMEDA row must explain whether the current DC is based on:
+Three concepts dominate D13 classification:
 
 ```text
-engineering assumption
-library assumption
-structural calculation
-fault campaign measurement
-reviewed measured update
+alarm
+observe point
+FTTI
 ```
 
-A row with measured evidence is stronger than a row based only on assumption, but only when the measured evidence has adequate scope and confidence.
+An alarm is a signal or event that represents a safety mechanism response.
+
+An observe point is a boundary where the design behavior is judged: output port, state element, protocol-visible signal, or selected internal observation point.
+
+FTTI, the fault tolerant time interval, is the maximum allowed time between fault occurrence and safety response before the system may enter an unsafe condition.
+
+```mermaid
+sequenceDiagram
+    participant F as Fault injection
+    participant D as Design behavior
+    participant A as Alarm
+    participant O as Observe point
+    participant C as Classifier
+
+    F->>D: Inject fault at t0
+    D->>A: Alarm may trigger
+    D->>O: Behavior may deviate
+    C->>C: Check alarm within FTTI
+    C->>C: Compare observe point with golden
+    C->>C: Assign outcome
+```
+
+D13 should never classify solely on final simulation status. Timing matters.
 
 ---
 
-## 6. Estimated DC, Measured DC, and Selected DC
+## 8. Detected fault: detection is not just “any alarm fired”
 
-D13 should not blindly use measured DC.
+A fault is classified as detected when the fault is captured by a designated safety mechanism within the configured boundary.
 
-Instead, it should maintain three values:
+A robust detected classification needs these checks:
 
 ```text
-estimated_dc
-measured_dc
-selected_dc
+fault was injected or activated
+faulted behavior is safety-relevant or reaches a monitored path
+designated alarm or detection point triggered
+alarm timing is inside the accepted FTTI window
+alarm belongs to the expected safety mechanism or allowed alarm group
+result record is complete enough to support audit review
 ```
 
-### 6.1 Estimated DC
-
-Estimated DC comes from D06 or safety mechanism assumptions.
-
-### 6.2 Measured DC
-
-Measured DC comes from D12 fault campaign evidence.
-
-### 6.3 Selected DC
-
-Selected DC is the value currently used in FMEDA after applying update policy and review rules.
-
-Example:
-
-```csv
-failure_mode,estimated_dc,measured_dc,confidence,selected_dc,selection_reason
-FM_DATA_CORRUPTION,0.90,1.00,LOW,0.90,keep estimated due to low sample size
-FM_ALARM_NOT_ASSERTED,0.85,0.00,HIGH,0.00,use measured because measured lower than estimated
-```
+A random unrelated alarm should not automatically grant diagnostic coverage. D13 should check the alarm binding prepared in D07 and D10.
 
 ```mermaid
 flowchart TD
-    A[Estimated DC] --> D[Selection Policy]
-    B[Measured DC] --> D
-    C[Confidence / Scope] --> D
-    D --> E[Selected DC]
-    E --> F[FMEDA Residual FIT]
+    A[Fault record] --> B{Alarm fired?}
+    B -- no --> X[Not detected]
+    B -- yes --> C{Designated alarm?}
+    C -- no --> Y[Review alarm binding]
+    C -- yes --> D{Inside FTTI?}
+    D -- no --> Z[Late detection / review]
+    D -- yes --> E[detected]
 ```
 
-**Figure 4. FMEDA should distinguish estimated, measured, and selected DC.**
+The key word is designated.
 
-This separation prevents overclaiming and makes review decisions traceable.
+A safety mechanism must detect the fault intentionally, not accidentally.
 
 ---
 
-## 7. Residual FIT Calculation
+## 9. Safe fault: absence of deviation is not failure
 
-The simplest residual FIT formula is:
+A safe fault is one where the machine state remains equivalent to the golden safety context under the applied stimulus.
 
-```text
-residual_fit = base_fit × (1 - selected_dc)
-```
-
-Example:
+Typical safe situations include:
 
 ```text
-base_fit = 0.064
-selected_dc = 0.90
-
-residual_fit = 0.064 × (1 - 0.90)
-             = 0.0064
+fault is in inactive logic
+fault is masked by logic values
+fault affects a path not sensitized by the VCD stimulus
+fault changes an internal node but not any safety-relevant observe point
+fault affects redundant logic but the voter or checker masks it
 ```
 
-For a row:
+Safe does not necessarily mean the design has a good diagnostic mechanism. It means the injected fault did not create a safety-relevant error in the evaluated context.
 
-```csv
-row_id,base_fit,selected_dc,residual_fit
-R001,0.064,0.90,0.0064
-```
-
-This is the basic quantitative connection between diagnostic coverage and remaining risk.
-
-However, the selected DC must match the row scope.
-
-Do not use:
+This distinction matters:
 
 ```text
-path-level measured DC
+detected -> credit to diagnostic coverage
+safe     -> evidence that the fault was not dangerous in this context
 ```
 
-to update:
-
-```text
-endpoint-level FMEDA row
-```
-
-unless the scope mapping is explicit.
-
-D13 should validate scope alignment.
+Safe faults may reduce the dangerous fault population, but they are not the same as detected dangerous faults.
 
 ---
 
-## 8. Scope Alignment
+## 10. Unsafe fault: the dangerous evidence path
 
-FMEDA rows may be organized by:
+A fault is unsafe when it creates a safety-relevant deviation and no valid safety response occurs within the required boundary.
 
-```text
-part
-sub-part
-design object
-endpoint
-failure mode
-safety mechanism
-```
-
-Measured DC may be computed by:
+A typical unsafe pattern is:
 
 ```text
-endpoint
-failure mode
-safety mechanism
-part
-campaign group
+fault injected
+observe point deviates from good-machine context
+designated alarm does not fire
+or alarm fires too late
+or alarm is unrelated to the mapped safety mechanism
 ```
 
-The update is valid only when the scopes are aligned.
-
-Example valid update:
+Unsafe faults deserve special attention because they indicate one of the following:
 
 ```text
-FMEDA row:
-  endpoint = toy_counter.count
-  failure_mode = FM_DATA_CORRUPTION
-
-Measured DC:
-  group_type = endpoint
-  group_id = toy_counter.count
-  failure_mode = FM_DATA_CORRUPTION
+missing safety mechanism
+wrong alarm binding
+insufficient detection coverage
+observe point too close to hazard boundary
+FTTI too tight for the existing mechanism
+incorrect SM-to-endpoint mapping
+stimulus exposes a real vulnerability
 ```
 
-Example risky update:
+D13 should preserve unsafe evidence with maximum traceability. D14 and D17 will use this set for metric impact and closure planning.
+
+---
+
+## 11. Unresolved fault: not a failure verdict, but not credit either
+
+Unresolved faults are often misunderstood.
+
+Unresolved does not automatically mean unsafe, and it does not automatically mean safe. It means the campaign evidence is insufficient to classify the fault.
+
+Common unresolved reasons include:
 
 ```text
-FMEDA row:
-  failure_mode = FM_ALARM_NOT_ASSERTED
-
-Measured DC:
-  group_type = overall
-  group_id = overall
+fault not injectable
+fault still propagating when simulation ends
+missing signal in VCD
+insufficient activity around injection window
+propagation reaches black-box boundary
+X propagation prevents comparison
+multi-clock race or unstable sampling
+alarm / observe point not configured
+tool result incomplete
+shard terminated early
 ```
 
-Using overall measured DC for a specific alarm failure mode may hide weak diagnostic-path behavior.
+D13 should treat unresolved as a first-class category, not a miscellaneous bucket.
 
 ```mermaid
 flowchart TD
-    A[FMEDA Row Scope] --> C{Scope Match?}
-    B[Measured DC Scope] --> C
-    C -- Yes --> D[Allow Update]
-    C -- No --> E[Review Required]
+    A[Raw result] --> B{Can compare to golden?}
+    B -- no --> U[unresolved: missing comparison]
+    B -- yes --> C{Alarm / observe boundary valid?}
+    C -- no --> U2[unresolved: incomplete boundary]
+    C -- yes --> D{Outcome rules satisfied?}
+    D -- no --> U3[unresolved: requires review]
+    D -- yes --> E[detected / safe / unsafe]
 ```
 
-**Figure 5. FMEDA update should check scope alignment before applying measured DC.**
-
-D13 should flag scope mismatch instead of silently updating rows.
+Unresolved faults should generate a review queue with suggested resolution actions.
 
 ---
 
-## 9. Evidence Source Tracking
+## 12. The difference between “unresolved” and “unsafe”
 
-Each FMEDA row should reference its evidence.
+Unsafe means the evidence shows a dangerous behavior without proper detection.
 
-Evidence sources may include:
+Unresolved means the evidence does not yet support a final decision.
+
+For example:
 
 ```text
-estimated_dc.csv
-measured_dc_by_endpoint.csv
-measured_dc_by_failure_mode.csv
-fault_outcomes.csv
-safety_mechanism_library.yaml
-part_subpart_map.yaml
-manual_review_note
-supplier_safety_manual
+fault reached a black box
 ```
 
-Example:
+This is not necessarily unsafe. The black box may contain a safety mechanism, analog behavior, or a user-defined model. But unless the campaign can observe the effect, D13 cannot classify it as safe or detected.
 
-```csv
-row_id,evidence_source,evidence_id,evidence_file,confidence
-R001,D12_MEASURED_DC,endpoint:toy_counter.count,measured_dc_by_endpoint.csv,LOW
-R002,D06_ESTIMATED_DC,failure_mode:FM_ALARM_NOT_ASSERTED,estimated_dc.csv,MEDIUM
-R003,D11_FAULT_OUTCOME,F004,fault_outcomes.csv,HIGH
+Another example:
+
+```text
+fault still propagating at end of simulation
 ```
 
-Evidence tracking is important because FMEDA is often reviewed, challenged, and revised.
-
-If a value cannot be traced, it is weak.
+The run may need a longer simulation window. Classifying it as unsafe too early can overstate risk. Classifying it as safe would understate risk. Unresolved is the correct engineering state.
 
 ---
 
-## 10. Review Status
+## 13. Outcome classification as a decision table
 
-Not every row is equally mature.
+A practical D13 classifier can be represented as a decision table.
 
-Suggested review statuses:
+| Golden mismatch | Designated alarm | Alarm timing | Propagation state | Outcome |
+|---|---|---|---|---|
+| no | no | n/a | stable | safe |
+| no | yes | in window | stable | safe_detected or safe |
+| yes | yes | in window | stable | detected |
+| yes | yes | late | stable | unsafe or timing_violation |
+| yes | no | n/a | stable | unsafe |
+| unknown | any | any | blackbox / missing / X | unresolved |
+| still propagating | any | any | not settled | unresolved |
+| not injectable | no | n/a | no activation | unresolved or excluded-review |
 
-```text
-draft
-auto_generated
-review_required
-reviewed
-blocked
-evidence_missing
-scope_mismatch
-low_confidence
-```
-
-Example:
-
-```csv
-row_id,review_status,review_comment
-R001,low_confidence,measured DC sample size is too small
-R002,scope_mismatch,overall measured DC cannot update failure-mode row
-R003,review_required,unsafe fault found in alarm path
-R004,reviewed,estimated DC retained after review
-```
-
-Review status turns FMEDA from a static table into an engineering workflow.
+Some organizations keep subcategories such as `safe_detected`, `late_detected`, or `not_injectable_review`. D13 can keep these as sub-outcomes while preserving the four primary outcome classes.
 
 ---
 
-## 11. FMEDA Delta
+## 14. Primary outcome vs. sub-outcome
 
-D13 should generate a delta report comparing old and new FMEDA rows.
+The four classes are useful for high-level metrics, but debug requires more detail.
 
-Why?
-
-Because safety tables evolve over time.
-
-We need to know:
+D13 can define:
 
 ```text
-which DC values changed
-which residual FIT values changed
-which rows became evidence-backed
-which rows became unsafe or review-required
-which rows were added or removed
-```
-
-Example:
-
-```csv
-row_id,field,old_value,new_value,change_reason
-R001,selected_dc,0.80,0.90,updated from reviewed measured evidence
-R001,residual_fit,0.0128,0.0064,selected DC changed
-R004,review_status,draft,review_required,unsafe fault found
-```
-
-```mermaid
-flowchart LR
-    A[Previous FMEDA] --> C[Delta]
-    B[Updated FMEDA] --> C
-    C --> D[Review Items]
-```
-
-**Figure 6. FMEDA delta highlights what changed and why.**
-
-A delta report is especially valuable when updating safety evidence over multiple campaign iterations.
-
----
-
-## 12. Safety Metric Summary
-
-After FMEDA rows are updated, D13 can compute simplified safety metric summaries.
-
-Examples:
-
-```text
-total_base_fit
-total_residual_fit
-residual_fit_by_failure_mode
-residual_fit_by_part
-unsafe_residual_fit
-diagnostic_residual_fit
-review_required_residual_fit
-```
-
-Example:
-
-```csv
-metric,value
-total_base_fit,0.078
-total_residual_fit,0.0204
-total_selected_dc_weighted,0.738
-rows_review_required,2
-rows_low_confidence,3
-```
-
-A more detailed summary:
-
-```csv
-part,total_base_fit,total_residual_fit,weighted_selected_dc,review_required_rows
-PART_COUNTER,0.078,0.0204,0.738,2
-```
-
-These are not necessarily final ISO 26262 metrics.
-
-They are engineering metrics that help prioritize design and evidence work.
-
----
-
-## 13. Residual FIT by Failure Mode
-
-A useful FMEDA output is residual FIT by failure mode.
-
-Example:
-
-```csv
-failure_mode,base_fit,selected_dc,residual_fit,review_status
-FM_DATA_CORRUPTION,0.064,0.90,0.0064,review_required
-FM_DIAGNOSTIC_STATE_CORRUPTION,0.004,0.00,0.0040,review_required
-FM_ALARM_NOT_ASSERTED,0.010,0.00,0.0100,review_required
-```
-
-This immediately shows that:
-
-```text
-alarm-not-asserted dominates remaining risk
-diagnostic state corruption is still uncovered
-data corruption is partially covered
-```
-
-This information can drive the next safety mechanism selection iteration.
-
----
-
-## 14. Residual FIT by Part and Sub-Part
-
-A part/sub-part roll-up supports design review.
-
-Example:
-
-```csv
-part,subpart,base_fit,residual_fit,weighted_selected_dc,dominant_failure_mode
-PART_COUNTER,SUBPART_COUNTER_STATE,0.064,0.0064,0.900,FM_DATA_CORRUPTION
-PART_COUNTER,SUBPART_COUNTER_DIAG,0.014,0.0140,0.000,FM_ALARM_NOT_ASSERTED
-```
-
-This tells engineers where to focus:
-
-```text
-the counter diagnostic sub-part dominates residual FIT
-the alarm path requires mechanism improvement
-the diagnostic state should not be ignored
-```
-
-```mermaid
-flowchart TD
-    A[FMEDA Rows] --> B[Roll Up by Part]
-    A --> C[Roll Up by Sub-part]
-    B --> D[Design Review Priority]
-    C --> D
-```
-
-**Figure 7. Part/sub-part residual FIT roll-up identifies where design improvement should focus.**
-
----
-
-## 15. Handling Unsafe Faults in FMEDA
-
-Unsafe faults from D11 should be linked to FMEDA rows.
-
-Example:
-
-```csv
-fault_id,outcome,endpoint,failure_mode,linked_fmeda_row
-F004,unsafe,toy_counter.alarm,FM_ALARM_NOT_ASSERTED,R003
-F003,unsafe,toy_counter.count_parity,FM_DIAGNOSTIC_STATE_CORRUPTION,R002
-```
-
-The FMEDA row can include:
-
-```text
-unsafe_fault_count
-unsafe_fault_ids
-unsafe_evidence_file
+primary_outcome
+sub_outcome
+resolution_reason
 review_action
 ```
 
 Example:
 
-```csv
-row_id,failure_mode,unsafe_fault_count,unsafe_fault_ids,review_action
-R003,FM_ALARM_NOT_ASSERTED,1,F004,add alarm path protection or justify residual risk
-```
+| primary_outcome | sub_outcome | meaning |
+|---|---|---|
+| detected | alarm_in_ftti | designated alarm triggered in time |
+| detected | observed_and_alarm | deviation observed and alarm fired |
+| safe | masked_by_logic | no golden mismatch |
+| safe | inactive_fault_site | no activity at fault site |
+| unsafe | no_alarm | mismatch without alarm |
+| unsafe | late_alarm | alarm outside FTTI |
+| unresolved | missing_vcd_signal | cannot compare |
+| unresolved | reached_blackbox | propagation enters unmodeled block |
+| unresolved | still_propagating | simulation ended too soon |
 
-Unsafe faults should not be buried in a campaign report.
-
-They should be visible in the FMEDA update.
-
----
-
-## 16. Handling Unresolved Evidence
-
-Unresolved faults should also affect FMEDA review status.
-
-Example:
-
-```csv
-row_id,unresolved_fault_count,review_status,review_comment
-R010,5,evidence_missing,missing observe points prevent confident DC update
-```
-
-Unresolved evidence does not necessarily increase residual FIT mathematically.
-
-But it weakens confidence.
-
-D13 should not automatically use high measured DC when unresolved evidence is high.
-
-A policy may say:
-
-```yaml
-fmeda_update_policy:
-  max_unresolved_ratio_for_update: 0.10
-  if_unresolved_too_high: keep_estimated_and_flag
-```
-
-This keeps the FMEDA update conservative.
+This structure helps D17 turn unresolved faults into closure actions.
 
 ---
 
-## 17. Handling Low Confidence Measured DC
+## 15. Classification policy should be versioned
 
-A low-confidence measured DC should usually not replace the estimated value automatically.
+D13 should not hide the outcome rules inside a script.
 
-Example:
-
-```csv
-row_id,estimated_dc,measured_dc,confidence,selected_dc,reason
-R001,0.90,1.00,LOW,0.90,sample size too small
-```
-
-This is not ignoring evidence.
-
-It is keeping the safety table disciplined.
-
-The measured result still appears as evidence, but it is not used as the selected DC until the evidence is strong enough.
-
----
-
-## 18. Handling Measured DC Lower Than Estimated DC
-
-When measured DC is lower than estimated DC, D13 should flag it strongly.
-
-Example:
-
-```csv
-row_id,estimated_dc,measured_dc,selected_dc,status
-R005,0.85,0.40,0.40,measured_lower_than_estimated
-```
-
-Possible actions:
+The classification policy should be an explicit artifact:
 
 ```text
-use measured DC
-request mechanism improvement
-request campaign review
-request failure-mode review
-mark row review_required
+classification_policy.csv
 ```
 
-A measured result lower than the estimate can mean:
+It should describe:
 
 ```text
-safety mechanism assumption was too optimistic
-fault campaign found a real diagnostic gap
-fault model targets a different scope
-alarm path is not working
-testbench response does not match architecture assumption
+primary outcome rules
+alarm timing rules
+FTTI source
+observe point precedence
+safe masking criteria
+unresolved reason taxonomy
+late alarm treatment
+X propagation policy
+black-box propagation policy
+missing-data policy
+manual-review policy
 ```
 
-This is one of the most valuable outputs of the flow.
+A policy artifact makes D13 reproducible. If the team changes how late alarms are treated, the classification version should change.
 
 ---
 
-## 19. Handling Measured DC Higher Than Estimated DC
+## 16. Fault identity must survive classification
 
-Measured DC higher than estimated DC should not automatically increase the FMEDA value.
+Every D13 row must keep the original fault identity.
 
-Example:
-
-```csv
-row_id,estimated_dc,measured_dc,selected_dc,status
-R001,0.90,1.00,0.90,measured_higher_requires_review
-```
-
-Why be conservative?
-
-Because higher measured DC may be caused by:
+A classification row should include:
 
 ```text
-small sample size
-easy fault selection
-limited fault model
-insufficient structural scope
-overfitted testbench
-missing hard-to-detect scenarios
+fault_id
+campaign_id
+shard_id
+fault_site
+fault_type
+injection_time
+endpoint_id
+failure_mode_id
+safety_mechanism_id
+alarm_group
+observe_point_group
+primary_outcome
+sub_outcome
+confidence
+evidence_file
 ```
 
-D13 should normally require review before increasing selected DC.
-
----
-
-## 20. FMEDA Update Policy
-
-D13 should be controlled by a policy file.
-
-Example:
-
-```yaml
-fmeda_update_policy:
-  dc_selection:
-    if_measured_lower_than_estimated: use_measured
-    if_measured_higher_than_estimated: require_review
-    if_measured_confidence_low: keep_estimated_and_flag
-    if_no_measured_data: use_estimated
-
-  confidence:
-    min_confidence_for_auto_update: medium
-    max_unresolved_ratio_for_auto_update: 0.10
-
-  scope:
-    require_scope_match: true
-    allow_overall_to_update_specific_row: false
-
-  review:
-    flag_unsafe_faults: true
-    flag_unresolved_faults: true
-    flag_missing_evidence: true
-    flag_low_confidence: true
-```
-
-This policy makes FMEDA update reproducible and reviewable.
-
----
-
-## 21. Input Files for D13
-
-Suggested inputs:
+Fault identity connects D13 back to:
 
 ```text
-inputs/
-  fmeda_seed.csv
-  part_subpart_map.yaml
-  failure_modes.yaml
-  estimated_dc.csv
-  measured_dc_by_endpoint.csv
-  measured_dc_by_failure_mode.csv
-  measured_dc_by_safety_mechanism.csv
-  measured_residual_fit.csv
-  estimated_vs_measured_dc.csv
-  fault_outcomes.csv
-  fmeda_update_policy.yaml
+D08 campaign fault list
+D07 safety mechanism map
+D10 alarm / observe contract
+D12 execution result
+D14 final metric writeback
+D15 FMEDA item
 ```
 
-`fmeda_seed.csv` can be a manually curated or auto-generated initial FMEDA table.
-
-Example:
-
-```csv
-row_id,part,subpart,design_object,failure_mode,base_fit,safety_mechanism,estimated_dc
-R001,PART_COUNTER,SUBPART_COUNTER_STATE,toy_counter.count,FM_DATA_CORRUPTION,0.064,endpoint_parity,0.90
-R002,PART_COUNTER,SUBPART_COUNTER_DIAG,toy_counter.count_parity,FM_DIAGNOSTIC_STATE_CORRUPTION,0.004,none,0.00
-R003,PART_COUNTER,SUBPART_COUNTER_DIAG,toy_counter.alarm,FM_ALARM_NOT_ASSERTED,0.010,none,0.00
-```
-
-D13 updates this seed table with measured evidence and policy decisions.
+Without identity preservation, the classification is only a summary. It is not evidence.
 
 ---
 
-## 22. Main Output: `fmeda_table.csv`
+## 17. Timing model: injection time, detection time, and comparison time
 
-Example:
+Fault classification is time-sensitive.
 
-```csv
-row_id,part,subpart,design_object,failure_mode,base_fit,safety_mechanism,estimated_dc,measured_dc,selected_dc,residual_fit,evidence_source,confidence,review_status
-R001,PART_COUNTER,SUBPART_COUNTER_STATE,toy_counter.count,FM_DATA_CORRUPTION,0.064,endpoint_parity,0.90,1.00,0.90,0.0064,D12_MEASURED_DC,LOW,low_confidence
-R002,PART_COUNTER,SUBPART_COUNTER_DIAG,toy_counter.count_parity,FM_DIAGNOSTIC_STATE_CORRUPTION,0.004,none,0.00,0.00,0.00,0.0040,D11_UNSAFE_FAULT,HIGH,review_required
-R003,PART_COUNTER,SUBPART_COUNTER_DIAG,toy_counter.alarm,FM_ALARM_NOT_ASSERTED,0.010,none,0.00,0.00,0.00,0.0100,D11_UNSAFE_FAULT,HIGH,review_required
+D13 should distinguish:
+
+```text
+fault injection time
+fault activation time
+first propagation time
+first observe mismatch time
+alarm trigger time
+FTTI deadline
+simulation end time
 ```
 
-This table is the central deliverable of D13.
-
----
-
-## 23. Output: `fmeda_delta.csv`
-
-Example:
-
-```csv
-row_id,field,old_value,new_value,reason
-R001,measured_dc,,1.00,measured DC added from D12
-R001,review_status,draft,low_confidence,measured sample size too small
-R002,review_status,draft,review_required,unsafe diagnostic state fault found
-R003,review_status,draft,review_required,unsafe alarm path fault found
-```
-
-Delta makes changes explicit.
-
----
-
-## 24. Output: `fmeda_review_items.csv`
-
-Example:
-
-```csv
-item_id,row_id,severity,issue,recommended_action
-I001,R003,HIGH,alarm path has unsafe fault,add redundant alarm or alarm path monitor
-I002,R002,MEDIUM,diagnostic state unprotected,add protection or justify residual risk
-I003,R001,LOW,measured DC confidence low,increase campaign sample size before updating DC
-```
-
-This is the practical action list from the FMEDA update.
-
-A good safety flow should not only produce metrics. It should produce next actions.
-
----
-
-## 25. Output: `safety_metric_summary.csv`
-
-Example:
-
-```csv
-metric,value
-total_base_fit,0.078
-total_residual_fit,0.0204
-weighted_selected_dc,0.738
-rows_total,3
-rows_review_required,2
-rows_low_confidence,1
-rows_evidence_missing,0
-```
-
-This summary helps track overall progress.
-
----
-
-## 26. Output: `residual_fit_by_failure_mode.csv`
-
-Example:
-
-```csv
-failure_mode,base_fit,residual_fit,weighted_selected_dc,review_status
-FM_DATA_CORRUPTION,0.064,0.0064,0.900,low_confidence
-FM_DIAGNOSTIC_STATE_CORRUPTION,0.004,0.0040,0.000,review_required
-FM_ALARM_NOT_ASSERTED,0.010,0.0100,0.000,review_required
-```
-
-This identifies dominant residual risk areas.
-
----
-
-## 27. Output: `fmeda_summary.md`
-
-Example:
-
-```md
-# D13 FMEDA Update Summary
-
-Project: automotive_safeic_practice
-Demo: D13_fmeda_update
-Top: toy_counter
-
-## Overall Metrics
-
-Total base FIT: 0.078  
-Total residual FIT: 0.0204  
-Weighted selected DC: 0.738  
-
-## Updated Rows
-
-Rows total: 3  
-Review required: 2  
-Low confidence: 1  
-
-## Key Review Items
-
-1. Alarm path fault remains unsafe.
-   - Row: R003
-   - Failure mode: FM_ALARM_NOT_ASSERTED
-   - Recommended action: add alarm path protection or justify residual risk.
-
-2. Diagnostic state fault remains unsafe.
-   - Row: R002
-   - Failure mode: FM_DIAGNOSTIC_STATE_CORRUPTION
-   - Recommended action: protect diagnostic state.
-
-3. Counter state measured DC is higher than estimated, but sample size is low.
-   - Row: R001
-   - Recommended action: keep estimated DC and expand campaign.
-
-## Next Step
-
-Use D14 to generate a consolidated safety evidence package and review report.
-```
-
-This report helps engineers quickly understand the state of the safety argument.
-
----
-
-## 28. Tool Architecture
-
-The generic tool `safeic-fmeda` can be implemented as a staged pipeline.
+A simplified timing diagram:
 
 ```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-fmeda]
-    B[fmeda_seed.csv] --> T
-    C[estimated_dc.csv] --> T
-    D[measured_dc outputs] --> T
-    E[fault_outcomes.csv] --> T
-    F[part/sub-part map] --> T
-    G[fmeda_update_policy.yaml] --> T
-
-    T --> H[Validate Rows]
-    H --> I[Join Evidence]
-    I --> J[Select DC]
-    J --> K[Compute Residual FIT]
-    K --> L[Generate Delta]
-    L --> M[Generate Review Items]
-    M --> N[Generate FMEDA Table and Summary]
+gantt
+    title Fault classification timing model
+    dateFormat X
+    axisFormat %s
+    section Fault
+    Injection             :milestone, 0, 0
+    Propagation window    :active, 0, 8
+    section Safety response
+    Alarm allowed window  :0, 5
+    Late region           :5, 8
+    section Observation
+    Observe comparison    :2, 8
 ```
 
-**Figure 8. `safeic-fmeda` updates FMEDA rows by validating rows, joining evidence, selecting DC, computing residual FIT, and generating review items.**
-
-Suggested internal modules:
-
-```text
-safeic_fmeda/
-  cli.py
-  manifest.py
-  load_seed.py
-  load_evidence.py
-  validate_rows.py
-  evidence_join.py
-  dc_selection.py
-  residual_fit.py
-  delta.py
-  review_items.py
-  rollup.py
-  report.py
-```
-
-Responsibilities:
-
-| Module | Responsibility |
-|---|---|
-| `load_seed.py` | Load initial FMEDA table |
-| `load_evidence.py` | Load estimated/measured DC and fault outcomes |
-| `validate_rows.py` | Check row IDs, fields, scopes, FIT values |
-| `evidence_join.py` | Link evidence to FMEDA rows |
-| `dc_selection.py` | Apply selected DC policy |
-| `residual_fit.py` | Compute residual FIT |
-| `delta.py` | Compare previous and updated rows |
-| `review_items.py` | Generate action items |
-| `rollup.py` | Generate metric summaries |
-| `report.py` | Generate CSV and Markdown outputs |
+If the alarm fires after the FTTI deadline, the result may not be credited as detected for the intended safety goal, even if an alarm eventually appears.
 
 ---
 
-## 29. D13 Directory Structure
+## 18. The role of observe points in safe vs unsafe decisions
 
-Suggested directory:
+Observe points are the safety-relevant visibility boundary.
 
-```text
-D13_fmeda_update/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
+If no observe point changes, a fault may be safe in the current context. If an observe point changes and no designated alarm fires, it may be unsafe.
 
-  inputs/
-    fmeda_seed.csv
-    part_subpart_map.yaml
-    failure_modes.yaml
-    estimated_dc.csv
-    measured_dc_by_endpoint.csv
-    measured_dc_by_failure_mode.csv
-    measured_dc_by_safety_mechanism.csv
-    measured_residual_fit.csv
-    estimated_vs_measured_dc.csv
-    fault_outcomes.csv
-    fmeda_update_policy.yaml
+Observe points should be selected carefully. Too few observe points can under-detect deviations. Too many observe points can classify harmless internal differences as unsafe.
 
-  outputs/
-    fmeda_table.csv
-    fmeda_delta.csv
-    fmeda_review_items.csv
-    safety_metric_summary.csv
-    residual_fit_by_failure_mode.csv
-    residual_fit_by_part.csv
-    fmeda_summary.md
-    fmeda_warnings.csv
-```
-
-D13 is table integration and safety review preparation.
-
-It should not rerun fault campaigns.
-
----
-
-## 30. D13 Manifest
-
-Example:
-
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D13_fmeda_update
-  top_module: toy_counter
-
-inputs:
-  fmeda_seed: inputs/fmeda_seed.csv
-  part_subpart_map: inputs/part_subpart_map.yaml
-  failure_modes: inputs/failure_modes.yaml
-  estimated_dc: inputs/estimated_dc.csv
-  measured_dc_by_endpoint: inputs/measured_dc_by_endpoint.csv
-  measured_dc_by_failure_mode: inputs/measured_dc_by_failure_mode.csv
-  measured_dc_by_safety_mechanism: inputs/measured_dc_by_safety_mechanism.csv
-  measured_residual_fit: inputs/measured_residual_fit.csv
-  estimated_vs_measured_dc: inputs/estimated_vs_measured_dc.csv
-  fault_outcomes: inputs/fault_outcomes.csv
-  update_policy: inputs/fmeda_update_policy.yaml
-
-outputs:
-  fmeda_table: outputs/fmeda_table.csv
-  fmeda_delta: outputs/fmeda_delta.csv
-  review_items: outputs/fmeda_review_items.csv
-  metric_summary: outputs/safety_metric_summary.csv
-  residual_by_failure_mode: outputs/residual_fit_by_failure_mode.csv
-  residual_by_part: outputs/residual_fit_by_part.csv
-  summary: outputs/fmeda_summary.md
-```
-
-The manifest makes FMEDA update reproducible.
-
----
-
-## 31. D13 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load FMEDA Seed]
-    B --> C[Load Estimated and Measured DC]
-    C --> D[Load Fault Outcomes]
-    D --> E[Load Part/Sub-part and Failure Modes]
-    E --> F[Load Update Policy]
-    F --> G[Validate Row Scope and Evidence]
-    G --> H[Join Evidence to Rows]
-    H --> I[Select DC for Each Row]
-    I --> J[Compute Residual FIT]
-    J --> K[Generate Delta]
-    K --> L[Generate Review Items]
-    L --> M[Roll Up Safety Metrics]
-    M --> N[Generate Reports]
-```
-
-**Figure 9. D13 execution flow: load, validate, join evidence, select DC, compute residual FIT, and generate FMEDA outputs.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-fmeda \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D13_fmeda_update
-echo "Running $DEMO"
-
-safeic-fmeda \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
-
-```text
-outputs/fmeda_table.csv
-outputs/fmeda_delta.csv
-outputs/fmeda_review_items.csv
-outputs/safety_metric_summary.csv
-outputs/residual_fit_by_failure_mode.csv
-outputs/residual_fit_by_part.csv
-outputs/fmeda_summary.md
-outputs/fmeda_warnings.csv
-```
-
----
-
-## 32. Validation Rules
-
-`safeic-fmeda` should validate:
-
-```text
-fmeda_seed.csv exists
-row IDs are unique
-base FIT values are non-negative
-estimated DC values are within 0..1
-measured DC values are within 0..1
-selected DC values are within 0..1
-part and sub-part IDs exist
-failure modes exist
-safety mechanisms exist or are explicitly none
-scope alignment is checked
-unsafe fault links are valid
-review status values are valid
-residual FIT denominator is valid
-```
-
-Example messages:
-
-```text
-[PASS] FMEDA seed loaded: 3 rows
-[PASS] row R001 base FIT is valid
-[PASS] row R001 evidence joined from measured_dc_by_endpoint.csv
-[WARN] row R001 measured DC confidence is LOW; selected DC kept as estimated
-[WARN] row R003 has unsafe fault F004 linked
-[ERROR] row R010 references unknown failure mode FM_UNKNOWN
-[ERROR] selected_dc 1.20 is out of range
-```
-
-The tool should be conservative when evidence is missing or scope does not match.
-
----
-
-## 33. Common Mistakes
-
-### 33.1 Treating FMEDA as a Spreadsheet Only
-
-FMEDA is not just formatting.
-
-It is the integration of assumptions, measurements, and review decisions.
-
-### 33.2 Blindly Updating DC from Measured Results
-
-Measured DC should update FMEDA only when scope and confidence are acceptable.
-
-### 33.3 Losing Evidence Traceability
-
-Every selected DC should trace to an estimate, measurement, or review decision.
-
-### 33.4 Hiding Unsafe Faults
-
-Unsafe fault IDs should be visible in the row or linked review item.
-
-### 33.5 Ignoring Unresolved Evidence
-
-High unresolved evidence should weaken confidence and trigger review.
-
-### 33.6 Mixing Scopes
-
-Do not update a row using measured DC from a broader or unrelated scope without explicit review.
-
-### 33.7 Reporting Metrics Without Review Status
-
-A metric without review status may look final when it is still draft.
-
----
-
-## 34. How D13 Connects to Later Demos
-
-D13 produces the updated FMEDA table and review items.
-
-Later demos can generate reports, evidence packages, and comparison dashboards.
+D10 prepares observe points. D13 applies them.
 
 ```mermaid
 flowchart LR
-    A[D13 FMEDA Update] --> B[D14 Safety Evidence Package]
-    A --> C[D15 Report Generation]
-    A --> D[D16 Regression / Iteration Tracking]
-    B --> E[Review Package]
-    C --> E
-    D --> E
+    A[Faulted internal node] --> B[Internal propagation]
+    B --> C{Observe point reached?}
+    C -- no --> D[potentially safe or unresolved]
+    C -- yes --> E{Alarm valid?}
+    E -- yes --> F[detected]
+    E -- no --> G[unsafe]
 ```
 
-**Figure 10. D13 prepares the updated safety table for consolidated reporting and evidence packaging.**
-
-D13 is a major checkpoint.
-
-After D13, the flow can produce:
-
-```text
-summary reports
-evidence traceability package
-metric trend reports
-design improvement action list
-review-ready tables
-```
+The observe boundary is part of the safety argument.
 
 ---
 
-## 35. Recommended Implementation Stages
+## 19. Alarm grouping and alarm equivalence
 
-D13 can be implemented in stages.
+A safety mechanism may expose multiple alarm signals.
 
-### Stage 1: Seed FMEDA Table Update
-
-Load `fmeda_seed.csv` and compute residual FIT using estimated DC.
-
-Deliverables:
+D13 should support alarm grouping:
 
 ```text
-fmeda_table.csv
-fmeda_summary.md
+alarm_group_id
+primary_alarm
+equivalent_alarms
+allowed_latency
+expected_endpoint_scope
 ```
 
-### Stage 2: Measured DC Join
+For example, an endpoint parity checker may produce a local alarm, which is then ORed into a global safety alarm. Depending on the policy, either local or global alarm may be acceptable evidence.
 
-Join D12 measured DC outputs to FMEDA rows.
+Alarm grouping prevents false negatives when the safety response is intentionally aggregated.
 
-Deliverables:
-
-```text
-fmeda_table.csv
-fmeda_warnings.csv
-```
-
-### Stage 3: Selected DC Policy
-
-Apply update policy to choose selected DC.
-
-Deliverables:
-
-```text
-fmeda_delta.csv
-```
-
-### Stage 4: Unsafe and Unresolved Evidence Links
-
-Link D11 unsafe and unresolved faults to FMEDA rows.
-
-Deliverables:
-
-```text
-fmeda_review_items.csv
-```
-
-### Stage 5: Safety Metric Roll-Up
-
-Roll up residual FIT by failure mode and part.
-
-Deliverables:
-
-```text
-safety_metric_summary.csv
-residual_fit_by_failure_mode.csv
-residual_fit_by_part.csv
-```
-
-This staged approach makes D13 useful from the first implementation and expandable later.
+However, grouping must be explicit. Otherwise, any global alarm could mask a weak mapping.
 
 ---
 
-## 36. Summary
+## 20. X propagation and unknown values
 
-FMEDA update is the step where all earlier safety analysis artifacts become a traceable safety table.
+In RTL simulation, unknown values can complicate classification.
 
-The D13 demo:
-
-```text
-D13_fmeda_update
-```
-
-introduces the generic tool:
+Common causes include:
 
 ```text
-safeic-fmeda
+uninitialized state
+incomplete reset
+multiple drivers
+black-box outputs
+unsupported primitive behavior
+missing memory initialization
+race around primary inputs
 ```
 
-The tool consumes:
+D13 should not blindly classify X mismatch as unsafe. It should inspect policy:
 
 ```text
-fmeda_seed.csv
-part_subpart_map.yaml
-failure_modes.yaml
-estimated_dc.csv
-measured DC outputs
-measured_residual_fit.csv
-estimated_vs_measured_dc.csv
-fault_outcomes.csv
-fmeda_update_policy.yaml
+X at observe point before injection -> invalid good context
+X introduced by fault and reaches observe point -> possible unsafe or unresolved
+X only in non-safety signal -> may not affect classification
+X prevents alarm comparison -> unresolved
 ```
 
-and generates:
+A robust classifier should produce sub-outcomes such as:
 
 ```text
-fmeda_table.csv
-fmeda_delta.csv
-fmeda_review_items.csv
-safety_metric_summary.csv
-residual_fit_by_failure_mode.csv
-residual_fit_by_part.csv
-fmeda_summary.md
-fmeda_warnings.csv
+unresolved_x_in_golden
+unresolved_x_at_observe
+unresolved_x_in_alarm
+unsafe_x_reaches_safety_boundary
 ```
 
-The central lesson is:
-
-> FMEDA is where assumptions, measurements, residual FIT, failure modes, design structure, and review decisions are joined. A good FMEDA update must be traceable, conservative, scope-aware, and evidence-backed.
-
-D13 turns the fault injection workflow into a reviewable safety engineering table.
+X handling is one of the main reasons D13 needs a policy layer.
 
 ---
 
-## 37. D13 Demo Checklist
+## 21. Missing VCD signal is a classification problem
 
-For `D13_fmeda_update`, the expected deliverables are:
+D09 prepared a VCD and signal catalog. D12 used those signals for campaign execution. D13 may still discover missing data.
 
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/fmeda_seed.csv
-[ ] inputs/part_subpart_map.yaml
-[ ] inputs/failure_modes.yaml
-[ ] inputs/estimated_dc.csv
-[ ] inputs/measured_dc_by_endpoint.csv
-[ ] inputs/measured_dc_by_failure_mode.csv
-[ ] inputs/measured_dc_by_safety_mechanism.csv
-[ ] inputs/measured_residual_fit.csv
-[ ] inputs/estimated_vs_measured_dc.csv
-[ ] inputs/fault_outcomes.csv
-[ ] inputs/fmeda_update_policy.yaml
-
-[ ] outputs/fmeda_table.csv
-[ ] outputs/fmeda_delta.csv
-[ ] outputs/fmeda_review_items.csv
-[ ] outputs/safety_metric_summary.csv
-[ ] outputs/residual_fit_by_failure_mode.csv
-[ ] outputs/residual_fit_by_part.csv
-[ ] outputs/fmeda_summary.md
-[ ] outputs/fmeda_warnings.csv
-```
-
-A successful D13 run should answer:
+A missing signal can occur when:
 
 ```text
-Which FMEDA rows were generated or updated?
-Which rows use estimated DC?
-Which rows use measured DC?
-Which rows keep estimated DC due to low confidence?
-Which rows contain unsafe fault evidence?
-Which rows need review?
-What is the selected DC for each row?
-What residual FIT remains?
-Which failure modes dominate residual FIT?
-Which parts or sub-parts dominate residual FIT?
-Can the updated table be used for a safety evidence package?
+VCD was filtered too aggressively
+signal was optimized away
+hierarchical name changed
+fault campaign used a different design wrapper
+alarm was renamed or aggregated
+observe point was not dumped
 ```
+
+D13 should not silently drop such faults.
+
+It should create review entries:
+
+```text
+missing_signal
+missing_alarm
+missing_observe_point
+missing_endpoint_mapping
+```
+
+These entries feed D17 closure and may require regenerating D09 or D10 artifacts.
+
+---
+
+## 22. DFT-style resolution vs. safety outcome
+
+Fault reports may contain lower-level resolution labels such as controlled, observed, observed internal, primary-output observed, or alarm observed.
+
+These are useful, but they are not identical to the four D13 outcomes.
+
+A possible interpretation layer:
+
+| Low-level resolution | D13 interpretation |
+|---|---|
+| controlled but not observed | unresolved or safe depending on golden comparison |
+| observed at alarm | detected if alarm is designated and in time |
+| observed at internal state | unresolved unless it reaches observe boundary or alarm |
+| observed at primary output | unsafe unless output is declared safe or alarmed |
+| not injectable | unresolved / excluded-review |
+| reached black box | unresolved |
+
+This mapping should be explicit because tool-level observability is not the same as safety-level acceptability.
+
+---
+
+## 23. Confidence score for classification
+
+D13 can attach a confidence score to each classification.
+
+Example:
+
+```text
+1.00 = direct evidence from designated alarm and observe comparison
+0.80 = direct alarm evidence but limited observe context
+0.60 = safe due to no mismatch, but low activity around fault site
+0.40 = unresolved with partial propagation evidence
+0.20 = missing signal or incomplete run
+```
+
+Confidence is not a substitute for outcome. It helps review prioritization.
+
+An unsafe fault with high confidence is urgent. An unresolved fault with low confidence may need rerun first.
+
+---
+
+## 24. FIT weighting and why D13 should preserve weights
+
+D13 should carry FIT-related weights from D08 / D14 inputs even if it does not compute final metrics.
+
+Useful fields:
+
+```text
+base_fit_weight
+fault_site_weight
+endpoint_fit_contribution
+permanent_or_transient
+standard_context
+mission_profile_id
+```
+
+Later, D14 can calculate weighted diagnostic coverage:
+
+```text
+detected_fit_weight
+safe_fit_weight
+unsafe_fit_weight
+unresolved_fit_weight
+```
+
+A campaign with 10 unsafe faults is not always worse than a campaign with 1 unsafe fault. The safety impact depends on FIT weighting and FMEDA mapping.
+
+---
+
+## 25. Resolved vs. unresolved metric boundary
+
+A mature flow should separate:
+
+```text
+resolved fault population
+unresolved fault population
+```
+
+Resolved faults include detected, safe, and unsafe. Unresolved faults require closure.
+
+A conservative reporting model:
+
+```text
+resolved_dc = detected_fit / (detected_fit + unsafe_fit)
+unresolved_fit = sum(unresolved fault weights)
+review_required = unresolved_fit > threshold
+```
+
+The exact final metric policy belongs to D14 and D15. D13 should simply make unresolved visible and traceable.
+
+---
+
+## 26. How D13 prepares data for D14
+
+D14 needs campaign results in a format suitable for database writeback and final metric validation.
+
+D13 should provide:
+
+```text
+classified_fault_id
+primary_outcome
+sub_outcome
+detected_flag
+safe_flag
+unsafe_flag
+unresolved_flag
+alarm_evidence
+observe_evidence
+ftti_status
+failure_mode_id
+safety_mechanism_id
+fit_weight
+campaign_result_session
+```
+
+D14 can then aggregate results by:
+
+```text
+part
+sub-part
+failure mode
+safety mechanism
+endpoint
+fault type
+permanent / transient
+```
+
+D13 is therefore the normalization layer between raw campaign outputs and final safety metrics.
+
+---
+
+## 27. How D13 prepares data for D17 closure
+
+D17 focuses on diagnostic coverage closure.
+
+For that stage, D13 should generate:
+
+```text
+unresolved_fault_queue.csv
+unsafe_fault_queue.csv
+classification_review_actions.csv
+```
+
+Each row should include a suggested action:
+
+| issue | suggested action |
+|---|---|
+| missing VCD signal | regenerate VCD with wider dump scope |
+| fault still propagating | extend simulation window |
+| reached black box | add model, add observe point, or justify black-box behavior |
+| no alarm for unsafe deviation | review safety mechanism map |
+| late alarm | review FTTI or safety mechanism latency |
+| low activity | add workload or targeted test |
+| X in golden | fix reset or memory initialization |
+
+This is how classification becomes engineering closure.
+
+---
+
+## 28. D13 architecture
+
+A practical D13 implementation can be organized into five blocks:
+
+```mermaid
+flowchart TD
+    A[Result ingestion] --> B[Evidence normalization]
+    B --> C[Policy-based classifier]
+    C --> D[Outcome aggregation]
+    D --> E[Handoff generation]
+    F[D10 observation contract] --> C
+    G[D09 good-machine context] --> C
+    H[D07 SM map] --> C
+    I[D08 fault list] --> B
+    J[D12 execution manifest] --> A
+```
+
+Block responsibilities:
+
+```text
+Result ingestion
+  reads raw fault reports, shard status, alarm reports, and execution manifests
+
+Evidence normalization
+  maps tool-native fields into campaign-neutral fields
+
+Policy-based classifier
+  applies detected / safe / unsafe / unresolved rules
+
+Outcome aggregation
+  summarizes counts, FIT weights, and unresolved reasons
+
+Handoff generation
+  produces D14 and D17 input artifacts
+```
+
+This structure keeps the classifier testable.
+
+---
+
+## 29. Suggested D13 demo directory structure
+
+A D13 demo can use the following structure:
+
+```text
+D13_fault_outcome_classification_detected_safe_unsafe_unresolved/
+  README.md
+  configs/
+    classification_policy.csv
+    unresolved_reason_catalog.csv
+    outcome_priority_rules.csv
+  scripts/
+    run_demo.csh
+    run_demo.sh
+  tools/
+    build_d13_fault_outcome_classification.py
+  inputs/
+    from_D12/
+    from_D11/
+    from_D10/
+    from_D09/
+    from_D08/
+    from_D07/
+  outputs/
+    raw_fault_result_index.csv
+    normalized_fault_events.csv
+    fault_outcome_classification.csv
+    fault_outcome_summary.csv
+    detected_fault_set.csv
+    safe_fault_set.csv
+    unsafe_fault_set.csv
+    unresolved_fault_queue.csv
+    classification_review_actions.csv
+    d13_handoff_to_d14.csv
+    d13_handoff_to_d17.csv
+    d13_quality_gate.csv
+    evidence_index.csv
+    demo_summary.md
+```
+
+The important point is that D13 should preserve both raw evidence and normalized interpretation.
+
+---
+
+## 30. D13 demo execution model
+
+The D13 demo should not require a real fault-campaign engine by default.
+
+Default mode:
+
+```text
+read D12 execution artifacts
+generate normalized event records
+apply classification policy
+produce outcome tables and handoff files
+```
+
+Optional real-result mode:
+
+```text
+read native result reports produced by a local campaign engine
+parse alarm and fault reports
+cross-check against D10 / D11 / D12 manifests
+classify outcomes using the same policy
+```
+
+The public demo can remain reproducible while allowing local environments to plug in real campaign outputs.
+
+---
+
+## 31. Quality gates for D13
+
+D13 should fail if classification cannot be trusted.
+
+Recommended quality gates:
+
+```text
+D12 handoff exists
+campaign result index exists
+D10 observation contract exists
+D09 good-machine manifest exists
+D08 campaign fault list exists
+classification policy exists
+all classified rows keep original fault_id
+primary_outcome is one of detected / safe / unsafe / unresolved
+no unknown outcome labels
+unresolved rows include reason and review action
+unsafe rows include observe evidence
+detected rows include alarm evidence and timing status
+D14 handoff generated
+D17 handoff generated
+```
+
+Warnings may be acceptable for:
+
+```text
+low activity around some fault sites
+optional native report missing in demo mode
+manual-review fields pending
+some alarm groups not bound to final hardware signal
+```
+
+The quality gate should enforce evidence discipline, not merely script completion.
+
+---
+
+## 32. Example normalized classification row
+
+A normalized D13 row may look like this:
+
+```csv
+fault_id,fault_site,fault_type,endpoint_id,failure_mode_id,sm_id,primary_outcome,sub_outcome,alarm_status,observe_status,ftti_status,review_action
+F000123,u_core.u_cnt.count[3],SA1,EP_COUNT_3,FM_STATE_CORRUPTION,SM_ENDPOINT_PARITY,detected,alarm_in_ftti,designated_alarm_fired,mismatch_observed,in_window,none
+```
+
+Another example:
+
+```csv
+fault_id,fault_site,fault_type,endpoint_id,failure_mode_id,sm_id,primary_outcome,sub_outcome,alarm_status,observe_status,ftti_status,review_action
+F000241,u_core.u_ctrl.state[1],SA0,EP_STATE_1,FM_PROTOCOL_HANDSHAKE_CORRUPTION,SM_PROTOCOL_PARITY,unresolved,missing_observe_signal,no_alarm,missing_signal,unknown,regenerate_vcd_with_observe_signal
+```
+
+The row should be readable by humans and scripts.
+
+---
+
+## 33. Outcome summary should not hide unresolved risk
+
+A summary table might include:
+
+```text
+total_faults
+detected_count
+safe_count
+unsafe_count
+unresolved_count
+detected_weight
+safe_weight
+unsafe_weight
+unresolved_weight
+top_unresolved_reasons
+top_unsafe_failure_modes
+```
+
+The unresolved set should remain visible.
+
+A campaign summary that only reports “detected percentage” is not enough. A useful D13 summary should also answer:
+
+```text
+What remains unclassified?
+Why?
+How much weighted risk does it represent?
+Which next action can reduce it?
+```
+
+This is the difference between a progress report and a safety evidence report.
+
+---
+
+## 34. Relationship to FMEDA
+
+FMEDA needs a failure-mode-oriented view.
+
+D13 should connect each classified fault to:
+
+```text
+part
+sub-part
+failure mode
+safety mechanism
+diagnostic coverage claim
+residual fault contribution
+```
+
+The raw fault site is too low-level for FMEDA by itself.
+
+D07 mapped failure modes to endpoints and safety mechanisms. D13 attaches actual observed campaign outcomes to those mappings. D15 can then build an FMEDA data model with evidence-backed diagnostic coverage.
+
+```mermaid
+flowchart LR
+    A[Fault site] --> B[Endpoint]
+    B --> C[Failure mode]
+    C --> D[Safety mechanism]
+    D --> E[D13 classified outcome]
+    E --> F[FMEDA diagnostic coverage evidence]
+```
+
+This is where simulation evidence begins to become safety-case evidence.
+
+---
+
+## 35. Common mistakes in fault outcome classification
+
+### 35.1 Treating any alarm as detected
+
+Only designated and policy-accepted alarms should count.
+
+### 35.2 Ignoring FTTI
+
+A late alarm may not protect the safety goal.
+
+### 35.3 Treating unresolved as safe
+
+Unresolved is a review state, not a safety credit.
+
+### 35.4 Counting internal observation as final detection
+
+Internal propagation is useful debug information, but it is not always a safety response.
+
+### 35.5 Losing fault identity during aggregation
+
+Summary numbers without fault IDs cannot support closure.
+
+### 35.6 Ignoring missing VCD signals
+
+Missing signals should create review actions.
+
+### 35.7 Mixing DFT test observability with functional safety detection
+
+Manufacturing-test observability and safety mechanism detection are related but not identical.
+
+---
+
+## 36. Review workflow for unsafe and unresolved faults
+
+D13 should create two review queues.
+
+Unsafe review:
+
+```text
+confirm observe mismatch
+check alarm binding
+check FTTI
+review SM coverage
+review failure mode severity
+prepare design or SM update
+```
+
+Unresolved review:
+
+```text
+identify unresolved reason
+add missing VCD signal
+extend simulation window
+improve workload
+add memory initialization
+replace black-box model
+rerun selected faults
+```
+
+A review queue turns classification into action.
+
+---
+
+## 37. Final handoff from D13
+
+D13 should hand off two directions.
+
+To D14:
+
+```text
+classified outcomes
+FIT-weighted aggregation inputs
+campaign result session reference
+database writeback manifest
+metric-ready fault set
+```
+
+To D17:
+
+```text
+unsafe queue
+unresolved queue
+closure action plan
+rerun candidate list
+evidence gaps
+```
+
+D13 is complete when every fault has a classification state and every non-closed fault has a next action.
+
+---
+
+## 38. Summary
+
+D13 is where fault injection results become structured safety evidence.
+
+The stage does not merely count failures. It interprets each fault under a safety-aware observation contract:
+
+```text
+fault list
+good-machine context
+alarm list
+observe point
+FTTI
+safety mechanism map
+campaign execution record
+```
+
+The result is a classified fault population:
+
+```text
+detected
+safe
+unsafe
+unresolved
+```
+
+A detected fault supports diagnostic coverage when the designated safety mechanism responds in time. A safe fault shows no safety-relevant deviation under the evaluated context. An unsafe fault exposes a dangerous deviation without a valid response. An unresolved fault requires additional evidence before it can be credited or condemned.
+
+This classification layer is essential because final safety metrics must be explainable. D14 will use D13 output to write back campaign results and compute final metrics. D17 will use D13 output to close unresolved and unsafe cases. D15 will connect the classified outcomes to FMEDA.
+
+Without D13, a fault campaign remains a set of raw simulation records. With D13, it becomes a traceable diagnostic-coverage evidence package.
