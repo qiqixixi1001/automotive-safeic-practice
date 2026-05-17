@@ -1,1596 +1,1065 @@
-# [Automotive Safe-IC Practice 17] Commercial Tool Comparison: From Evidence Packages to Cross-Tool Correlation and Gap Analysis
-
-**Author**: Darren H. Chen  
-**Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D17_commercial_tool_comparison  
-**Tags**: Automotive Chip, Functional Safety, Commercial Tool Comparison, Fault Injection, Diagnostic Coverage, FMEDA, Safety Evidence, Cross-Tool Correlation, Regression, Methodology Validation
-
----
-
-## 1. Why This Article Matters
-
-In the previous article, we turned safety analysis into an iterative engineering loop.
-
-D16 compared baseline and current evidence packages and generated:
-
-```text
-regression_summary.md
-regression_alerts.csv
-metric_trend.csv
-dc_trend_by_failure_mode.csv
-residual_fit_trend.csv
-fault_outcome_delta.csv
-fmeda_delta_trend.csv
-review_item_trend.csv
-policy_delta.csv
-trend_manifest.yaml
-```
-
-That makes the flow iteration-aware.
-
-However, an engineering team often faces another question:
-
-> How do we compare our safety analysis flow with results from another commercial safety tool?
-
-The seventeenth demo in this repository is:
-
-```text
-D17_commercial_tool_comparison
-```
-
-The generic tool introduced in this article is:
-
-```text
-safeic-compare
-```
-
-The purpose of `safeic-compare` is to compare evidence from two or more safety-analysis flows:
-
-```text
-internal evidence package
-commercial tool evidence package
-commercial tool reports
-commercial tool fault lists
-commercial tool coverage tables
-commercial tool FMEDA tables
-commercial tool run logs
-normalization policy
-comparison policy
-```
-
-and generate:
-
-```text
-tool_comparison_summary.md
-tool_comparison_matrix.csv
-fault_list_overlap.csv
-fault_outcome_correlation.csv
-dc_comparison_by_failure_mode.csv
-dc_comparison_by_endpoint.csv
-fmeda_row_comparison.csv
-residual_fit_comparison.csv
-methodology_gap_report.csv
-comparison_warnings.csv
-```
-
-The central idea is:
-
-> A commercial tool comparison is not just a speed benchmark or a number comparison. It is a controlled correlation exercise that checks whether two flows analyze the same design scope, fault model, assumptions, classification rules, coverage metrics, and FMEDA mapping.
+# Automotive Safe-IC Practice 17: Diagnostic Coverage Closure — From Unresolved Faults to Review Action
+Author: Darren H. Chen  
+Direction: Automotive chip functional safety analysis and fault-injection practice  
+Demo: D17_diagnostic_coverage_closure_unresolved_to_review_action  
+Tags: ISO 26262, Functional Safety, Diagnostic Coverage, Fault Campaign, Unresolved Faults, FMEDA, Residual FIT, Safety Closure
 
 ---
 
-## 2. Where D17 Fits in the Flow
+## 1. Closure Is Where Safety Evidence Becomes an Engineering Decision
 
-D17 sits after evidence packaging, reporting, and regression tracking.
+A fault campaign can generate thousands or millions of fault observations, but the campaign itself does not automatically close functional safety. After the campaign finishes, the team still has to answer several hard questions:
+
+```text
+Which faults are already detected?
+Which faults are naturally safe?
+Which faults remain unsafe?
+Which faults are unresolved?
+Which unresolved faults can be solved by better stimulus?
+Which ones require a new alarm?
+Which ones indicate missing safety mechanisms?
+Which ones only need review and documentation?
+```
+
+This is the purpose of **D17: Diagnostic Coverage Closure**.
+
+D13 classified campaign outcomes. D14 converted classification results into final-metric input. D15 built the FMEDA data model. D16 organized the top-down FMEDA flow. D17 now performs the closure loop: it turns unresolved and weakly covered evidence into review actions that an engineering team can execute.
+
+In real safety work, closure is not just a report. It is a controlled decision process.
+
+---
+
+## 2. D17 in the Safe-IC Workflow
+
+D17 sits after fault outcome classification and FMEDA modeling, but before regression gating and final evidence packaging.
 
 ```mermaid
 flowchart LR
-    A[Internal Evidence Package] --> C[D17 Commercial Tool Comparison]
-    B[Commercial Tool Evidence] --> C
-    D[Comparison Policy] --> C
-    C --> E[Cross-Tool Correlation]
-    C --> F[Gap Report]
-    C --> G[Comparison Summary]
-    C --> H[Review Actions]
+    D13[D13 Fault Outcome Classification] --> D14[D14 Result Writeback and Final Metrics]
+    D14 --> D15[D15 FMEDA Data Model]
+    D15 --> D16[D16 Top-down FMEDA Flow]
+    D16 --> D17[D17 Diagnostic Coverage Closure]
+    D17 --> D18[D18 Regression Gate]
+    D17 --> D19[D19 Evidence Traceability]
+    D17 --> D20[D20 End-to-End Mini Flow]
 ```
 
-**Figure 1. D17 compares internal evidence packages with commercial tool evidence and generates correlation and gap reports.**
-
-D16 answers:
+D17 consumes:
 
 ```text
-Did our flow improve or regress between iterations?
+fault outcome categories
+final metric seeds
+FMEDA part/sub-part/failure-mode mapping
+top-down review queues
+alarm and observe boundary definitions
+fault campaign execution evidence
+Common FuSa database session references
 ```
 
-D17 answers:
+D17 produces:
 
 ```text
-Does our flow correlate with another safety tool?
-Where do the results differ?
-Are differences caused by methodology, assumptions, tool configuration, fault model, naming, or classification policy?
-Which differences require engineering review?
+closure backlog
+unresolved root-cause classification
+stimulus improvement requests
+alarm and observe refinement requests
+safety mechanism improvement requests
+FMEDA review actions
+final DC revalidation package
+closure quality gate
 ```
 
-This is a major credibility step.
-
-If your flow can explain where it agrees and disagrees with commercial tools, it becomes much more useful as an engineering platform.
+The main engineering output of D17 is not “100% coverage”. The main output is a reviewable route from every problematic evidence item to an explicit action.
 
 ---
 
-## 3. Tool Comparison Is Not a Simple Benchmark
+## 3. Diagnostic Coverage Is Not a Single Percentage
 
-It is tempting to compare tools using a simple table:
+Diagnostic Coverage, or DC, is often written as a percentage. That can be misleading.
 
-```text
-runtime
-fault count
-diagnostic coverage
-report size
-```
-
-But this is not enough.
-
-Two tools may produce different results because they use different:
+A percentage does not tell us:
 
 ```text
-design hierarchy handling
-clock/reset interpretation
-black-box modeling
-fault model
-fault equivalence reduction
-fault collapsing
-observability definition
-alarm mapping
-classification policy
-diagnostic coverage formula
-FIT weighting model
-FMEDA row mapping
-reporting scope
+what fault population was used
+whether the faults were permanent or transient
+whether the metric is fault-count-based or FIT-weighted
+whether unresolved faults were excluded or penalized
+whether alarm timing was checked against FTTI
+whether the observe boundary was meaningful
+whether the VCD contained enough activity
+whether the FMEDA failure mode was correctly mapped
 ```
 
-Therefore, a meaningful comparison must ask:
-
-```text
-Are the inputs equivalent?
-Are the assumptions equivalent?
-Are the fault populations comparable?
-Are the outcome categories comparable?
-Are the metrics computed over the same denominator?
-Are the FMEDA rows mapped to the same scope?
-```
-
-Without this, comparing two DC percentages is misleading.
-
----
-
-## 4. What Should D17 Compare?
-
-D17 should compare at several levels.
-
-```text
-input package
-tool configuration
-design scope
-fault model
-fault list
-fault campaign execution
-fault outcome classification
-measured diagnostic coverage
-estimated diagnostic coverage
-FMEDA rows
-residual FIT
-traceability
-evidence quality
-review items
-runtime and scalability
-```
+A closure-ready DC value must be interpreted with its context.
 
 ```mermaid
 flowchart TD
-    A[Tool A Evidence] --> C[Normalize]
-    B[Tool B Evidence] --> C
-    C --> D[Compare Inputs]
-    C --> E[Compare Fault Lists]
-    C --> F[Compare Outcomes]
-    C --> G[Compare Metrics]
-    C --> H[Compare FMEDA]
-    C --> I[Compare Evidence Quality]
+    A[Fault Population] --> DC[Diagnostic Coverage]
+    B[Fault Outcome Policy] --> DC
+    C[FIT Weighting] --> DC
+    D[Alarm Boundary] --> DC
+    E[Observe Point Boundary] --> DC
+    F[FTTI Window] --> DC
+    G[Simulation Stimulus] --> DC
+    H[FMEDA Mapping] --> DC
 ```
 
-**Figure 2. Cross-tool comparison requires normalization before comparison.**
-
-The most important part is normalization.
-
-Tool outputs are rarely directly comparable without schema mapping.
+D17 treats DC as an evidence product, not a standalone number.
 
 ---
 
-## 5. Comparison Requires a Canonical Model
+## 4. Closure Vocabulary
 
-D17 should define a canonical comparison model.
+Before building the D17 flow, the vocabulary must be precise.
 
-Instead of comparing raw reports directly, convert each tool output into normalized tables:
+| Term | Meaning in D17 |
+|---|---|
+| Detected fault | Fault propagated to a designated safety mechanism alarm within the observation policy |
+| Safe fault | Fault did not change the relevant golden behavior under the given stimulus |
+| Unsafe fault | Fault changed relevant behavior but no accepted alarm fired |
+| Unresolved fault | Fault could not be confidently classified as detected, safe, or unsafe |
+| Residual FIT | FIT remaining after credited diagnostic coverage |
+| Closure action | Engineering action assigned to resolve unsafe/unresolved/weak evidence |
+| Revalidation | Rerun or re-evaluation after stimulus, alarm, SM, or mapping changes |
+| Review waiver | Controlled acceptance of a known limitation with rationale and evidence |
+| Observation contract | Definition of alarm, observe point, FTTI, golden context, and comparison boundary |
+
+The important distinction is this:
 
 ```text
-normalized_design_scope.csv
-normalized_fault_list.csv
-normalized_fault_outcomes.csv
-normalized_dc.csv
-normalized_fmeda.csv
-normalized_residual_fit.csv
-normalized_review_items.csv
-normalized_evidence_index.csv
+Unresolved is not the same as unsafe.
+Unsafe is not the same as unresolved.
+Both must be tracked, but they trigger different actions.
 ```
 
-Each tool gets an adapter.
+---
+
+## 5. The Four Outcome Categories Revisited
+
+D13 introduced the outcome categories. D17 uses them as closure signals.
+
+```mermaid
+stateDiagram-v2
+    [*] --> FaultInjected
+    FaultInjected --> Detected: alarm fires in policy window
+    FaultInjected --> Safe: no relevant golden deviation
+    FaultInjected --> Unsafe: deviation without accepted alarm
+    FaultInjected --> Unresolved: insufficient classification evidence
+
+    Detected --> Closed
+    Safe --> Closed
+    Unsafe --> ActionRequired
+    Unresolved --> RootCauseAnalysis
+    RootCauseAnalysis --> ActionRequired
+    ActionRequired --> Revalidation
+    Revalidation --> Detected
+    Revalidation --> Safe
+    Revalidation --> Unsafe
+    Revalidation --> Unresolved
+```
+
+A closure flow should not hide unresolved faults. It should reduce them by assigning each one to a root-cause bucket and then driving the corresponding action.
+
+---
+
+## 6. Why Unresolved Faults Exist
+
+Unresolved faults usually do not appear randomly. They arise because at least one part of the observation contract is incomplete.
+
+Common causes include:
+
+```text
+insufficient VCD activity
+fault still propagating when simulation ends
+fault is not injectable under the selected context
+observe point is too shallow
+alarm list is incomplete
+FTTI window is too short or undefined
+golden context is missing relevant behavior
+X-propagation prevents stable classification
+reset or initialization is incomplete
+failure-mode mapping is ambiguous
+tool output exists but is not linked to FMEDA evidence
+```
+
+A closure system must not put all unresolved faults into one bucket. A single bucket called `unresolved` is not actionable.
+
+---
+
+## 7. From Outcome Classification to Closure Backlog
+
+D17 converts D13 outcome files into a closure backlog.
 
 ```mermaid
 flowchart LR
-    A[Internal Flow Outputs] --> C[Internal Adapter]
-    B[Commercial Tool Outputs] --> D[Commercial Tool Adapter]
-    C --> E[Canonical Safety Model]
-    D --> E
-    E --> F[Comparison Engine]
+    A[D13 Fault Outcome Table] --> B[Problem Filter]
+    B --> C[Unsafe Fault Queue]
+    B --> D[Unresolved Fault Queue]
+    B --> E[Weak Evidence Queue]
+    C --> F[Closure Backlog]
+    D --> F
+    E --> F
+    F --> G[Review Actions]
+    G --> H[Revalidation Package]
 ```
 
-**Figure 3. Tool-specific adapters convert different outputs into a canonical safety model for comparison.**
-
-This design keeps the comparison engine stable even if tool report formats differ.
-
----
-
-## 6. The Canonical Safety Model
-
-A minimal canonical model should contain:
+The backlog is not simply a list of failed rows. It contains closure metadata:
 
 ```text
-design_object
-hierarchical_name
-canonical_name
-part
-subpart
-endpoint
-failure_mode
-fault_id
-fault_type
-fault_model
-expected_alarm
-observed_alarm
-outcome
-outcome_subtype
-confidence
-estimated_dc
-measured_dc
-selected_dc
-base_fit
-residual_fit
-safety_mechanism
-evidence_source
-review_status
-```
-
-This is not the internal schema of any specific tool.
-
-It is a comparison schema.
-
-The goal is to ask:
-
-```text
-For the same or equivalent design object and failure mode,
-do the tools report similar fault outcomes, coverage, and residual risk?
-```
-
----
-
-## 7. Tool Adapters
-
-A tool adapter converts one tool's output format into the canonical model.
-
-Suggested adapter structure:
-
-```text
-safeic_compare/
-  adapters/
-    internal_package_adapter.py
-    commercial_csv_adapter.py
-    commercial_report_adapter.py
-    generic_fmeda_adapter.py
-```
-
-An adapter should perform:
-
-```text
-file discovery
-schema detection
-column mapping
-name normalization
-outcome mapping
-metric mapping
-warning extraction
-evidence ID generation
-```
-
-Example mapping file:
-
-```yaml
-tool_adapter:
-  name: commercial_tool_a
-
-  files:
-    fault_list: tool_a/faults.csv
-    fault_results: tool_a/results.csv
-    coverage: tool_a/coverage.csv
-    fmeda: tool_a/fmeda.csv
-
-  columns:
-    fault_id: FaultID
-    node: SignalPath
-    fault_type: FaultType
-    outcome: Result
-    measured_dc: DC
-    failure_mode: FailureMode
-```
-
-Adapters are essential because commercial tools often use different names for similar concepts.
-
----
-
-## 8. Normalization Policy
-
-A normalization policy controls how raw tool data is converted.
-
-Example:
-
-```yaml
-normalization_policy:
-  hierarchy:
-    strip_testbench_prefix: true
-    normalize_separator: "."
-    remove_escape_slashes: true
-
-  fault_type_mapping:
-    SA0: stuck_at_0
-    SA1: stuck_at_1
-    TF: transient_flip
-
-  outcome_mapping:
-    DETECTED: detected
-    SAFE: safe
-    UNDETECTED: unsafe
-    UNKNOWN: unresolved
-
-  dc_units:
-    percentage_to_ratio: true
-
-  missing_values:
-    empty_alarm: missing_alarm
-    empty_dc: not_available
-```
-
-Without a normalization policy, tool comparison becomes a manual spreadsheet exercise.
-
----
-
-## 9. Comparing Input Scope
-
-Before comparing results, compare input scope.
-
-Questions:
-
-```text
-Did both flows use the same RTL or netlist?
-Did both use the same top module?
-Did both use the same clock definitions?
-Did both use the same reset assumptions?
-Did both include the same black boxes?
-Did both use the same safety mechanism configuration?
-Did both analyze the same hierarchy?
-```
-
-Example output:
-
-```csv
-scope_item,internal,commercial,status
-top_module,toy_counter,toy_counter,MATCH
-rtl_file_hash,aaa111,aaa111,MATCH
-clock_list,clk,clk,MATCH
-reset_policy,async_active_low,async_active_low,MATCH
-blackbox_count,0,0,MATCH
-```
-
-If input scope does not match, later metric differences may not be meaningful.
-
----
-
-## 10. Comparing Fault Models
-
-Fault model comparison is critical.
-
-Example:
-
-```csv
-fault_model,internal_enabled,commercial_enabled,status
-stuck_at_0,true,true,MATCH
-stuck_at_1,true,true,MATCH
-transient_flip,true,true,MATCH
-delay_fault,false,true,TOOL_ONLY
-bridging_fault,false,false,MATCH
-```
-
-If one tool includes delay faults and the other does not, total fault counts and coverage values may differ.
-
-D17 should not treat this as a tool disagreement.
-
-It should treat it as a scope difference.
-
----
-
-## 11. Comparing Fault Lists
-
-Fault list comparison asks:
-
-```text
-Which faults are common?
-Which faults exist only in Tool A?
-Which faults exist only in Tool B?
-Which faults appear equivalent but have different IDs?
-```
-
-Example output:
-
-```csv
-canonical_fault_key,internal_fault_id,commercial_fault_id,match_status
-toy_counter.count[0]|stuck_at_0|FM_DATA_CORRUPTION,F001,A_0001,MATCH
-toy_counter.count[1]|stuck_at_1|FM_DATA_CORRUPTION,F002,A_0002,MATCH
-toy_counter.alarm|stuck_at_0|FM_ALARM_NOT_ASSERTED,F004,A_0100,MATCH
-toy_counter.hidden|stuck_at_0,,A_0200,COMMERCIAL_ONLY
-```
-
-The canonical fault key may combine:
-
-```text
-canonical node
+fault id
 fault type
+fault site
 failure mode
-endpoint
+part/sub-part
+safety mechanism
+alarm expectation
+observe boundary
+FTTI window
+classification source
+root-cause candidate
+recommended action
+owner role
+evidence status
+revalidation requirement
 ```
 
-Fault list overlap is often more important than total fault count.
+This turns raw campaign results into an executable engineering plan.
 
 ---
 
-## 12. Fault List Overlap Metrics
+## 8. Closure Inputs
 
-D17 should compute overlap metrics.
+D17 should consume the evidence generated by the earlier demos.
 
-Example:
+| Upstream demo | D17 consumes |
+|---|---|
+| D10 | alarm list, observe point list, FTTI boundary plan, observation contract |
+| D11 | fault campaign input package, input manifest |
+| D12 | execution plan, campaign status, native result index |
+| D13 | detected/safe/unsafe/unresolved tables, DC from outcomes |
+| D14 | final metric bridge, lambda bucket allocation, metric summary |
+| D15 | FMEDA part/sub-part/failure-mode/SM/residual FIT model |
+| D16 | top-down review queue, metric rollup, FMEDA session package |
+
+D17 is therefore a convergence point.
 
 ```text
-internal fault count = 100
-commercial fault count = 120
-matched faults = 90
-internal-only faults = 10
-commercial-only faults = 30
-overlap ratio vs internal = 90 / 100 = 0.90
-overlap ratio vs commercial = 90 / 120 = 0.75
+fault evidence + metric evidence + FMEDA evidence + review evidence
+    -> closure actions
 ```
 
-Example table:
+---
+
+## 9. Closure Outputs
+
+A practical D17 demo should generate:
+
+```text
+outputs/closure_backlog.csv
+outputs/unresolved_root_cause_map.csv
+outputs/unsafe_fault_action_plan.csv
+outputs/stimulus_improvement_plan.csv
+outputs/alarm_observe_refinement_plan.csv
+outputs/safety_mechanism_improvement_plan.csv
+outputs/fmeda_review_action_queue.csv
+outputs/final_dc_revalidation_package.csv
+outputs/closure_decision_matrix.csv
+outputs/closure_metric_projection.csv
+outputs/d17_handoff_to_d18.csv
+outputs/d17_handoff_to_d19.csv
+outputs/d17_handoff_to_d20.csv
+outputs/d17_quality_gate.csv
+outputs/evidence_index.csv
+outputs/demo_summary.md
+```
+
+These files are not a replacement for final signoff. They are the engineering closure interface.
+
+---
+
+## 10. Closure Backlog Schema
+
+A closure backlog should be stable enough to support review, automation, and regression.
+
+Example schema:
 
 ```csv
-metric,value
-internal_fault_count,100
-commercial_fault_count,120
-matched_fault_count,90
-internal_only_fault_count,10
-commercial_only_fault_count,30
-overlap_vs_internal,0.900
-overlap_vs_commercial,0.750
+closure_id,fault_id,outcome,root_cause_bucket,part_id,subpart_id,failure_mode_id,sm_id,alarm_signal,observe_point,ftti_cycles,fit_weight,recommended_action,owner_role,priority,revalidation_required,closure_status
 ```
 
-This tells whether the tools are even analyzing comparable fault populations.
-
----
-
-## 13. Comparing Fault Outcomes
-
-For matched faults, compare outcomes.
-
-Example:
-
-```csv
-canonical_fault_key,internal_outcome,commercial_outcome,correlation
-toy_counter.count[0]|stuck_at_0,detected,detected,MATCH
-toy_counter.alarm|stuck_at_0,unsafe,unsafe,MATCH
-toy_counter.count_parity|stuck_at_0,unsafe,detected,DISAGREE
-toy_counter.hidden|stuck_at_0,unresolved,unsafe,DISAGREE
-```
-
-Outcome correlation categories:
+Example values:
 
 ```text
-MATCH
-DISAGREE
-INTERNAL_STRONGER
-COMMERCIAL_STRONGER
-EVIDENCE_GAP
-NOT_COMPARABLE
+root_cause_bucket = STIMULUS_GAP
+recommended_action = extend_good_machine_vcd
+owner_role = verification
+priority = high
+revalidation_required = yes
+closure_status = open
 ```
 
-Outcome disagreement should trigger review.
-
-It may reveal:
+This is the key transformation:
 
 ```text
-missing alarm mapping
-different classification policy
-different observe point set
-different fault effect propagation
-different fault injection timing
-different diagnostic window
+raw unresolved fault
+    -> categorized issue
+        -> assigned engineering action
+            -> revalidation requirement
 ```
 
 ---
 
-## 14. Outcome Mapping Is Not Always One-to-One
+## 11. Root-Cause Taxonomy for Unresolved Faults
 
-Tools may use different outcome categories.
-
-For example:
+D17 should use an explicit taxonomy.
 
 ```text
-detected
-safe
-unsafe
+STIMULUS_GAP
+SIMULATION_END_TOO_EARLY
+FAULT_NOT_INJECTABLE
+OBSERVE_BOUNDARY_GAP
+ALARM_BINDING_GAP
+FTTI_POLICY_GAP
+X_PROPAGATION
+INITIALIZATION_GAP
+MAPPING_AMBIGUITY
+SM_COVERAGE_GAP
+TOOL_RESULT_PARSE_GAP
+REVIEW_ONLY
+```
+
+Each category maps to a different closure action.
+
+| Root cause | Likely action |
+|---|---|
+| STIMULUS_GAP | Add or extend VCD stimulus |
+| SIMULATION_END_TOO_EARLY | Increase simulation duration |
+| FAULT_NOT_INJECTABLE | Review fault site or reduce fault list |
+| OBSERVE_BOUNDARY_GAP | Add observe point |
+| ALARM_BINDING_GAP | Fix alarm list or SM map |
+| FTTI_POLICY_GAP | Define or revise FTTI window |
+| X_PROPAGATION | Improve initialization or X handling |
+| MAPPING_AMBIGUITY | Review endpoint/failure-mode binding |
+| SM_COVERAGE_GAP | Add or strengthen safety mechanism |
+| TOOL_RESULT_PARSE_GAP | Fix result parser or import rule |
+| REVIEW_ONLY | Document rationale and approval |
+
+This taxonomy prevents unresolved faults from remaining vague.
+
+---
+
+## 12. Unsafe Faults Need a Different Path
+
+Unsafe faults are more severe than unresolved faults.
+
+An unsafe fault indicates:
+
+```text
+fault changed relevant behavior
+no accepted alarm fired
+observe boundary saw a deviation
+classification evidence is sufficient
+```
+
+That usually triggers one of these actions:
+
+```text
+add a new safety mechanism
+extend an existing safety mechanism
+bind the correct alarm
+modify observe boundary only if the boundary is wrong
+revise FMEDA residual FIT if the risk must be accepted
+```
+
+Unsafe faults should not be “fixed” by simply hiding the observe point. If the observe boundary is valid, the design or safety mechanism must improve.
+
+```mermaid
+flowchart TD
+    A[Unsafe Fault] --> B{Observation Boundary Valid?}
+    B -->|No| C[Refine Observe Contract]
+    B -->|Yes| D{Alarm Expected?}
+    D -->|Missing Alarm| E[Add Alarm Binding]
+    D -->|Alarm Exists but Did Not Fire| F[Improve SM Implementation]
+    D -->|No SM Planned| G[Return to Safety Exploration]
+    E --> H[Revalidate]
+    F --> H
+    G --> H
+    C --> H
+```
+
+---
+
+## 13. The Role of Stimulus in DC Closure
+
+A fault campaign is only as useful as the stimulus context.
+
+If the good-machine VCD does not exercise a function, faults in that region may remain:
+
+```text
+not injectable
+not propagated
+not observed
 unresolved
-not_classified
 ```
 
-may need to map to tool-specific labels:
+D17 therefore produces a **stimulus improvement plan**.
+
+Example schema:
+
+```csv
+stimulus_action_id,closure_id,target_signal_or_block,reason,current_activity,required_activity,proposed_test,expected_effect
+```
+
+Typical actions:
 
 ```text
-covered
-not_covered
-no_effect
-unknown
-aborted
-unobservable
-equivalent
+toggle an idle interface
+exercise error-handling path
+extend reset-to-active sequence
+add transaction with valid/ready handshake
+add counter overflow scenario
+exercise alarm-enable condition
+increase simulation length
 ```
 
-A mapping policy may be:
-
-```yaml
-outcome_mapping:
-  covered: detected
-  detected: detected
-  no_effect: safe
-  equivalent: safe
-  not_covered: unsafe
-  undetected: unsafe
-  unknown: unresolved
-  aborted: not_classified
-  unsupported: not_classified
-```
-
-This mapping must be visible in the comparison report.
-
-Otherwise, users may think two categories are equivalent when they are not.
+Stimulus closure is not just test coverage. It is safety evidence coverage.
 
 ---
 
-## 15. Comparing Diagnostic Coverage
+## 14. FTTI as a Closure Constraint
 
-Diagnostic coverage comparison should be done by aligned group.
+FTTI means **Fault Tolerant Time Interval**. It is the maximum time allowed between a fault becoming relevant and the system reaching a safe condition or producing an accepted detection response.
 
-Recommended dimensions:
+D17 must check whether detected faults satisfy the intended timing policy.
+
+```mermaid
+sequenceDiagram
+    participant F as Fault Injection
+    participant P as Propagation
+    participant A as Alarm
+    participant S as Safe State
+
+    F->>P: fault becomes active
+    P->>A: detection may occur
+    A->>S: safety response
+    Note over F,S: Detection/response must fit inside FTTI
+```
+
+A fault may be “detected” but still problematic if the alarm occurs too late.
+
+D17 should separate:
 
 ```text
-overall
-endpoint
-failure mode
-safety mechanism
-part
-subpart
+detected_within_ftti
+detected_after_ftti
+detected_without_ftti_policy
+```
+
+Only the first category is closure-ready without additional timing review.
+
+---
+
+## 15. Alarm Closure
+
+Alarm closure answers:
+
+```text
+Which safety mechanisms are expected to trigger alarms?
+Which alarm signal corresponds to which failure mode?
+Is the alarm included in the campaign alarm list?
+Is the alarm visible in the VCD?
+Does the alarm transition occur inside the FTTI window?
+Is the alarm mapped to the FMEDA diagnostic mechanism?
+```
+
+Alarm closure is not just checking that an alarm signal exists. It checks the entire chain.
+
+```mermaid
+flowchart LR
+    A[Safety Mechanism] --> B[Alarm Signal]
+    B --> C[Alarm List]
+    C --> D[VCD Visibility]
+    D --> E[Fault Outcome Detection]
+    E --> F[FMEDA DC Credit]
+```
+
+If any link is missing, the diagnostic credit may be overstated.
+
+---
+
+## 16. Observe Point Closure
+
+Observe points define where the campaign judges fault propagation.
+
+A weak observe boundary may classify too many faults as unresolved. An overly broad boundary may classify irrelevant changes as unsafe.
+
+D17 checks:
+
+```text
+observe point exists
+observe point is visible in the VCD
+observe point belongs to the relevant part/sub-part
+observe point is tied to the failure mode
+observe point has activity during the campaign
+observe point is not only reset/static
+observe point aligns with the safety goal boundary
+```
+
+A good observe point is not necessarily the most internal signal. It is the signal that supports a defensible safety claim.
+
+---
+
+## 17. X-Propagation Closure
+
+X values can block classification.
+
+Common causes include:
+
+```text
+uninitialized state elements
+incomplete reset
+unknown memory contents
+unconstrained inputs
+simulation-model mismatch
+fault-induced X explosion
+```
+
+D17 should not automatically treat X-related unresolved faults as safe or unsafe. It should create an X-propagation action:
+
+```text
+initialize memory
+improve reset sequence
+constrain input protocol
+add good-machine warm-up cycles
+separate design X from fault-induced X
+dump targeted fault VCD for debug
+```
+
+X closure often requires cooperation between design, verification, and safety teams.
+
+---
+
+## 18. Mapping Closure
+
+Mapping closure ensures that every fault outcome can be traced to a safety argument.
+
+The chain is:
+
+```text
+fault site
+    -> endpoint / instance
+        -> failure mode
+            -> safety mechanism
+                -> alarm / observe point
+                    -> FMEDA residual FIT
+```
+
+If a fault is classified but not mapped, it is not audit-ready.
+
+D17 checks for:
+
+```text
+missing failure-mode id
+missing part/sub-part id
+missing safety mechanism id
+missing alarm reference
+missing observe boundary
+missing FIT bucket
+missing review owner
+```
+
+This is why D17 must consume D15 and D16. Closure is not only a simulation problem; it is a data-model problem.
+
+---
+
+## 19. Residual FIT Closure
+
+Residual FIT is the remaining failure-rate contribution after credited diagnostic coverage.
+
+D17 reviews residual FIT by bucket:
+
+```text
+safe residual
+detected residual
+unsafe residual
+unresolved residual
+review-only residual
+waived residual
+```
+
+A closure-ready residual FIT table should answer:
+
+```text
+Which part owns the residual FIT?
+Which failure mode owns it?
+Which safety mechanism reduced it?
+Which unresolved/unsafe items still contribute?
+Is the residual FIT below the target?
+If not, what action reduces it?
+```
+
+This is the bridge from campaign evidence to FMEDA decision.
+
+---
+
+## 20. Closure Decision Matrix
+
+D17 uses a decision matrix to map evidence state to action.
+
+| Evidence state | Decision |
+|---|---|
+| Detected within FTTI and mapped to FMEDA | close |
+| Safe with valid observe boundary | close |
+| Detected but after FTTI | timing review |
+| Unsafe with valid boundary | improve SM or alarm |
+| Unresolved due to stimulus gap | improve VCD/test |
+| Unresolved due to observe gap | add observe point |
+| Unresolved due to alarm gap | bind alarm or update alarm list |
+| Unresolved due to X propagation | initialization/debug action |
+| Mapped residual FIT exceeds target | return to exploration |
+| Missing traceability | data-model correction |
+
+A closure decision should always be reproducible from evidence.
+
+---
+
+## 21. Review Actions as First-Class Artifacts
+
+D17 produces review actions, not free-text comments.
+
+Example schema:
+
+```csv
+action_id,closure_id,action_type,description,owner_role,input_artifact,expected_output,revalidation_scope,status
+```
+
+Action types may include:
+
+```text
+stimulus_update
+alarm_update
+observe_update
+sm_update
+mapping_update
+metric_recompute
+manual_review
+waiver_review
+tool_parse_fix
+```
+
+This makes closure compatible with issue trackers, CI gates, and future regression automation.
+
+---
+
+## 22. Revalidation Scope
+
+Not every closure action requires rerunning the full campaign.
+
+D17 should assign a revalidation scope:
+
+```text
+none
+metadata_only
+single_fault_debug
+small_fault_subset
+affected_failure_mode
+affected_subpart
+full_campaign
+final_metric_only
 ```
 
 Example:
 
-```csv
-group_type,group_id,internal_measured_dc,commercial_measured_dc,delta,status
-failure_mode,FM_DATA_CORRUPTION,0.950,0.940,0.010,MATCH
-failure_mode,FM_ALARM_NOT_ASSERTED,0.000,0.600,-0.600,DISAGREE
-endpoint,toy_counter.count,1.000,0.980,0.020,MATCH
-endpoint,toy_counter.alarm,0.500,0.900,-0.400,REVIEW
-```
+| Action | Revalidation scope |
+|---|---|
+| Fix typo in part mapping | metadata_only |
+| Add missing alarm signal to alarm list | affected_failure_mode |
+| Add new safety mechanism | affected_subpart or full_campaign |
+| Extend VCD stimulus | affected_fault_subset |
+| Final metric recomputation | final_metric_only |
+| Change observe policy globally | full_campaign |
 
-D17 should not compare:
-
-```text
-internal endpoint-level DC
-```
-
-against:
-
-```text
-commercial overall DC
-```
-
-unless the scope is explicitly aligned.
+This is how closure remains practical.
 
 ---
 
-## 16. DC Comparison Requires Formula Awareness
+## 23. Closing Without Hiding Risk
 
-Two tools may both report "DC" but compute it differently.
+A dangerous anti-pattern is to close unresolved faults by changing definitions until the metrics look better.
 
-Differences may include:
+D17 must preserve risk visibility:
 
 ```text
-count-based vs FIT-weighted
-safe faults included vs excluded
-unresolved faults excluded vs included
-not-classified runs excluded vs counted
-equivalent faults collapsed vs uncollapsed
-late detection accepted vs rejected
-secondary alarm accepted vs rejected
+unsafe remains unsafe until design/SM/alarm evidence changes
+unresolved remains unresolved until classification evidence improves
+waived items remain visible
+review-only residual FIT remains visible
+metric improvements must point to evidence, not assumptions
 ```
 
-Therefore, D17 must compare measurement policy.
-
-Example output:
-
-```csv
-policy_item,internal,commercial,status
-dc_formula,detected/(detected+unsafe),covered/total,DIFFERENT
-safe_fault_handling,reported_separately,included_in_coverage,DIFFERENT
-weighting,count,FIT_weighted,DIFFERENT
-late_alarm_policy,unsafe,detected,DIFFERENT
-```
-
-If formulas differ, DC values may not be directly comparable.
-
-The comparison report should say so.
+A good closure table makes uncomfortable evidence impossible to hide.
 
 ---
 
-## 17. Comparing FMEDA Rows
+## 24. Common FuSa Database Perspective
 
-FMEDA row comparison checks:
+In a database-centered flow, D17 acts as a closure session that links earlier sessions.
 
-```text
-part
-subpart
-failure mode
-base FIT
-estimated DC
-measured DC
-selected DC
-residual FIT
-safety mechanism
-review status
-```
-
-Example:
-
-```csv
-row_key,internal_row,commercial_row,field,internal_value,commercial_value,status
-PART_COUNTER|FM_DATA_CORRUPTION,R001,A_R001,base_fit,0.064,0.064,MATCH
-PART_COUNTER|FM_DATA_CORRUPTION,R001,A_R001,selected_dc,0.900,0.920,REVIEW
-PART_COUNTER|FM_ALARM_NOT_ASSERTED,R003,A_R010,residual_fit,0.010,0.004,DISAGREE
-```
-
-FMEDA comparison can reveal differences in:
+Conceptually:
 
 ```text
-failure mode decomposition
-FIT allocation
-coverage assumption
-selected DC policy
-residual risk calculation
+BFR session
+SM exploration session
+fault campaign session
+outcome classification session
+final metrics session
+FMEDA model session
+closure session
 ```
 
-This is often more important than raw fault outcome comparison.
+D17 does not overwrite upstream evidence. It references it and adds closure decisions.
+
+```mermaid
+flowchart TD
+    A[BFR Evidence] --> G[Closure Session]
+    B[SM Map Evidence] --> G
+    C[Fault Campaign Results] --> G
+    D[Final Metrics] --> G
+    E[FMEDA Model] --> G
+    F[Top-down Review Queue] --> G
+    G --> H[Regression Gate]
+    G --> I[Evidence Traceability]
+```
+
+This structure keeps the audit trail intact.
 
 ---
 
-## 18. Comparing Residual FIT
+## 25. Closure Quality Gate
 
-Residual FIT comparison helps determine whether differences matter.
+D17 quality gate should not require zero open issues immediately. Instead, it should require that every issue has a valid disposition.
 
-Example:
-
-```csv
-failure_mode,internal_residual_fit,commercial_residual_fit,delta,relative_delta,status
-FM_DATA_CORRUPTION,0.0064,0.0051,0.0013,0.203,REVIEW
-FM_ALARM_NOT_ASSERTED,0.0100,0.0040,0.0060,0.600,DISAGREE
-FM_DIAGNOSTIC_STATE_CORRUPTION,0.0040,0.0040,0.0000,0.000,MATCH
-```
-
-A small DC difference may not matter if residual FIT impact is tiny.
-
-A moderate DC difference may matter if it affects a dominant FIT contributor.
-
-Therefore, residual FIT comparison is a better prioritization signal than DC comparison alone.
-
----
-
-## 19. Comparing Safety Mechanism Recognition
-
-Commercial tools may recognize safety mechanisms differently.
-
-Example:
-
-```csv
-mechanism,internal_status,commercial_status,comparison
-endpoint_parity,recognized,recognized,MATCH
-alarm_path_monitor,not_modeled,recognized,COMMERCIAL_ONLY
-diagnostic_state_protection,missing,missing,MATCH
-```
-
-If one tool recognizes a mechanism and another does not, investigate:
+Possible checks:
 
 ```text
-mechanism naming
-configuration file
-alarm mapping
-DCE import/export
-manual annotation
-fault campaign observability
+every unsafe fault has an action
+every unresolved fault has a root-cause bucket
+every high FIT unresolved item has priority assigned
+every action has owner role
+every action has revalidation scope
+every waived item has rationale
+every residual FIT bucket maps to part/sub-part/failure mode
+no orphan fault outcome exists
+no orphan FMEDA failure mode exists
+no alarm-required SM lacks alarm disposition
 ```
 
-This is not necessarily a tool bug.
-
-It may be a configuration or mapping issue.
+The gate should fail if issues are unclassified, not merely because issues exist.
 
 ---
 
-## 20. Comparing Evidence Traceability
+## 26. Diagnostic Coverage Closure Is Iterative
 
-A useful comparison includes evidence traceability.
+D17 is not a single pass.
 
-Questions:
+```mermaid
+flowchart TD
+    A[Classify Outcomes] --> B[Build Closure Backlog]
+    B --> C[Root Cause Unresolved]
+    C --> D[Assign Actions]
+    D --> E[Improve Stimulus / Alarm / SM / Mapping]
+    E --> F[Revalidate]
+    F --> G[Update Metrics]
+    G --> H{Safety Target Met?}
+    H -->|No| B
+    H -->|Yes| I[Closure Candidate]
+```
+
+The iteration continues until one of these is true:
 
 ```text
-Can each metric be traced to a fault list?
-Can each FMEDA row be traced to fault outcomes?
-Can each outcome be traced to a campaign run?
-Can each review item be traced to an unsafe or unresolved fault?
+safety target is met
+remaining items are accepted with formal rationale
+design or safety architecture must be changed
+campaign scope must be expanded
 ```
-
-Example:
-
-```csv
-trace_item,internal_trace,commercial_trace,status
-FMEDA_R003_to_fault_F004,true,true,MATCH
-DC_FM_ALARM_NOT_ASSERTED_to_fault_outcomes,true,false,INTERNAL_ONLY
-fault_F004_to_campaign_log,true,true,MATCH
-review_item_to_evidence,true,false,INTERNAL_ONLY
-```
-
-Traceability is a major credibility factor.
-
-A tool may compute good numbers but provide weak traceability.
-
-D17 should make that visible.
 
 ---
 
-## 21. Comparing Runtime and Scalability
+## 27. How D17 Interacts with D18
 
-Runtime comparison is useful, but only after scope alignment.
+D18 will introduce regression gating.
 
-Example:
-
-```csv
-metric,internal,commercial,status
-input_fault_count,100,120,DIFFERENT_SCOPE
-matched_fault_count,90,90,MATCHED_SCOPE
-runtime_seconds,35,20,COMMERCIAL_FASTER
-memory_peak_mb,512,1024,INTERNAL_LOWER_MEMORY
-```
-
-Runtime should be normalized by:
+D17 hands off:
 
 ```text
-matched fault count
-design size
-fault model
-simulation mode
-parallelism
-hardware
+closure backlog status
+open action count
+high-priority unresolved count
+unsafe count
+residual FIT trend
+metric target status
+revalidation requirement
+evidence completeness
 ```
 
-Otherwise, runtime comparison is not meaningful.
-
-For early demos, runtime comparison can be descriptive rather than competitive.
-
----
-
-## 22. Comparison Policy
-
-D17 should be driven by a comparison policy.
-
-Example:
-
-```yaml
-comparison_policy:
-  scope:
-    require_same_top: true
-    require_same_rtl_hash: false
-    warn_on_clock_mismatch: true
-
-  fault_matching:
-    primary_key: fault_id
-    fallback_key:
-      - canonical_node
-      - fault_type
-      - failure_mode
-      - endpoint
-
-  dc_comparison:
-    require_same_formula: false
-    warn_if_formula_differs: true
-    match_threshold: 0.05
-    review_threshold: 0.15
-
-  residual_fit:
-    review_relative_delta: 0.20
-    high_relative_delta: 0.50
-
-  outcome_comparison:
-    detected_to_unsafe: high
-    unsafe_to_detected: review
-    unresolved_mismatch: review
-
-  report:
-    show_tool_a_only_faults: true
-    show_tool_b_only_faults: true
-    show_policy_differences: true
-```
-
-This policy keeps the comparison disciplined.
-
----
-
-## 23. Comparison Is Not About Declaring a Winner
-
-A poor comparison report says:
+D18 can then build automatic checks such as:
 
 ```text
-Tool A is better.
-Tool B is worse.
+no new unsafe fault
+unresolved FIT must not increase
+high-priority closure items must decrease
+final DC must not regress
+all closure artifacts must be indexed
 ```
 
-A useful comparison report says:
-
-```text
-Tool A and Tool B agree on these fault outcomes.
-They differ on these failure modes.
-The differences appear to be caused by fault model scope and classification policy.
-These rows require review.
-These metrics are not directly comparable.
-These findings improve confidence in our methodology.
-```
-
-The purpose is not marketing.
-
-The purpose is engineering correlation.
+D17 defines the safety signals; D18 turns them into gates.
 
 ---
 
-## 24. Main Inputs for D17
+## 28. How D17 Interacts with D19
 
-Suggested inputs:
+D19 focuses on evidence traceability.
+
+D17 hands off:
 
 ```text
-inputs/
-  comparison_config.yaml
-  comparison_policy.yaml
-
-  internal/
-    evidence_package/
-      package_manifest.yaml
-      evidence_index.csv
-      metrics/
-      fmeda/
-      campaign/
-      policies/
-
-  commercial/
-    tool_manifest.yaml
-    raw_reports/
-    normalized/
-      normalized_fault_list.csv
-      normalized_fault_outcomes.csv
-      normalized_dc.csv
-      normalized_fmeda.csv
+fault outcome -> closure action links
+closure action -> input artifact links
+closure action -> revalidation artifact links
+metric bucket -> FMEDA row links
+waiver/review rationale links
+database session references
 ```
 
-The commercial side may start as manually exported CSV files.
+This lets the evidence package answer:
 
-Later, adapters can parse native report formats.
+```text
+Why was this fault closed?
+Who reviewed it?
+What evidence changed?
+Which metric changed?
+Which FMEDA row was affected?
+Which campaign result supports the decision?
+```
+
+Without D17, D19 would only index files. With D17, D19 can index decisions.
 
 ---
 
-## 25. Main Outputs for D17
+## 29. How D17 Interacts with D20
 
-Suggested outputs:
+D20 will assemble an end-to-end mini flow.
+
+D17 contributes the closure logic that makes the mini flow believable.
+
+A complete mini flow should show:
+
+```text
+BFR baseline
+SM exploration
+fault list
+simulation context
+fault campaign setup
+fault execution
+outcome classification
+result writeback
+FMEDA model
+closure backlog
+final review status
+```
+
+D17 is the point where the mini flow stops being a linear demo and becomes a safety workflow.
+
+---
+
+## 30. Demo17 Output Model
+
+A D17 demo should be small but realistic.
+
+Recommended output structure:
 
 ```text
 outputs/
-  tool_comparison_summary.md
-  tool_comparison_matrix.csv
-  input_scope_comparison.csv
-  fault_model_comparison.csv
-  fault_list_overlap.csv
-  fault_outcome_correlation.csv
-  dc_comparison_by_failure_mode.csv
-  dc_comparison_by_endpoint.csv
-  fmeda_row_comparison.csv
-  residual_fit_comparison.csv
-  traceability_comparison.csv
-  runtime_comparison.csv
-  methodology_gap_report.csv
-  comparison_warnings.csv
-  comparison_manifest.yaml
+  closure_backlog.csv
+  unresolved_root_cause_map.csv
+  unsafe_fault_action_plan.csv
+  stimulus_improvement_plan.csv
+  alarm_observe_refinement_plan.csv
+  safety_mechanism_improvement_plan.csv
+  fmeda_review_action_queue.csv
+  final_dc_revalidation_package.csv
+  closure_decision_matrix.csv
+  closure_metric_projection.csv
+  closure_status_summary.md
+  d17_handoff_to_d18.csv
+  d17_handoff_to_d19.csv
+  d17_handoff_to_d20.csv
+  d17_quality_gate.csv
+  evidence_index.csv
+  demo_summary.md
 ```
 
-Each output has a clear purpose.
-
-| Output | Purpose |
-|---|---|
-| `tool_comparison_summary.md` | Human-readable comparison report |
-| `input_scope_comparison.csv` | Check whether inputs match |
-| `fault_list_overlap.csv` | Compare fault populations |
-| `fault_outcome_correlation.csv` | Compare matched fault outcomes |
-| `dc_comparison_by_failure_mode.csv` | Compare diagnostic coverage by failure mode |
-| `fmeda_row_comparison.csv` | Compare FMEDA rows and DC selection |
-| `residual_fit_comparison.csv` | Compare residual risk |
-| `methodology_gap_report.csv` | Explain causes of differences |
-| `comparison_warnings.csv` | Highlight risky differences |
+The demo should not claim final safety compliance. It should show how to convert unresolved and unsafe evidence into reviewable closure actions.
 
 ---
 
-## 26. Example `comparison_config.yaml`
+## 31. Example Closure Backlog Row
 
-```yaml
-comparison:
-  name: toy_counter_internal_vs_commercial_tool
-  internal_label: internal_flow
-  commercial_label: commercial_tool_a
-  design: toy_counter
-
-inputs:
-  internal_package: inputs/internal/evidence_package
-  commercial_normalized: inputs/commercial/normalized
-
-commercial_adapter:
-  type: generic_csv
-  manifest: inputs/commercial/tool_manifest.yaml
-
-outputs:
-  summary: outputs/tool_comparison_summary.md
-  matrix: outputs/tool_comparison_matrix.csv
-```
-
-This makes the comparison reproducible.
-
----
-
-## 27. Example `tool_manifest.yaml`
-
-```yaml
-tool:
-  name: commercial_tool_a
-  version: demo_placeholder
-  run_id: tool_a_run_001
-  design: toy_counter
-
-normalized_outputs:
-  fault_list: normalized/normalized_fault_list.csv
-  fault_outcomes: normalized/normalized_fault_outcomes.csv
-  diagnostic_coverage: normalized/normalized_dc.csv
-  fmeda: normalized/normalized_fmeda.csv
-  residual_fit: normalized/normalized_residual_fit.csv
-
-notes:
-  - demo uses normalized CSV exports
-  - raw commercial reports are not included in public repository
-```
-
-For public demos, do not include proprietary commercial report content.
-
-Use normalized sample data or synthetic placeholders.
-
----
-
-## 28. Tool Architecture
-
-The generic tool `safeic-compare` can be implemented as a staged pipeline.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-compare]
-    B[comparison_config.yaml] --> T
-    C[comparison_policy.yaml] --> T
-    D[Internal Evidence Package] --> T
-    E[Commercial Tool Outputs] --> T
-
-    T --> F[Load and Normalize Inputs]
-    F --> G[Validate Scope]
-    G --> H[Match Faults]
-    H --> I[Compare Outcomes]
-    I --> J[Compare DC]
-    J --> K[Compare FMEDA]
-    K --> L[Compare Residual FIT]
-    L --> M[Generate Gap Report]
-    M --> N[Generate Summary]
-```
-
-**Figure 4. `safeic-compare` normalizes tool outputs, validates scope, compares fault results and metrics, and generates a gap report.**
-
-Suggested internal modules:
-
-```text
-safeic_compare/
-  cli.py
-  manifest.py
-  load_config.py
-  adapters/
-    internal_package_adapter.py
-    generic_csv_adapter.py
-  normalize/
-    names.py
-    outcomes.py
-    metrics.py
-  scope_compare.py
-  fault_match.py
-  outcome_compare.py
-  dc_compare.py
-  fmeda_compare.py
-  residual_fit_compare.py
-  traceability_compare.py
-  gap_analysis.py
-  report.py
-```
-
-Responsibilities:
-
-| Module | Responsibility |
-|---|---|
-| `internal_package_adapter.py` | Load D14-style evidence package |
-| `generic_csv_adapter.py` | Load normalized commercial CSV exports |
-| `names.py` | Normalize hierarchy and signal names |
-| `outcomes.py` | Normalize outcome categories |
-| `metrics.py` | Normalize DC units and formulas |
-| `scope_compare.py` | Compare input and configuration scope |
-| `fault_match.py` | Match faults across tools |
-| `outcome_compare.py` | Compare matched fault outcomes |
-| `dc_compare.py` | Compare diagnostic coverage |
-| `fmeda_compare.py` | Compare FMEDA rows |
-| `gap_analysis.py` | Explain differences and generate review actions |
-| `report.py` | Generate CSV and Markdown outputs |
-
----
-
-## 29. D17 Directory Structure
-
-Suggested directory:
-
-```text
-D17_commercial_tool_comparison/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    comparison_config.yaml
-    comparison_policy.yaml
-
-    internal/
-      evidence_package/
-        package_manifest.yaml
-        metrics/
-          measured_dc_by_failure_mode.csv
-          measured_dc_by_endpoint.csv
-          measured_residual_fit.csv
-        fmeda/
-          fmeda_table.csv
-        campaign/
-          fault_outcomes.csv
-        policies/
-          classification_policy.yaml
-          measurement_policy.yaml
-
-    commercial/
-      tool_manifest.yaml
-      normalized/
-        normalized_design_scope.csv
-        normalized_fault_model.csv
-        normalized_fault_list.csv
-        normalized_fault_outcomes.csv
-        normalized_dc.csv
-        normalized_fmeda.csv
-        normalized_residual_fit.csv
-
-  outputs/
-    tool_comparison_summary.md
-    input_scope_comparison.csv
-    fault_model_comparison.csv
-    fault_list_overlap.csv
-    fault_outcome_correlation.csv
-    dc_comparison_by_failure_mode.csv
-    dc_comparison_by_endpoint.csv
-    fmeda_row_comparison.csv
-    residual_fit_comparison.csv
-    traceability_comparison.csv
-    methodology_gap_report.csv
-    comparison_warnings.csv
-    comparison_manifest.yaml
-```
-
-This layout keeps internal and commercial evidence separated.
-
----
-
-## 30. D17 Manifest
-
-Example:
-
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D17_commercial_tool_comparison
-  top_module: toy_counter
-
-inputs:
-  comparison_config: inputs/comparison_config.yaml
-  comparison_policy: inputs/comparison_policy.yaml
-  internal_package: inputs/internal/evidence_package
-  commercial_normalized: inputs/commercial/normalized
-  commercial_manifest: inputs/commercial/tool_manifest.yaml
-
-outputs:
-  summary: outputs/tool_comparison_summary.md
-  input_scope: outputs/input_scope_comparison.csv
-  fault_model: outputs/fault_model_comparison.csv
-  fault_overlap: outputs/fault_list_overlap.csv
-  outcome_correlation: outputs/fault_outcome_correlation.csv
-  dc_by_failure_mode: outputs/dc_comparison_by_failure_mode.csv
-  dc_by_endpoint: outputs/dc_comparison_by_endpoint.csv
-  fmeda: outputs/fmeda_row_comparison.csv
-  residual_fit: outputs/residual_fit_comparison.csv
-  gaps: outputs/methodology_gap_report.csv
-  warnings: outputs/comparison_warnings.csv
-```
-
-The manifest defines what is compared.
-
----
-
-## 31. D17 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load Comparison Config]
-    B --> C[Load Comparison Policy]
-    C --> D[Load Internal Evidence Package]
-    D --> E[Load Commercial Normalized Outputs]
-    E --> F[Normalize Names and Outcomes]
-    F --> G[Validate Input Scope]
-    G --> H[Compare Fault Models]
-    H --> I[Match Fault Lists]
-    I --> J[Compare Fault Outcomes]
-    J --> K[Compare Diagnostic Coverage]
-    K --> L[Compare FMEDA Rows]
-    L --> M[Compare Residual FIT]
-    M --> N[Generate Methodology Gap Report]
-    N --> O[Generate Comparison Summary]
-```
-
-**Figure 5. D17 execution flow: load, normalize, validate scope, match faults, compare results, and generate gap analysis.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-compare \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D17_commercial_tool_comparison
-echo "Running $DEMO"
-
-safeic-compare \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
-
-```text
-outputs/tool_comparison_summary.md
-outputs/input_scope_comparison.csv
-outputs/fault_model_comparison.csv
-outputs/fault_list_overlap.csv
-outputs/fault_outcome_correlation.csv
-outputs/dc_comparison_by_failure_mode.csv
-outputs/dc_comparison_by_endpoint.csv
-outputs/fmeda_row_comparison.csv
-outputs/residual_fit_comparison.csv
-outputs/traceability_comparison.csv
-outputs/methodology_gap_report.csv
-outputs/comparison_warnings.csv
-outputs/comparison_manifest.yaml
-```
-
----
-
-## 32. Example `fault_outcome_correlation.csv`
+A conceptual row may look like this:
 
 ```csv
-canonical_fault_key,internal_fault_id,commercial_fault_id,internal_outcome,commercial_outcome,correlation,review_reason
-toy_counter.count[0]|stuck_at_0,F001,A001,detected,detected,MATCH,
-toy_counter.count_parity|stuck_at_0,F003,A003,unsafe,detected,DISAGREE,commercial tool reports detection not seen in internal trace
-toy_counter.alarm|stuck_at_0,F004,A004,unsafe,unsafe,MATCH,
-toy_counter.hidden|stuck_at_0,,A010,,unsafe,COMMERCIAL_ONLY,not present in internal fault list
+closure_id,fault_id,outcome,root_cause_bucket,recommended_action,owner_role,revalidation_scope,closure_status
+CL-0007,F-0142,unresolved,STIMULUS_GAP,extend_vcd_activity,verification,affected_fault_subset,open
 ```
 
-This table is one of the most important D17 outputs.
-
----
-
-## 33. Example `dc_comparison_by_failure_mode.csv`
+Another row:
 
 ```csv
-failure_mode,internal_dc,commercial_dc,delta,status,comment
-FM_DATA_CORRUPTION,1.000,0.980,0.020,MATCH,within threshold
-FM_DIAGNOSTIC_STATE_CORRUPTION,0.000,0.500,-0.500,DISAGREE,outcome mismatch on diagnostic state faults
-FM_ALARM_NOT_ASSERTED,0.000,0.000,0.000,MATCH,both show uncovered alarm path
+closure_id,fault_id,outcome,root_cause_bucket,recommended_action,owner_role,revalidation_scope,closure_status
+CL-0012,F-0198,unsafe,SM_COVERAGE_GAP,improve_safety_mechanism,safety_architecture,affected_subpart,open
 ```
 
-This table identifies which failure modes require deeper review.
+The exact values are demo-specific. The principle is stable: every problematic outcome becomes an accountable action.
 
 ---
 
-## 34. Example `methodology_gap_report.csv`
+## 32. Closure Metrics
 
-```csv
-gap_id,category,severity,description,recommended_action
-G001,outcome_policy,MEDIUM,commercial tool counts secondary alarm as detected but internal policy does not,review secondary alarm policy
-G002,fault_scope,HIGH,commercial-only hidden-state faults are not in internal fault list,review fault list generation scope
-G003,dc_formula,MEDIUM,commercial DC includes safe faults while internal primary DC excludes them,do not compare global DC directly
-G004,traceability,LOW,commercial normalized data has no campaign log link,request traceability export if available
-```
-
-Gap reports are more useful than simple pass/fail comparison.
-
----
-
-## 35. Example `tool_comparison_summary.md`
-
-```md
-# D17 Commercial Tool Comparison Summary
-
-Design: toy_counter  
-Internal flow: internal_flow  
-Commercial reference: commercial_tool_a  
-
-## Scope Summary
-
-Top module: MATCH  
-Clock list: MATCH  
-Fault models: stuck-at and transient flip match  
-Commercial tool has additional hidden-state faults  
-
-## Fault List Overlap
-
-Internal faults: 5  
-Commercial faults: 6  
-Matched faults: 4  
-Internal-only faults: 1  
-Commercial-only faults: 2  
-
-## Outcome Correlation
-
-Matched outcomes: 3  
-Disagreements: 1  
-Commercial-only unsafe faults: 1  
-
-## Key Findings
-
-1. Both flows agree that alarm stuck-at-0 remains unsafe.
-2. The commercial flow reports diagnostic-state detection where the internal trace-based flow reports unsafe.
-3. DC values are not directly comparable where denominator policy differs.
-4. Additional commercial-only faults should be reviewed for internal fault-list expansion.
-
-## Recommended Actions
-
-1. Review diagnostic-state fault classification.
-2. Align secondary alarm policy.
-3. Expand internal fault list or justify scope difference.
-4. Compare residual FIT after scope alignment.
-```
-
-The summary should explain differences, not just show them.
-
----
-
-## 36. Validation Rules
-
-`safeic-compare` should validate:
+D17 can compute closure-oriented metrics:
 
 ```text
-comparison_config.yaml exists
-comparison_policy.yaml exists
-internal evidence package exists
-commercial normalized outputs exist
-required normalized tables exist
-canonical key fields exist
-outcome mapping is defined
-DC values are numeric and normalized
-FMEDA row keys are valid
-fault matching policy is valid
-comparison thresholds are valid
-tool labels are defined
+total_problem_items
+unsafe_count
+unresolved_count
+unresolved_fit_weight
+unsafe_fit_weight
+actions_by_type
+actions_by_owner_role
+actions_by_revalidation_scope
+open_high_priority_actions
+closure_ready_count
+waiver_review_count
+projected_residual_fit_after_actions
 ```
 
-Example messages:
+These are not final certification metrics. They are project management metrics for safety closure.
+
+---
+
+## 33. Prioritization by FIT Weight
+
+Not every unresolved fault has equal importance.
+
+D17 should prioritize by:
 
 ```text
-[PASS] internal package loaded
-[PASS] commercial normalized fault outcomes loaded
-[PASS] fault matching completed: 90 matched, 10 internal-only, 30 commercial-only
-[WARN] DC formula differs between flows
-[WARN] commercial tool includes fault model not enabled internally
-[ERROR] commercial normalized_fault_outcomes.csv missing outcome column
+FIT weight
+failure-mode severity
+part/sub-part criticality
+ASIL target
+alarm expectation
+stimulus feasibility
+SM implementation cost
+observability
+revalidation cost
 ```
 
-D17 should fail on malformed comparison data but warn on methodology differences.
-
----
-
-## 37. Common Mistakes
-
-### 37.1 Comparing DC Numbers Without Scope Alignment
-
-A global DC number is meaningless if the fault populations differ.
-
-### 37.2 Ignoring Fault Model Differences
-
-Different fault models produce different results.
-
-### 37.3 Treating Category Names as Equivalent
-
-One tool's "covered" may not equal another tool's "detected" unless policy confirms it.
-
-### 37.4 Ignoring Safe and Unresolved Handling
-
-DC formulas depend heavily on how safe and unresolved faults are handled.
-
-### 37.5 Comparing Raw Fault IDs Only
-
-Fault IDs may differ across tools.
-
-Use canonical keys and fallback matching.
-
-### 37.6 Declaring a Winner Too Early
-
-Tool comparison should produce correlation and gap analysis, not simplistic ranking.
-
-### 37.7 Publishing Proprietary Tool Outputs
-
-For public repositories, use normalized sample data or synthetic placeholders unless tool output sharing is allowed.
-
----
-
-## 38. How D17 Connects to Later Demos
-
-D17 creates the basis for credible comparison and external communication.
+A high-FIT unresolved fault in a safety-critical sub-part deserves more attention than a low-FIT unresolved fault in a non-critical debug path.
 
 ```mermaid
 flowchart LR
-    A[D17 Tool Comparison] --> B[D18 Dashboard / Website Demo]
-    A --> C[D19 CI Automation]
-    A --> D[D20 Public Methodology Package]
-    B --> E[Interactive Tool Comparison View]
-    C --> F[Automated Comparison Gate]
-    D --> G[Shareable Demo Repository]
+    A[FIT Weight] --> P[Priority]
+    B[ASIL / Safety Goal] --> P
+    C[Failure Mode Severity] --> P
+    D[SM Availability] --> P
+    E[Stimulus Feasibility] --> P
+    F[Revalidation Cost] --> P
 ```
 
-**Figure 6. D17 provides the comparison foundation for dashboards, automation, and public methodology demonstration.**
-
-A platform that can compare and explain results across flows is more credible than a platform that only reports its own numbers.
+Closure should be risk-driven, not row-count-driven.
 
 ---
 
-## 39. Recommended Implementation Stages
+## 34. Review Roles
 
-D17 can be implemented in stages.
+D17 action ownership should use roles, not personal names.
 
-### Stage 1: Normalized CSV Comparison
-
-Compare internal and commercial normalized CSV files.
-
-Deliverables:
+Typical roles:
 
 ```text
-input_scope_comparison.csv
-fault_list_overlap.csv
-dc_comparison_by_failure_mode.csv
-tool_comparison_summary.md
+safety_architecture
+design
+verification
+fault_campaign
+fmeda_owner
+tool_flow_owner
+system_safety
+project_review_board
 ```
 
-### Stage 2: Fault Outcome Correlation
-
-Match faults and compare outcomes.
-
-Deliverables:
-
-```text
-fault_outcome_correlation.csv
-comparison_warnings.csv
-```
-
-### Stage 3: FMEDA and Residual FIT Comparison
-
-Compare FMEDA rows and residual FIT.
-
-Deliverables:
-
-```text
-fmeda_row_comparison.csv
-residual_fit_comparison.csv
-```
-
-### Stage 4: Methodology Gap Report
-
-Explain differences caused by scope, policy, naming, and formulas.
-
-Deliverables:
-
-```text
-methodology_gap_report.csv
-```
-
-### Stage 5: Adapter Layer
-
-Add tool-specific adapters.
-
-Deliverables:
-
-```text
-adapters/
-normalized/
-```
-
-This staged approach makes D17 useful even before full commercial-report parsing exists.
+Role-based ownership keeps the demo public and reusable while still reflecting how real projects work.
 
 ---
 
-## 40. Summary
+## 35. Practical Closure Anti-Patterns
 
-Commercial tool comparison is a controlled correlation exercise.
-
-The D17 demo:
+D17 should explicitly avoid:
 
 ```text
-D17_commercial_tool_comparison
+treating unresolved as safe
+ignoring unsafe faults because the count is small
+crediting DC without alarm/observe evidence
+crediting late alarms without FTTI review
+removing observe points to improve metrics
+dropping high-FIT faults without rationale
+mixing count-based and FIT-weighted DC without labeling
+changing failure-mode mapping after seeing results without review
+claiming closure when actions are merely created
 ```
 
-introduces the generic tool:
-
-```text
-safeic-compare
-```
-
-The tool consumes:
-
-```text
-internal evidence package
-commercial normalized outputs
-comparison_config.yaml
-comparison_policy.yaml
-normalization policy
-```
-
-and generates:
-
-```text
-tool_comparison_summary.md
-tool_comparison_matrix.csv
-input_scope_comparison.csv
-fault_model_comparison.csv
-fault_list_overlap.csv
-fault_outcome_correlation.csv
-dc_comparison_by_failure_mode.csv
-dc_comparison_by_endpoint.csv
-fmeda_row_comparison.csv
-residual_fit_comparison.csv
-traceability_comparison.csv
-methodology_gap_report.csv
-comparison_warnings.csv
-comparison_manifest.yaml
-```
-
-The central lesson is:
-
-> Cross-tool comparison is meaningful only when design scope, fault model, classification categories, DC formulas, FMEDA mapping, and evidence traceability are made explicit. Agreement improves confidence; disagreement is valuable when it can be explained.
-
-D17 turns tool comparison from a vague benchmark into an engineering correlation workflow.
+Closure is a discipline. It is not a formatting exercise.
 
 ---
 
-## 41. D17 Demo Checklist
+## 36. What Good Looks Like
 
-For `D17_commercial_tool_comparison`, the expected deliverables are:
-
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/comparison_config.yaml
-[ ] inputs/comparison_policy.yaml
-
-[ ] inputs/internal/evidence_package/package_manifest.yaml
-[ ] inputs/internal/evidence_package/metrics/measured_dc_by_failure_mode.csv
-[ ] inputs/internal/evidence_package/metrics/measured_dc_by_endpoint.csv
-[ ] inputs/internal/evidence_package/metrics/measured_residual_fit.csv
-[ ] inputs/internal/evidence_package/fmeda/fmeda_table.csv
-[ ] inputs/internal/evidence_package/campaign/fault_outcomes.csv
-[ ] inputs/internal/evidence_package/policies/classification_policy.yaml
-[ ] inputs/internal/evidence_package/policies/measurement_policy.yaml
-
-[ ] inputs/commercial/tool_manifest.yaml
-[ ] inputs/commercial/normalized/normalized_design_scope.csv
-[ ] inputs/commercial/normalized/normalized_fault_model.csv
-[ ] inputs/commercial/normalized/normalized_fault_list.csv
-[ ] inputs/commercial/normalized/normalized_fault_outcomes.csv
-[ ] inputs/commercial/normalized/normalized_dc.csv
-[ ] inputs/commercial/normalized/normalized_fmeda.csv
-[ ] inputs/commercial/normalized/normalized_residual_fit.csv
-
-[ ] outputs/tool_comparison_summary.md
-[ ] outputs/tool_comparison_matrix.csv
-[ ] outputs/input_scope_comparison.csv
-[ ] outputs/fault_model_comparison.csv
-[ ] outputs/fault_list_overlap.csv
-[ ] outputs/fault_outcome_correlation.csv
-[ ] outputs/dc_comparison_by_failure_mode.csv
-[ ] outputs/dc_comparison_by_endpoint.csv
-[ ] outputs/fmeda_row_comparison.csv
-[ ] outputs/residual_fit_comparison.csv
-[ ] outputs/traceability_comparison.csv
-[ ] outputs/methodology_gap_report.csv
-[ ] outputs/comparison_warnings.csv
-[ ] outputs/comparison_manifest.yaml
-```
-
-A successful D17 run should answer:
+A strong D17 package lets a reviewer answer:
 
 ```text
-Are the two flows analyzing the same design scope?
-Are the fault models aligned?
-How much do the fault lists overlap?
-Which matched faults have the same outcome?
-Which matched faults disagree?
-Are DC values comparable under the same formula?
-Which failure modes show large DC differences?
-Which FMEDA rows differ?
-Which residual FIT differences matter most?
-Are differences caused by scope, policy, naming, or true methodology gaps?
-Which differences require engineering review?
-Can the comparison be safely included in a public methodology demo?
+How many unresolved faults remain?
+Why are they unresolved?
+Which ones are high FIT?
+Which failure modes do they affect?
+Which parts/sub-parts own the risk?
+Which actions are assigned?
+Which actions require rerun?
+Which issues are review-only?
+Which metrics may improve after action completion?
+Which evidence files support each decision?
 ```
+
+If these questions can be answered from the D17 artifacts, the closure flow is useful.
+
+---
+
+## 37. Summary
+
+D17 is the transition from campaign output to safety decision-making.
+
+It does not merely count faults. It organizes unresolved, unsafe, and weak evidence into an accountable closure system:
+
+```text
+fault outcome
+    -> root cause
+        -> closure action
+            -> revalidation scope
+                -> metric impact
+                    -> FMEDA traceability
+```
+
+That is the core of Diagnostic Coverage Closure.
+
+When D17 is done properly, unresolved faults are no longer vague leftovers. They become engineering tasks, review decisions, or revalidation inputs. Unsafe faults become explicit safety architecture actions. Residual FIT becomes traceable. FMEDA review becomes structured. Regression gating becomes possible.
+
+D17 is therefore one of the most important steps in turning a functional safety demo into a credible safety engineering workflow.
