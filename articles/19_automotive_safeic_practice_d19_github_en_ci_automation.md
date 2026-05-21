@@ -1,1661 +1,1090 @@
-# [Automotive Safe-IC Practice 19] CI Automation: From Manual Safety Runs to Reproducible Safety Regression Gates
+# Automotive Safe-IC Practice 19: Evidence Traceability — Unifying Reports, CSV, Common Database Sessions, and Logs
 
 **Author**: Darren H. Chen  
 **Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D19_ci_automation  
-**Tags**: Automotive Chip, Functional Safety, CI Automation, Safety Regression, Fault Injection, FMEDA, Diagnostic Coverage, Residual FIT, Evidence Package, Dashboard, Engineering Workflow
+**Demo**: `D19_evidence_traceability_reports_csv_fdb_logs`  
+**Tags**: Automotive Chip, Functional Safety, ISO 26262, Evidence Traceability, Common FuSa Database, FMEDA, Fault Campaign, Regression Gate, Audit, Safety Case, Artifact Index
 
 ---
 
-## 1. Why This Article Matters
+## 1. When safety evidence becomes too large to trust manually
 
-In the previous article, we turned safety evidence packages, reports, regression outputs, and comparison results into a dashboard and website demo.
+By the time a functional safety flow reaches D19, the project is no longer dealing with one report or one spreadsheet.
 
-D18 generated outputs such as:
+It has already accumulated evidence from input packaging, FIT setup, structural analysis, safety mechanism exploration, fault-list generation, simulation context preparation, alarm and observe-point definition, fault campaign setup, fault injection execution, outcome classification, final metric writeback, FMEDA modeling, top-down FMEDA review, diagnostic coverage closure, and regression gating.
 
-```text
-site/index.html
-site/assets/app.js
-site/assets/style.css
-site/data/dashboard_index.json
-site/data/overview_metrics.json
-site/data/fault_outcomes.json
-site/data/measured_dc.json
-site/data/fmeda_rows.json
-site/data/residual_fit.json
-site/data/review_items.json
-site/data/trend_summary.json
-site/data/tool_comparison.json
-site/data/traceability_links.json
-outputs/dashboard_build_summary.md
-outputs/dashboard_validation.csv
-outputs/dashboard_warnings.csv
-outputs/site_manifest.yaml
-```
+At this stage, the main difficulty is not only whether the numbers look acceptable. The harder question is whether the evidence behind those numbers is traceable.
 
-That makes the workflow visible and reviewable.
-
-However, an engineering platform should not rely only on manual execution.
-
-A real team eventually needs to ask:
-
-> Can the safety analysis flow be executed automatically whenever the design, configuration, fault list, or safety policy changes?
-
-The nineteenth demo in this repository is:
+A reviewer may ask:
 
 ```text
-D19_ci_automation
+Which input generated this metric?
+Which database session contains this fault population?
+Which campaign result supports this diagnostic coverage value?
+Which FMEDA row used this residual FIT?
+Which closure action explains this unresolved fault?
+Which regression rule consumed this artifact?
+Which file should be archived for audit?
 ```
 
-The generic tool introduced in this article is:
+If the team cannot answer these questions quickly, the safety flow is still fragile.
 
-```text
-safeic-ci
-```
+D19 turns scattered reports, CSV tables, database sessions, logs, dashboards, and handoff files into a unified evidence traceability layer.
 
-The purpose of `safeic-ci` is to orchestrate the previous safety-analysis steps in a repeatable CI-style flow:
-
-```text
-input package validation
-static preflight
-fault list generation
-campaign execution or emulation
-fault outcome classification
-measured DC computation
-FMEDA update
-evidence package generation
-safety report generation
-regression comparison
-dashboard refresh
-CI gate decision
-artifact archiving
-```
-
-and generate:
-
-```text
-ci_summary.md
-ci_status.csv
-ci_gate_result.json
-ci_stage_status.csv
-ci_artifact_index.csv
-ci_warnings.csv
-ci_failure_reasons.csv
-ci_run_manifest.yaml
-```
-
-The central idea is:
-
-> CI automation turns the safety workflow from a manual demo sequence into a repeatable engineering gate. The gate does not prove the design is safe, but it prevents safety evidence from silently regressing.
+It does not create a new safety metric. It creates the index that makes the existing metrics believable.
 
 ---
 
-## 2. Where D19 Fits in the Flow
+## 2. D19 position in the 20-demo flow
 
-D19 is the automation layer over the previous demos.
-
-```mermaid
-flowchart LR
-    A[D01-D13 Analysis Steps] --> B[D14 Evidence Package]
-    B --> C[D15 Safety Report]
-    C --> D[D16 Regression]
-    D --> E[D18 Dashboard]
-    F[CI Config] --> G[D19 CI Automation]
-    G --> A
-    G --> B
-    G --> C
-    G --> D
-    G --> E
-    G --> H[CI Gate Result]
-```
-
-**Figure 1. D19 orchestrates the earlier analysis, reporting, regression, and dashboard steps into a CI-style workflow.**
-
-Earlier demos answered:
-
-```text
-How do we build evidence?
-How do we report evidence?
-How do we track regression?
-How do we visualize evidence?
-```
-
-D19 answers:
-
-```text
-How do we run this flow repeatedly?
-Which stages passed, warned, or failed?
-Which artifacts were generated?
-Which warnings should block the CI gate?
-Which warnings should only be reported?
-Can the dashboard be refreshed automatically?
-Can results be archived for later comparison?
-```
-
-This is where the workflow starts to look like a continuous engineering system.
-
----
-
-## 3. CI Automation Is Not Certification
-
-A CI gate is not a safety certification gate.
-
-It does not prove:
-
-```text
-the design is ISO 26262 compliant
-the safety case is complete
-the safety mechanism is sufficient
-the product is ready for release
-```
-
-It can prove something narrower but very useful:
-
-```text
-the configured analysis flow ran
-required artifacts were produced
-metrics were parsed
-regression checks were executed
-high-severity regressions were detected
-evidence package was generated
-report and dashboard were refreshed
-```
+D19 sits after the regression gate and before the final end-to-end mini flow.
 
 ```mermaid
 flowchart TD
-    A[CI Automation] --> B[Repeatability]
-    A --> C[Artifact Completeness]
-    A --> D[Regression Detection]
-    A --> E[Evidence Refresh]
-    A -. does not prove .-> F[Final Safety Signoff]
+    D13[D13 Fault Outcome Classification] --> D14[D14 Final Metrics]
+    D14 --> D15[D15 FMEDA Data Model]
+    D15 --> D16[D16 Top-down FMEDA Flow]
+    D16 --> D17[D17 Diagnostic Coverage Closure]
+    D17 --> D18[D18 Regression Gate]
+    D18 --> D19[D19 Evidence Traceability]
+    D19 --> D20[D20 End-to-End Mini Flow]
 ```
 
-**Figure 2. CI automation improves repeatability and regression detection, but it does not replace formal safety review.**
+D18 decides whether the current safety state is acceptable under a policy. D19 explains where that decision came from.
 
-This distinction must be explicit in any public or internal report.
+D19 consumes the gate outputs from D18, but it also looks back into D13 through D17, and in a mature flow it can index evidence from D01 through D12 as well.
+
+Its purpose is to create a queryable evidence map:
+
+```text
+artifact -> producer -> consumer -> metric -> rule -> decision -> review action
+```
+
+This is the bridge between engineering automation and safety review.
 
 ---
 
-## 4. Why CI Matters for Functional Safety Workflows
+## 3. Evidence traceability is not just file collection
 
-Without CI automation, safety artifacts often become stale.
-
-Common problems:
+A common mistake is to treat evidence traceability as a folder-copy problem:
 
 ```text
-RTL changed but fault list was not regenerated
-fault list changed but campaign was not rerun
-campaign reran but fault outcomes were not reclassified
-measured DC changed but FMEDA was not updated
-FMEDA changed but evidence package was not rebuilt
-report was not regenerated
-dashboard shows old values
-regression comparison uses an old baseline
+copy all reports into archive/
+zip the output directory
+attach it to the review ticket
 ```
 
-CI automation reduces these gaps by defining a controlled dependency chain.
+That is useful, but it is not traceability.
+
+Traceability requires relationships.
+
+For example, a CSV row saying `unresolved_detail_fault_count = 7` is only useful if we can answer:
+
+```text
+Which fault outcome file contributed the number?
+Was the number derived from detail rows or aggregate rows?
+Which closure action owns each unresolved item?
+Which rule used the number?
+Was the rule warning, failing, or passing?
+Was a waiver applied?
+Which database session can reproduce the detail report?
+```
+
+D19 therefore treats every artifact as a node and every dependency as an edge.
+
+A directory contains files. A traceability layer contains meaning.
+
+---
+
+## 4. Core vocabulary
+
+Before designing D19, the terms must be precise.
+
+| Term | Meaning in D19 |
+|---|---|
+| Artifact | Any file or database session used as evidence, such as CSV, Markdown, JSON, report, waveform list, configuration, or log |
+| Artifact identity | Stable identifier for an artifact, usually based on path, producer stage, type, hash, and logical role |
+| Provenance | Information describing where an artifact came from and what produced it |
+| Consumer | A downstream stage, rule, metric, review packet, or dashboard that uses an artifact |
+| Common database session | A database partition addressed as `<database_file>::<session_name>` |
+| Manifest | A structured list describing files, sessions, roles, and dependencies |
+| Lineage | The chain of upstream artifacts that contributed to a downstream artifact |
+| Evidence confidence | Classification of whether the artifact is synthetic, review-level, tool-parsed, tool-generated, or signoff-candidate |
+| Freshness | Whether an artifact still matches the design/configuration context it claims to represent |
+| Trace edge | A relationship such as `generated_from`, `consumed_by`, `supports_metric`, `supports_rule`, or `requires_review` |
+
+Without these terms, evidence management becomes inconsistent across teams.
+
+---
+
+## 5. The evidence graph mental model
+
+D19 can be understood as building a graph.
 
 ```mermaid
 flowchart LR
-    A[Design Change] --> B[Preflight]
-    B --> C[Fault List]
-    C --> D[Campaign]
-    D --> E[Outcome Classification]
-    E --> F[Measured DC]
-    F --> G[FMEDA]
-    G --> H[Evidence Package]
-    H --> I[Report]
-    I --> J[Regression Gate]
-    J --> K[Dashboard]
+    A[Input Manifest] --> B[Fault List]
+    B --> C[Fault Campaign Result]
+    C --> D[Outcome Classification]
+    D --> E[Final Metrics]
+    E --> F[FMEDA Row]
+    F --> G[Closure Action]
+    G --> H[Regression Rule]
+    H --> I[CI Decision]
+    E --> J[Common Database Session]
+    C --> J
+    J --> K[Native Report]
 ```
 
-**Figure 3. CI automation keeps safety artifacts synchronized with design and policy changes.**
+The graph is not only useful for visualization. It enables practical queries:
 
-The key value is not speed alone.
+```text
+Show all artifacts supporting this gate failure.
+Show every output derived from this fault campaign session.
+Show every FMEDA row affected by this unresolved fault.
+Show whether this database session has a matching exported report.
+Show whether this closure action has enough evidence to be accepted.
+```
 
-The key value is preventing hidden evidence drift.
+A strong traceability graph turns a safety flow into an auditable system.
 
 ---
 
-## 5. CI Orchestration vs Individual Tools
+## 6. D19 should not change safety semantics
 
-Earlier demos introduced individual tools:
+D19 is an evidence indexing stage.
 
-```text
-safeic-input
-safeic-fit
-safeic-struct
-safeic-dc
-safeic-faultgen
-safeic-vcd
-safeic-campaign
-safeic-classify
-safeic-measdc
-safeic-fmeda
-safeic-evidence
-safeic-report
-safeic-regress
-safeic-compare
-safeic-dashboard
-```
-
-D19 introduces an orchestration tool:
+It should not:
 
 ```text
-safeic-ci
+reclassify detected/safe/unsafe/unresolved faults
+change residual FIT
+edit FMEDA rows
+approve or reject waivers
+close diagnostic coverage actions
+rerun the full fault campaign
+replace the regression gate decision
 ```
 
-`safeic-ci` should not duplicate the logic of all tools.
+Those responsibilities belong to earlier stages.
 
-It should:
+D19 can flag inconsistencies. It can report missing links. It can mark stale evidence. It can point reviewers to the exact source files.
 
-```text
-load CI configuration
-determine which stages to run
-execute each stage
-capture logs
-collect exit codes
-validate artifacts
-evaluate gate policy
-summarize results
-archive artifacts
-```
+But it should not quietly alter the safety conclusion.
 
-This separation keeps each tool focused and makes CI behavior easier to debug.
+This separation is important. If traceability tooling changes the evidence itself, review becomes difficult because the index is no longer a neutral view.
 
 ---
 
-## 6. CI Stages
+## 7. Input contract from D18
 
-A practical D19 CI flow can be split into stages:
+D18 is the immediate upstream owner of the regression gate decision. D19 should treat D18 as the primary gate evidence source.
 
-```text
-stage_00_environment_check
-stage_01_input_preflight
-stage_02_static_analysis
-stage_03_fault_list_generation
-stage_04_campaign_execution
-stage_05_fault_classification
-stage_06_measured_dc
-stage_07_fmeda_update
-stage_08_evidence_package
-stage_09_report_generation
-stage_10_regression_check
-stage_11_dashboard_build
-stage_12_archive
-stage_13_gate_decision
-```
-
-Each stage should produce:
+Typical D18 inputs include:
 
 ```text
-status
-start time
-end time
-duration
-command
-log file
-expected artifacts
-actual artifacts
-warnings
-errors
+regression_input_manifest.csv
+current_safety_metric_snapshot.csv
+safety_metric_delta.csv
+gate_rule_evaluation.csv
+regression_gate_results.csv
+waiver_application.csv
+evidence_freshness_check.csv
+common_fusa_db_gate_session_manifest.csv
+safa_db_session_enabled_for_report.csv
+safa_tool_report_status.csv
+ci_status.json
+regression_gate_dashboard.md
+release_readiness_summary.md
+d18_handoff_to_d19.csv
 ```
 
-Example:
+D19 does not need to understand every internal calculation in D18. It needs to know:
+
+```text
+which metrics were evaluated
+which rules consumed those metrics
+which artifacts supplied those metrics
+which database sessions were referenced
+which optional native reports were generated
+which gate decision was published
+```
+
+This makes D19 a traceability expansion layer, not a second regression gate.
+
+---
+
+## 8. Looking back beyond D18
+
+Although D18 is the immediate upstream stage, D19 should not stop at D18.
+
+It should also index major evidence from:
+
+```text
+D13: fault outcome classification, unresolved/unsafe/detail outcome tables
+D14: final metrics, result writeback manifests, database session references
+D15: FMEDA rows, residual FIT tables, failure-mode evidence links
+D16: top-down part/sub-part rollup, review workbook, assumption register
+D17: closure issue register, action plan, disposition table, dashboard
+D18: rule evaluation, CI status, gate dashboard, database session report status
+```
+
+A practical D19 flow can start with D13-D18 because those stages are closest to the safety decision.
+
+Later, it can expand toward D01-D12 to cover input files, configuration, VCD context, alarm lists, observe points, and campaign setup packages.
+
+---
+
+## 9. Artifact classes in D19
+
+D19 should classify artifacts. Classification prevents all files from being treated equally.
+
+| Artifact Class | Examples | Review Meaning |
+|---|---|---|
+| Configuration | filelists, clock definitions, initialization files, policy files | Defines analysis or execution intent |
+| Source boundary | RTL lists, top module, endpoint maps, safety mechanism maps | Defines design and safety scope |
+| Campaign input | fault list, VCD list, alarm list, observe points, FTTI plan | Defines what was executed and observed |
+| Campaign output | raw result reports, campaign result database sessions | Defines observed behavior under fault injection |
+| Metric output | final metrics, residual FIT, diagnostic coverage tables | Defines safety metric values |
+| FMEDA model | part/sub-part/failure-mode rows, SM mapping, rollup tables | Defines safety argument structure |
+| Closure evidence | issue register, action plan, disposition, waiver evaluation | Defines risk convergence state |
+| Gate evidence | rule evaluation, CI status, dashboard, policy | Defines regression decision |
+| Native database evidence | `.fdb::session` references and exported session reports | Defines tool-backed persistent evidence |
+| Logs | command transcript, warning summary, execution status | Defines reproducibility and diagnostics |
+
+This classification lets D19 ask different questions for different artifact types.
+
+A missing README may be low risk. A missing outcome classification table may block evidence trust.
+
+---
+
+## 10. Common database session traceability
+
+A functional safety platform may store analysis, fault-list, campaign, and metric evidence in a common database.
+
+A database session reference has the form:
+
+```text
+<database_file>::<session_name>
+```
+
+For example, conceptually:
+
+```text
+toy_counter.fdb::fault_list
+toy_counter.fdb::final_metrics
+toy_counter.fdb::campaign_results
+```
+
+The important point is not the spelling of a particular session. The important point is that the database file and the session name together form an evidence address.
+
+D19 should index database session references as first-class artifacts.
+
+A database session record should include:
+
+```text
+session_id
+database_file
+session_name
+session_role
+source_stage
+exists
+exported_report_path
+report_extraction_status
+consumer_artifacts
+confidence_level
+```
+
+This avoids a common problem: a CSV says it came from a database, but nobody knows which session was used.
+
+---
+
+## 11. Reports and exported database views
+
+Database sessions are powerful, but reviewers often need text or table exports.
+
+Therefore D19 should distinguish between:
+
+```text
+native database session
+exported report derived from the session
+normalized CSV derived from the report
+metric row derived from the CSV
+rule result derived from the metric row
+```
+
+These are not the same artifact.
+
+A trace chain may look like:
+
+```text
+Common DB session
+  -> exported fault report
+  -> parsed outcome summary
+  -> normalized metric snapshot
+  -> gate rule evaluation
+  -> CI decision
+```
+
+If any link is missing, the final decision may still exist, but the evidence chain is incomplete.
+
+---
+
+## 12. CSV normalization and row-level traceability
+
+CSV files are convenient, but they create traceability problems when rows are copied, aggregated, or renamed.
+
+D19 should not only index CSV files. It should index important CSV rows.
+
+For example:
 
 ```csv
-stage,status,duration_sec,log,artifacts
-stage_05_fault_classification,PASS,3.2,logs/stage_05.log,outputs/D11/fault_outcomes.csv
-stage_10_regression_check,WARN,1.1,logs/stage_10.log,outputs/D16/regression_alerts.csv
-stage_13_gate_decision,FAIL,0.2,logs/stage_13.log,outputs/ci_gate_result.json
+row_trace_id,source_artifact,row_key,row_role,downstream_artifact,downstream_row_key
+TRACE_ROW_0001,closure_action_plan.csv,D17-ACTION-0001,closure_action,gate_rule_evaluation.csv,GATE_DETAIL_UNRESOLVED
+TRACE_ROW_0002,current_safety_metric_snapshot.csv,unresolved_detail_fault_count,metric,ci_status.json,key_metrics.unresolved_detail_fault_count
 ```
 
-The stage model makes the CI run reviewable.
+Row-level traceability is especially important when aggregate and detail rows coexist.
+
+In a safety flow, a rollup row saying `unresolved_count = 7` should not be confused with seven individual unresolved fault rows.
+
+D19 should preserve that distinction.
 
 ---
 
-## 7. Stage Status Model
+## 13. Logs are evidence, but not all log lines are equal
 
-A useful CI status model:
+Logs are often large and noisy.
+
+A useful D19 flow should not simply archive logs without structure. It should classify log evidence.
+
+Useful log categories include:
 
 ```text
-PASS
-WARN
-FAIL
-SKIP
-BLOCKED
-NOT_RUN
+execution command
+start and end time
+exit status
+tool version
+input database session
+output directory
+known benign warning
+review warning
+fatal error
+message summary
+resource usage
 ```
 
-Definitions:
+A log line that records a tool version has a different evidence role from a log line that reports a fatal database error.
+
+D19 can produce a `log_catalog.csv` such as:
+
+```csv
+log_id,source_stage,log_path,log_role,exit_status,error_count,warning_count,tool_version_detected,linked_artifact
+LOG_0001,D18,outputs/native_status/report_fault_list.log,native_report,0,0,0,yes,DB_SESSION_fault_list
+```
+
+This allows reviewers to inspect important diagnostics without reading every line.
+
+---
+
+## 14. Artifact identity and hashing
+
+A traceability system must distinguish files by content, not only by name.
+
+File names can stay the same while contents change.
+
+A robust artifact identity should include:
 
 ```text
-PASS:
-  stage completed and required artifacts exist
-
-WARN:
-  stage completed but warnings were found
-
-FAIL:
-  stage failed or required artifacts are missing
-
-SKIP:
-  stage intentionally skipped by configuration
-
-BLOCKED:
-  stage was not run because an earlier required stage failed
-
-NOT_RUN:
-  stage was not scheduled or not reached
+artifact_id
+logical_name
+path
+artifact_class
+producer_stage
+file_size
+sha256
+modified_time
+source_hashes
+role
+confidence_level
 ```
 
-This is better than binary pass/fail because safety analysis often produces review-worthy warnings that should not always block early exploratory flows.
-
----
-
-## 8. CI Gate Result
-
-The final CI gate should be explicit.
-
-Suggested gate statuses:
+The hash is not only for integrity. It also helps answer:
 
 ```text
-PASS
-PASS_WITH_WARNINGS
-FAIL
-MANUAL_REVIEW_REQUIRED
+Did this report change since the last review?
+Is the current dashboard based on the same rule table?
+Did two output directories contain identical evidence?
+Was a database report regenerated or reused?
 ```
 
-Example:
-
-```json
-{
-  "gate": "MANUAL_REVIEW_REQUIRED",
-  "reason": "high-severity review item remains open",
-  "failed_stages": [],
-  "warning_stages": ["stage_10_regression_check"],
-  "critical_alerts": 0,
-  "high_alerts": 1,
-  "manual_review_items": 2
-}
-```
-
-A `MANUAL_REVIEW_REQUIRED` result is useful.
-
-It means the automation completed, but engineering judgement is required before accepting the evidence.
+For database sessions, the session reference can be hashed together with the exported report if a direct database content hash is not available.
 
 ---
 
-## 9. CI Gate Policy
+## 15. Provenance records
 
-D19 should be controlled by a gate policy file.
+Provenance describes where evidence came from.
 
-Example:
-
-```yaml
-ci_gate_policy:
-  fail_on:
-    - missing_required_artifact
-    - stage_failure
-    - critical_regression_alert
-    - detected_to_unsafe
-    - residual_fit_increase_above_fail_threshold
-    - private_data_leak_detected
-
-  manual_review_on:
-    - high_regression_alert
-    - measured_dc_lower_than_estimated
-    - new_unsafe_fault
-    - unresolved_ratio_above_threshold
-    - policy_changed_with_metric_change
-    - high_severity_review_item_open
-
-  warn_on:
-    - low_confidence_metric
-    - small_sample_size
-    - public_demo_limitation
-    - non_blocking_dashboard_warning
-
-  allow_skip:
-    - commercial_tool_comparison
-    - dashboard_build
-```
-
-This keeps the CI decision reproducible.
-
-The same evidence should not pass or fail depending on who manually reads the logs.
-
----
-
-## 10. CI Configuration
-
-A CI configuration defines what to run.
-
-Example `ci_config.yaml`:
-
-```yaml
-ci:
-  name: toy_counter_safety_ci
-  mode: public_demo
-  top_module: toy_counter
-  run_id: auto
-
-stages:
-  input_preflight: true
-  static_analysis: true
-  fault_list_generation: true
-  campaign_execution: true
-  fault_classification: true
-  measured_dc: true
-  fmeda_update: true
-  evidence_package: true
-  report_generation: true
-  regression_check: true
-  commercial_tool_comparison: false
-  dashboard_build: true
-  archive: true
-
-execution:
-  shell: csh
-  stop_on_stage_failure: false
-  continue_after_warning: true
-  max_runtime_minutes: 60
-
-artifacts:
-  root: ci_runs
-  retain_last_n: 10
-```
-
-This file makes the pipeline explicit.
-
-Different profiles can use different stage sets.
-
----
-
-## 11. CI Profiles
-
-Suggested profiles:
+A useful provenance record answers:
 
 ```text
-public_demo
-developer_quick
-nightly_full
-pre_release
-customer_demo
-internal_review
+Who produced this artifact?
+Which stage produced it?
+Which inputs were consumed?
+Which configuration was used?
+Which tool family produced or exported it?
+Which downstream stage consumed it?
 ```
 
-Example:
+A simple provenance table may look like:
 
-```yaml
-profiles:
-  developer_quick:
-    campaign_execution: emulation
-    regression_check: true
-    dashboard_build: false
-
-  nightly_full:
-    campaign_execution: real_or_large_sample
-    regression_check: true
-    dashboard_build: true
-    archive: true
-
-  public_demo:
-    campaign_execution: emulation
-    commercial_tool_comparison: synthetic_normalized_data
-    dashboard_build: true
-    sanitize_outputs: true
+```csv
+artifact_id,producer_stage,producer_role,input_artifacts,output_artifact,confidence_level
+ART_D18_RULES,D18,rule_evaluator,"ART_D17_ACTIONS;ART_D18_POLICY",outputs/gate_rule_evaluation.csv,review_level
+ART_DB_KS_REPORT,D18,database_report_exporter,"DB_SESSION_KS_RESULTS",outputs/native_reports/campaign_result_report.txt,tool_generated
 ```
 
-Profiles let the same architecture support different use cases.
-
-A public demo should not run the same way as an internal full campaign.
+The table does not need to expose private command names. It only needs to expose engineering intent and artifact relationships.
 
 ---
 
-## 12. Trigger Conditions
+## 16. Trace edge types
 
-CI can be triggered by changes in:
+D19 should make relationships explicit.
+
+Useful edge types include:
+
+| Edge Type | Meaning |
+|---|---|
+| `generated_from` | Artifact was generated from one or more upstream artifacts |
+| `consumed_by` | Artifact was used by a downstream stage |
+| `supports_metric` | Artifact provides evidence for a metric |
+| `supports_rule` | Artifact provides evidence for a gate rule |
+| `supports_closure` | Artifact provides evidence for a closure action |
+| `derived_from_session` | Report or CSV was derived from a database session |
+| `has_native_report` | Database session has an exported report |
+| `requires_review` | Artifact or row needs human disposition |
+| `supersedes` | Artifact replaces an earlier artifact |
+| `stale_with_respect_to` | Artifact is older or incompatible with a dependency |
+
+A traceability graph becomes useful when edge types are disciplined.
+
+Without edge types, everything becomes a generic hyperlink.
+
+---
+
+## 17. Safety goal to FMEDA row trace
+
+FMEDA evidence is not only a spreadsheet problem.
+
+A failure mode row should trace to:
 
 ```text
-RTL files
-testbench files
-fault policies
-classification policies
-measurement policies
-FMEDA seed table
-tool scripts
-dashboard templates
-report templates
-comparison configuration
+safety goal or safety requirement
+part and sub-part
+failure mode
+safety mechanism
+endpoint or instance boundary
+diagnostic coverage evidence
+residual FIT evidence
+review status
+closure action if open
 ```
 
-Example trigger logic:
-
-```yaml
-triggers:
-  rtl_changed:
-    run:
-      - input_preflight
-      - fault_list_generation
-      - campaign_execution
-      - fault_classification
-      - measured_dc
-      - fmeda_update
-      - evidence_package
-      - regression_check
-
-  report_template_changed:
-    run:
-      - report_generation
-      - dashboard_build
-
-  dashboard_template_changed:
-    run:
-      - dashboard_build
-```
-
-This avoids unnecessary reruns.
-
-It also makes dependency reasoning clear.
-
----
-
-## 13. Dependency Graph
-
-D19 should model dependencies between stages.
-
-Example:
+D19 can model this as:
 
 ```mermaid
-flowchart TD
-    A[input_preflight] --> B[static_analysis]
-    B --> C[fault_list_generation]
-    C --> D[campaign_execution]
-    D --> E[fault_classification]
-    E --> F[measured_dc]
-    F --> G[fmeda_update]
-    G --> H[evidence_package]
-    H --> I[report_generation]
-    H --> J[regression_check]
-    I --> K[dashboard_build]
-    J --> K
-    K --> L[archive]
-    L --> M[gate_decision]
+flowchart LR
+    SG[Safety Goal] --> FM[Failure Mode]
+    FM --> PART[Part/Sub-part]
+    FM --> SM[Safety Mechanism]
+    SM --> EP[Endpoint/Instance]
+    EP --> METRIC[Diagnostic Coverage / Residual FIT]
+    METRIC --> ACTION[Closure Action]
+    ACTION --> GATE[Regression Gate Rule]
 ```
 
-**Figure 4. A CI dependency graph prevents stale downstream artifacts.**
+Even when an early demo uses simplified safety goals, the traceability structure should already be clear.
 
-If `campaign_execution` fails, later stages may be blocked or run in partial mode depending on policy.
+A future project can then replace toy evidence with production IP evidence without redesigning the trace model.
 
 ---
 
-## 14. Partial CI Runs
+## 18. Fault campaign trace
 
-A CI run may be partial.
+Fault campaign evidence needs a different trace model.
+
+A fault outcome should trace to:
+
+```text
+fault id
+fault site
+fault type
+fault campaign package
+simulation context
+alarm set
+observe point set
+FTTI policy
+raw campaign result
+classification result
+final metric row
+closure action if unresolved or unsafe
+```
+
+This chain is important because a detected fault is not simply a count. It is detected under a specific observation policy.
+
+If the alarm list changes, the meaning of detected changes.
+
+If the VCD changes, activation and propagation behavior may change.
+
+If the observe point changes, safe and unsafe classification boundaries may change.
+
+D19 should preserve those dependencies.
+
+---
+
+## 19. Metric trace: from final metrics to gate rules
+
+Metrics should not float by themselves.
+
+A metric trace should include:
+
+```text
+metric_name
+metric_value
+metric_unit
+scope
+source_artifact
+source_row
+source_database_session
+confidence_level
+consumer_rule
+consumer_dashboard
+current_gate_result
+```
+
+For example:
+
+```text
+residual_fit_total
+  <- final metric table
+  <- database session export
+  -> metric snapshot
+  -> residual FIT gate rule
+  -> CI decision
+```
+
+This lets reviewers understand not only the value, but also how the value influenced the decision.
+
+A metric that is never consumed by a rule may still be useful, but it should not be mistaken for a gate driver.
+
+---
+
+## 20. Closure and waiver trace
+
+D17 and D18 introduce closure actions and waivers.
+
+D19 should connect them to evidence.
+
+A closure action should trace to:
+
+```text
+source issue
+source artifact
+owner role
+expected evidence
+current disposition
+affected failure mode
+affected fault or metric
+next validation step
+```
+
+A waiver should trace to:
+
+```text
+waiver id
+linked rule
+linked issue
+justification
+owner
+approver
+expiration
+supporting evidence
+status
+```
+
+The distinction matters:
+
+```text
+closure action -> issue must be resolved
+waiver -> issue is accepted under controlled conditions
+```
+
+D19 should keep both visible.
+
+Hidden waivers are dangerous because they make a gate look cleaner than it is.
+
+---
+
+## 21. Regression gate trace
+
+D18 produces a gate decision such as PASS, WARN, FAIL, or BLOCK.
+
+D19 should explain the decision.
+
+For each rule, D19 should link:
+
+```text
+rule_id
+rule_type
+metric_id
+observed value
+expected value
+rule result
+severity
+source metric artifact
+source closure artifact
+waiver if applied
+CI status field
+review dashboard section
+```
+
+This enables a useful review question:
+
+```text
+Why did the gate warn or fail?
+```
+
+The answer should not require reading scripts.
+
+It should be visible in the traceability index.
+
+---
+
+## 22. Evidence confidence levels
+
+Not all evidence has the same maturity.
+
+D19 should classify confidence levels.
+
+Suggested labels:
+
+| Confidence Level | Meaning |
+|---|---|
+| `synthetic` | Artificial demo data or template-only data |
+| `review_level` | Structured engineering review data, not directly generated by native analysis execution |
+| `tool_parsed` | Parsed from native reports or database exports |
+| `tool_generated` | Generated directly by a functional safety tool run or database report utility |
+| `signoff_candidate` | Tool-generated and reviewed under controlled project policy |
+
+A development flow may accept review-level evidence. A release flow may require tool-generated or signoff-candidate evidence.
+
+D19 does not decide the release policy, but it must expose the evidence confidence so that D18 and D20 can make honest claims.
+
+---
+
+## 23. Freshness and staleness
+
+Evidence can become stale even when the file still exists.
 
 Examples:
 
 ```text
-report-only rerun
-dashboard-only rebuild
-regression-only comparison
-preflight-only check
-fault-classification rerun
+A fault list was generated from an old safety mechanism map.
+A VCD was generated before the latest RTL change.
+A final metric table was generated before the current outcome classification.
+A closure dashboard was generated before a new unresolved issue appeared.
+A database session was exported, but the exported report no longer matches the current session reference.
 ```
 
-Partial runs are useful because not every change requires a full campaign.
+D19 should include a freshness check.
 
-But partial runs must be labeled.
+A simple first version can compare:
 
-Example:
+```text
+file hash
+file modified time
+producer stage order
+input manifest hash
+known dependency list
+```
+
+A stronger version can use design fingerprints.
+
+The goal is not to invent perfect proof. The goal is to prevent obviously stale evidence from passing unnoticed.
+
+---
+
+## 24. Deduplication and canonicalization
+
+Evidence manifests often contain duplicate references.
+
+Common examples:
+
+```text
+the same database session appears in D14, D15, D17, and D18 manifests
+a session reference appears once as db_file + session_name and once as full db::session string
+a relative path and absolute path point to the same file
+a review-only mirror session is not a real executable database session
+a copied artifact appears in both inputs/from_D17 and outputs/archive
+```
+
+D19 should canonicalize evidence references.
+
+Canonicalization may include:
+
+```text
+normalizing paths
+removing quotes and formatting noise
+splitting `<db>::<session>` correctly
+removing duplicate rows
+separating real execution sessions from review-only references
+linking copies back to their original artifact
+```
+
+This is especially important for database session traceability.
+
+If duplicate or malformed session references enter the graph, downstream evidence reports become confusing.
+
+---
+
+## 25. A practical D19 architecture
+
+D19 can be organized in four layers.
+
+```mermaid
+flowchart TD
+    A[Evidence Collectors] --> B[Normalizer]
+    B --> C[Trace Graph Builder]
+    C --> D[Index Publisher]
+    C --> E[Dashboard Builder]
+    D --> F[CSV/JSON Evidence Index]
+    E --> G[Markdown Review Dashboard]
+```
+
+The layers are:
+
+```text
+collector layer       -> gather upstream manifests, reports, CSV, JSON, logs, database references
+normalization layer   -> clean paths, classify artifacts, hash files, canonicalize sessions
+trace graph layer     -> create artifact nodes and dependency edges
+publisher layer       -> write index tables, dashboards, handoff files, and archive manifests
+```
+
+This architecture keeps D19 extensible.
+
+Adding a new upstream artifact should only require a new collector or mapping rule, not a rewrite of the whole flow.
+
+---
+
+## 26. Evidence index tables
+
+D19 should produce several machine-readable tables.
+
+Recommended core outputs:
+
+```text
+artifact_catalog.csv
+artifact_hash_manifest.csv
+artifact_provenance.csv
+traceability_edge_list.csv
+traceability_node_list.csv
+common_db_session_index.csv
+native_report_index.csv
+csv_row_trace_index.csv
+metric_evidence_trace.csv
+closure_evidence_trace.csv
+gate_decision_trace.csv
+log_catalog.csv
+evidence_freshness_report.csv
+evidence_gap_report.csv
+evidence_dashboard.md
+d19_quality_gate.csv
+d19_handoff_to_d20.csv
+```
+
+These are not just administrative outputs. They define how the evidence package can be reviewed.
+
+A reviewer should be able to start from a gate rule, follow it to a metric, follow the metric to a source CSV, follow the CSV to a database session export, and then follow the session back to the campaign stage.
+
+---
+
+## 27. Example artifact catalog schema
+
+A useful `artifact_catalog.csv` may include:
 
 ```csv
-run_id,profile,run_type,status
-ci_001,public_demo,full_flow,PASS_WITH_WARNINGS
-ci_002,public_demo,dashboard_only,PASS
-ci_003,developer_quick,preflight_only,PASS
+artifact_id,logical_name,artifact_class,producer_stage,path,exists,sha256,size_bytes,confidence_level,primary_role
+ART_0001,D18 gate rule evaluation,gate_evidence,D18,outputs/gate_rule_evaluation.csv,yes,<hash>,12345,review_level,rule_table
+ART_0002,Campaign result database session,database_session,D14,toy_counter.fdb::campaign_results,yes,<session-hash>,,tool_generated,campaign_result
+ART_0003,Closure action plan,closure_evidence,D17,outputs/closure_action_plan.csv,yes,<hash>,6789,review_level,closure_actions
 ```
 
-A report generated from a partial run should not be confused with a full safety-analysis update.
-
----
-
-## 15. Artifact Management
-
-CI should store artifacts in a structured run directory.
-
-Suggested structure:
+The exact column names can evolve, but the intent should stay stable:
 
 ```text
-ci_runs/
-  ci_2026_05_12_001/
-    ci_run_manifest.yaml
-    ci_status.csv
-    ci_gate_result.json
-    logs/
-      stage_01_input_preflight.log
-      stage_02_static_analysis.log
-      ...
-    artifacts/
-      D11_fault_outcomes/
-      D12_measured_dc/
-      D13_fmeda/
-      D14_evidence_package/
-      D15_report/
-      D16_regression/
-      D18_dashboard/
-    summaries/
-      ci_summary.md
-      safety_report_summary.md
-      regression_summary.md
+identify the artifact
+classify the artifact
+locate the artifact
+hash the artifact
+state its role
+state its evidence confidence
 ```
-
-This makes CI results easy to archive and compare.
 
 ---
 
-## 16. Artifact Index
+## 28. Example trace edge schema
 
-D19 should generate `ci_artifact_index.csv`.
-
-Example:
+A useful `traceability_edge_list.csv` may include:
 
 ```csv
-artifact_id,stage,file_path,artifact_type,required,exists,sha256
-A001,stage_05_fault_classification,artifacts/D11/fault_outcomes.csv,fault_outcomes,true,true,abc123
-A002,stage_06_measured_dc,artifacts/D12/measured_dc_by_failure_mode.csv,metric,true,true,def456
-A003,stage_07_fmeda_update,artifacts/D13/fmeda_table.csv,fmeda,true,true,789abc
-A004,stage_11_dashboard_build,artifacts/D18/site/index.html,dashboard,false,true,555aaa
+edge_id,source_node,target_node,edge_type,reason
+EDGE_0001,ART_D17_ACTION_PLAN,ART_D18_RULE_EVAL,consumed_by,D18 closure rules consume open action counts
+EDGE_0002,ART_D18_RULE_EVAL,ART_D18_CI_STATUS,supports_decision,CI status summarizes rule results
+EDGE_0003,DB_SESSION_FINAL_METRICS,ART_D14_FINAL_METRICS_REPORT,has_native_report,final metric report exported from database session
+EDGE_0004,ART_D14_FINAL_METRICS_REPORT,ART_D15_FMEDA_ROWS,supports_metric,FMEDA residual FIT uses final metric evidence
 ```
 
-The artifact index is critical for reproducibility.
+This edge list can be imported into graph tools later, but it is already useful as a CSV.
 
-It tells what was generated and where it came from.
+The demo does not need a database-backed web portal to be valuable.
+
+A disciplined edge list is enough to prove the method.
 
 ---
 
-## 17. Log Management
+## 29. Query examples enabled by D19
 
-Each stage should have a log.
+Once D19 builds the evidence index, useful questions become easy.
 
-Example:
-
-```text
-logs/stage_01_input_preflight.log
-logs/stage_04_campaign_execution.log
-logs/stage_10_regression_check.log
-logs/stage_13_gate_decision.log
-```
-
-The CI summary should include the key log paths.
-
-It should not require users to search through random output folders.
-
-A good log should include:
+Examples:
 
 ```text
-command
-working directory
-environment summary
-start time
-end time
-exit code
-warnings
-errors
-artifact paths
+Show all artifacts supporting the D18 WARN decision.
+Show all unresolved detail faults and their closure actions.
+Show all database sessions used by final metric evaluation.
+Show every CSV row that feeds a gate rule.
+Show every evidence item with review-level confidence.
+Show every artifact that is missing or stale.
+Show all native report exports derived from Common FuSa DB sessions.
+Show the path from a failure mode to residual FIT and closure action.
 ```
 
-Logs are evidence too.
+This is exactly what a safety review needs.
+
+The value of D19 is not only that files are indexed. It is that engineering questions can be answered without searching manually through folders.
 
 ---
 
-## 18. Environment Capture
+## 30. D19 quality gate
 
-Safety CI results are hard to reproduce without environment capture.
+D19 should have its own quality gate.
 
-D19 should record:
+The gate should not require that all upstream safety issues are closed. That is D17 and D18 responsibility.
+
+D19 should check evidence-index quality:
 
 ```text
-OS
-hostname
-user or sanitized user
-shell
-Python version
-tool versions
-PATH snapshot or sanitized PATH
-license environment presence
-Git commit
-working tree status
-run timestamp
+required upstream handoff files exist
+artifact catalog is generated
+hash manifest is generated
+trace edge list is generated
+Common database sessions are indexed
+native reports are linked when available
+CI status is linked to rule evaluation
+gate rules are linked to source metrics
+closure actions are linked to source issues
+no required artifact has missing path
+no malformed database session is treated as executable evidence
+D20 handoff is generated
 ```
 
-Example `environment_summary.csv`:
+D19 passes when the evidence is organized, traceable, and reviewable.
 
-```csv
-item,value
-os,Rocky Linux 8.10
-shell,csh
-python,3.11
-git_commit,abc1234
-working_tree,dirty
-safa_available,false
-execution_mode,public_demo_emulation
-```
+It warns when the safety flow still has open items.
 
-For public demos, sanitize private paths and usernames.
+It fails when the traceability package itself is incomplete or misleading.
 
 ---
 
-## 19. Real Tool Mode vs Emulation Mode
+## 31. Relationship with D20
 
-D19 should clearly distinguish:
+D20 is the end-to-end mini flow.
 
-```text
-real_tool_mode
-emulation_mode
-hybrid_mode
-```
-
-Definitions:
+D19 prepares D20 by telling it:
 
 ```text
-real_tool_mode:
-  invokes licensed or installed tools
-
-emulation_mode:
-  uses sample data or lightweight open scripts
-
-hybrid_mode:
-  uses real outputs from previous runs but does not invoke the tool in CI
+which artifacts represent the complete flow
+which metrics are supported by which evidence
+which database sessions are part of the safety story
+which reports are tool-generated
+which outputs are review-level
+which gate result should be shown
+which open issues remain
+which files should be archived
 ```
 
-Example:
+Without D19, D20 risks becoming a narrative demo.
 
-```yaml
-execution_modes:
-  campaign_execution: emulation
-  commercial_tool_comparison: normalized_sample
-  dashboard_build: real
+With D19, D20 can become a reproducible evidence story:
+
+```text
+input package -> analysis evidence -> fault campaign evidence -> final metrics -> FMEDA -> closure -> gate -> traceability index
 ```
 
-This prevents public demo users from thinking that a full commercial tool run happened when it did not.
+That is much closer to how a real safety engineering platform should behave.
 
 ---
 
-## 20. Handling Commercial Tools in CI
+## 32. Suggested D19 demo structure
 
-Commercial tools may require:
-
-```text
-licenses
-specific OS
-specific environment variables
-restricted logs
-large runtime
-confidential outputs
-```
-
-For public CI, it is usually better to use:
+A clean D19 demo can use the following structure:
 
 ```text
-normalized sample outputs
-sanitized snapshots
-mock adapters
-pre-recorded demo artifacts
-```
-
-For private CI, a real commercial tool run can be configured.
-
-D19 should support both:
-
-```yaml
-commercial_tool:
-  mode: normalized_snapshot
-  allow_raw_report_publish: false
-  adapter: generic_csv
-```
-
-This keeps public workflows safe.
-
----
-
-## 21. Caching and Incremental Builds
-
-Some safety stages may be expensive.
-
-D19 can support caching.
-
-Cache keys may include:
-
-```text
-RTL hash
-filelist hash
-policy hash
-fault list hash
-campaign config hash
-tool version
-```
-
-Example:
-
-```yaml
-cache:
-  enabled: true
-  keys:
-    fault_list_generation:
-      - rtl_hash
-      - faultgen_policy_hash
-    measured_dc:
-      - fault_outcomes_hash
-      - measurement_policy_hash
-```
-
-If inputs are unchanged, a stage can reuse previous artifacts.
-
-However, caching must be transparent.
-
-The CI report should say:
-
-```text
-stage reused cached artifact
-```
-
-rather than pretending it reran.
-
----
-
-## 22. Safety Regression Gate
-
-The most important D19 output is the gate decision.
-
-The gate should consider:
-
-```text
-stage failures
-missing artifacts
-critical regression alerts
-new unsafe faults
-detected-to-unsafe deltas
-residual FIT increase
-review item severity
-evidence quality degradation
-policy changes
-dashboard privacy violations
-```
-
-Example decision logic:
-
-```text
-if any required stage fails:
-  FAIL
-
-else if critical regression alert exists:
-  FAIL
-
-else if high-severity review item exists:
-  MANUAL_REVIEW_REQUIRED
-
-else if warnings exist:
-  PASS_WITH_WARNINGS
-
-else:
-  PASS
-```
-
-The exact policy is project-specific.
-
-D19 should make it explicit.
-
----
-
-## 23. CI Status Report
-
-`ci_status.csv` should summarize every stage.
-
-Example:
-
-```csv
-stage,status,duration_sec,required,log,summary
-environment_check,PASS,0.2,true,logs/stage_00.log,environment captured
-input_preflight,PASS,1.1,true,logs/stage_01.log,input package valid
-fault_classification,PASS,2.4,true,logs/stage_05.log,fault outcomes generated
-measured_dc,PASS,1.0,true,logs/stage_06.log,measured DC generated
-regression_check,WARN,1.3,true,logs/stage_10.log,one high review item remains open
-dashboard_build,PASS,0.9,false,logs/stage_11.log,site generated
-gate_decision,MANUAL_REVIEW_REQUIRED,0.1,true,logs/stage_13.log,high review item open
-```
-
-This table is the first file reviewers should inspect when a CI run finishes.
-
----
-
-## 24. CI Summary Report
-
-`ci_summary.md` should be readable.
-
-Example:
-
-```md
-# D19 CI Automation Summary
-
-Run ID: ci_2026_05_12_001  
-Profile: public_demo  
-Design: toy_counter  
-Gate: MANUAL_REVIEW_REQUIRED  
-
-## Stage Summary
-
-- PASS: 10
-- WARN: 1
-- FAIL: 0
-- SKIP: 1
-
-## Key Warnings
-
-1. High-severity review item remains open for FM_ALARM_NOT_ASSERTED.
-2. Measured DC confidence is low for selected demo groups.
-3. Dashboard uses public demo data and is not production signoff evidence.
-
-## Generated Artifacts
-
-- Evidence package
-- Safety report
-- Regression summary
-- Static dashboard site
-
-## Next Actions
-
-1. Review alarm-path safety mechanism.
-2. Expand fault campaign sample size.
-3. Keep selected DC conservative until evidence confidence improves.
-```
-
-The summary should give a reviewer enough information to decide what to inspect next.
-
----
-
-## 25. CI Failure Reasons
-
-If the gate fails, the failure reasons must be explicit.
-
-Example `ci_failure_reasons.csv`:
-
-```csv
-reason_id,severity,category,stage,message,recommended_action
-F001,CRITICAL,regression,stage_10_regression_check,detected fault F010 became unsafe,review recent RTL or safety mechanism change
-F002,HIGH,artifact,stage_07_fmeda_update,fmeda_table.csv missing,rerun FMEDA update stage
-```
-
-A CI failure without clear reasons wastes engineering time.
-
----
-
-## 26. CI Warnings
-
-Warnings should be separate from failures.
-
-Example `ci_warnings.csv`:
-
-```csv
-warning_id,severity,stage,message
-W001,MEDIUM,stage_06_measured_dc,measured DC confidence is LOW
-W002,LOW,stage_11_dashboard_build,one traceability link target missing
-W003,LOW,stage_00_environment_check,SAFA_SA not found; using emulation mode
-```
-
-Warnings are useful for review but should not always fail the CI run.
-
----
-
-## 27. CI Run Manifest
-
-The run manifest records what happened.
-
-Example `ci_run_manifest.yaml`:
-
-```yaml
-ci_run:
-  run_id: ci_2026_05_12_001
-  profile: public_demo
-  design: toy_counter
-  start_time: 2026-05-12T10:00:00
-  end_time: 2026-05-12T10:08:00
-  gate_result: MANUAL_REVIEW_REQUIRED
-
-inputs:
-  ci_config: inputs/ci_config.yaml
-  ci_gate_policy: inputs/ci_gate_policy.yaml
-  design_manifest: inputs/design_manifest.yaml
-
-outputs:
-  status: outputs/ci_status.csv
-  gate_result: outputs/ci_gate_result.json
-  summary: outputs/ci_summary.md
-  artifact_index: outputs/ci_artifact_index.csv
-```
-
-This makes CI runs comparable and auditable.
-
----
-
-## 28. Repository Layout for D19
-
-Suggested directory:
-
-```text
-D19_ci_automation/
+D19_evidence_traceability_reports_csv_fdb_logs/
   README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    ci_config.yaml
-    ci_gate_policy.yaml
-    design_manifest.yaml
-    stage_commands.yaml
-    public_data_policy.yaml
-
+  configs/
+    evidence_policy.yaml
+    artifact_classification_rules.csv
+    trace_edge_rules.csv
+    required_artifacts.csv
   scripts/
-    run_stage.csh
-    run_ci.csh
-    run_ci.sh
-
+    run_demo.csh
+    run_demo.sh
   tools/
-    safeic_ci.py
-
-  workspace/
-    D01/
-    D11/
-    D12/
-    D13/
-    D14/
-    D15/
-    D16/
-    D18/
-
-  ci_runs/
-    ci_demo_latest/
-      logs/
-      artifacts/
-      summaries/
-
+    build_d19_evidence_traceability.py
+  inputs/
+    from_D13/
+    from_D14/
+    from_D15/
+    from_D16/
+    from_D17/
+    from_D18/
   outputs/
-    ci_summary.md
-    ci_status.csv
-    ci_gate_result.json
-    ci_stage_status.csv
-    ci_artifact_index.csv
-    ci_warnings.csv
-    ci_failure_reasons.csv
-    ci_run_manifest.yaml
+    artifact_catalog.csv
+    artifact_hash_manifest.csv
+    artifact_provenance.csv
+    traceability_node_list.csv
+    traceability_edge_list.csv
+    common_db_session_index.csv
+    native_report_index.csv
+    csv_row_trace_index.csv
+    metric_evidence_trace.csv
+    closure_evidence_trace.csv
+    gate_decision_trace.csv
+    log_catalog.csv
+    evidence_freshness_report.csv
+    evidence_gap_report.csv
+    evidence_dashboard.md
+    d19_quality_gate.csv
+    d19_handoff_to_d20.csv
+    demo_summary.md
 ```
 
-D19 should not require all previous demos to be fully present for a public demo.
+The demo should run without requiring a GUI.
 
-It can use a small sample workspace.
+It may optionally index native database reports if they are already exported, but it should not depend on manual clicking.
 
 ---
 
-## 29. Stage Command File
+## 33. Common mistakes
 
-A stage command file keeps execution commands outside Python logic.
+### 33.1 Archiving without indexing
 
-Example `stage_commands.yaml`:
+A zip archive is useful, but it does not answer traceability questions by itself.
 
-```yaml
-stages:
-  input_preflight:
-    command: "csh workspace/D01/scripts/run_demo.csh"
-    required: true
+### 33.2 Treating every file as equally important
 
-  fault_classification:
-    command: "csh workspace/D11/scripts/run_demo.csh"
-    required: true
+A policy file, a fault report, a dashboard, and a command transcript have different evidence roles.
 
-  measured_dc:
-    command: "csh workspace/D12/scripts/run_demo.csh"
-    required: true
+### 33.3 Losing row-level context
 
-  fmeda_update:
-    command: "csh workspace/D13/scripts/run_demo.csh"
-    required: true
+A file-level link is not enough when a gate rule depends on one row in a metric table.
 
-  evidence_package:
-    command: "csh workspace/D14/scripts/run_demo.csh"
-    required: true
+### 33.4 Confusing aggregate and detail evidence
 
-  report_generation:
-    command: "csh workspace/D15/scripts/run_demo.csh"
-    required: true
+A rollup count and seven detail unresolved rows are related, but they are not the same evidence item.
 
-  regression_check:
-    command: "csh workspace/D16/scripts/run_demo.csh"
-    required: true
+### 33.5 Executing every database session reference
 
-  dashboard_build:
-    command: "csh workspace/D18/scripts/run_demo.csh"
-    required: false
-```
+Some session references are real execution evidence. Some are review mirrors or placeholders. D19 should classify them rather than blindly treating all as executable.
 
-This makes the CI orchestrator flexible.
+### 33.6 Hiding review-level evidence confidence
+
+A review-level table may be useful, but it should not be labeled as signoff-candidate evidence.
+
+### 33.7 Ignoring stale evidence
+
+An old report can look correct while no longer matching the current design context.
 
 ---
 
-## 30. Tool Architecture
+## 34. Review checklist
 
-The generic tool `safeic-ci` can be implemented as a staged orchestrator.
-
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-ci]
-    B[ci_config.yaml] --> T
-    C[ci_gate_policy.yaml] --> T
-    D[stage_commands.yaml] --> T
-    E[workspace/] --> T
-
-    T --> F[Load Config]
-    F --> G[Resolve Stages]
-    G --> H[Capture Environment]
-    H --> I[Run Stages]
-    I --> J[Collect Artifacts]
-    J --> K[Evaluate Warnings and Failures]
-    K --> L[Apply Gate Policy]
-    L --> M[Write CI Reports]
-    M --> N[Archive Run]
-```
-
-**Figure 5. `safeic-ci` orchestrates stages, captures logs and artifacts, applies gate policy, and writes CI reports.**
-
-Suggested internal modules:
+A reviewer should be able to answer:
 
 ```text
-safeic_ci/
-  cli.py
-  manifest.py
-  load_config.py
-  stage_graph.py
-  env_capture.py
-  command_runner.py
-  artifact_collector.py
-  log_parser.py
-  gate_policy.py
-  status_report.py
-  archive.py
-  summary.py
+What artifacts were included in the evidence package?
+Which artifacts are missing?
+Which artifacts are tool-generated?
+Which artifacts are review-level?
+Which database sessions were referenced?
+Which database sessions have exported reports?
+Which metrics came from which artifacts?
+Which gate rules consumed which metrics?
+Which closure actions remain open?
+Which unresolved faults are linked to closure actions?
+Which waivers were applied?
+Which evidence is stale or uncertain?
+Can the final D18 decision be reproduced from the indexed files?
+Can D20 assemble an end-to-end story from this package?
 ```
 
-Responsibilities:
-
-| Module | Responsibility |
-|---|---|
-| `stage_graph.py` | Resolve stages and dependencies |
-| `env_capture.py` | Capture reproducibility context |
-| `command_runner.py` | Run commands and capture exit codes |
-| `artifact_collector.py` | Collect and hash generated artifacts |
-| `log_parser.py` | Extract warnings and errors |
-| `gate_policy.py` | Apply CI gate rules |
-| `status_report.py` | Write stage status tables |
-| `archive.py` | Store run artifacts |
-| `summary.py` | Generate human-readable summary |
+If D19 can answer these questions, the evidence package has practical audit value.
 
 ---
 
-## 31. D19 Manifest
+## 35. Summary
 
-Example:
+D19 transforms a collection of safety outputs into a traceable evidence system.
 
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D19_ci_automation
-  top_module: toy_counter
-
-inputs:
-  ci_config: inputs/ci_config.yaml
-  ci_gate_policy: inputs/ci_gate_policy.yaml
-  design_manifest: inputs/design_manifest.yaml
-  stage_commands: inputs/stage_commands.yaml
-  public_data_policy: inputs/public_data_policy.yaml
-
-workspace:
-  root: workspace
-
-outputs:
-  summary: outputs/ci_summary.md
-  status: outputs/ci_status.csv
-  gate_result: outputs/ci_gate_result.json
-  stage_status: outputs/ci_stage_status.csv
-  artifact_index: outputs/ci_artifact_index.csv
-  warnings: outputs/ci_warnings.csv
-  failure_reasons: outputs/ci_failure_reasons.csv
-  run_manifest: outputs/ci_run_manifest.yaml
-```
-
-The manifest defines the CI run.
-
----
-
-## 32. D19 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load CI Config]
-    B --> C[Load Gate Policy]
-    C --> D[Load Stage Commands]
-    D --> E[Capture Environment]
-    E --> F[Create CI Run Directory]
-    F --> G[Run Enabled Stages]
-    G --> H[Capture Logs and Exit Codes]
-    H --> I[Collect Required Artifacts]
-    I --> J[Parse Warnings and Alerts]
-    J --> K[Evaluate Gate Policy]
-    K --> L[Write CI Status Reports]
-    L --> M[Archive Artifacts]
-```
-
-**Figure 6. D19 execution flow: load config, run stages, collect artifacts, evaluate gate policy, and archive results.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-ci \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D19_ci_automation
-echo "Running $DEMO"
-
-safeic-ci \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
+D01-D18 produce many important artifacts:
 
 ```text
-outputs/ci_summary.md
-outputs/ci_status.csv
-outputs/ci_gate_result.json
-outputs/ci_stage_status.csv
-outputs/ci_artifact_index.csv
-outputs/ci_warnings.csv
-outputs/ci_failure_reasons.csv
-outputs/ci_run_manifest.yaml
+configuration files
+fault lists
+simulation context
+campaign results
+outcome classifications
+final metrics
+FMEDA rows
+closure actions
+regression gate rules
+Common database sessions
+native reports
+logs and dashboards
 ```
 
----
+D19 gives them structure.
 
-## 33. Example `ci_gate_result.json`
-
-```json
-{
-  "run_id": "ci_demo_latest",
-  "profile": "public_demo",
-  "gate": "MANUAL_REVIEW_REQUIRED",
-  "stage_counts": {
-    "PASS": 10,
-    "WARN": 1,
-    "FAIL": 0,
-    "SKIP": 1
-  },
-  "alerts": {
-    "critical": 0,
-    "high": 1,
-    "medium": 2,
-    "low": 1
-  },
-  "reasons": [
-    "high-severity review item remains open",
-    "measured DC confidence is low"
-  ],
-  "recommendation": "review safety findings before accepting this CI run"
-}
-```
-
-This file can be consumed by scripts, dashboards, or CI systems.
-
----
-
-## 34. Example `ci_status.csv`
-
-```csv
-stage,status,required,duration_sec,exit_code,log
-environment_check,PASS,true,0.2,0,logs/stage_00_environment_check.log
-input_preflight,PASS,true,1.1,0,logs/stage_01_input_preflight.log
-fault_list_generation,PASS,true,1.5,0,logs/stage_03_fault_list_generation.log
-campaign_execution,PASS,true,2.8,0,logs/stage_04_campaign_execution.log
-fault_classification,PASS,true,1.7,0,logs/stage_05_fault_classification.log
-measured_dc,PASS,true,0.8,0,logs/stage_06_measured_dc.log
-fmeda_update,PASS,true,0.9,0,logs/stage_07_fmeda_update.log
-evidence_package,PASS,true,1.0,0,logs/stage_08_evidence_package.log
-report_generation,PASS,true,0.7,0,logs/stage_09_report_generation.log
-regression_check,WARN,true,0.6,0,logs/stage_10_regression_check.log
-dashboard_build,PASS,false,0.8,0,logs/stage_11_dashboard_build.log
-gate_decision,MANUAL_REVIEW_REQUIRED,true,0.1,0,logs/stage_13_gate_decision.log
-```
-
-This table gives the CI run state at a glance.
-
----
-
-## 35. Example `ci_summary.md`
-
-```md
-# D19 CI Automation Summary
-
-Run ID: ci_demo_latest  
-Profile: public_demo  
-Design: toy_counter  
-Gate Result: MANUAL_REVIEW_REQUIRED  
-
-## Stage Status
-
-| Status | Count |
-|---|---:|
-| PASS | 10 |
-| WARN | 1 |
-| FAIL | 0 |
-| SKIP | 1 |
-
-## Main Artifacts
-
-- Evidence package generated.
-- Safety report generated.
-- Regression comparison generated.
-- Dashboard site generated.
-
-## Gate Reasons
-
-- High-severity review item remains open.
-- Measured DC confidence is low for demo sample.
-
-## Recommended Actions
-
-1. Review alarm-path safety mechanism.
-2. Expand campaign sample size.
-3. Keep FMEDA selected DC conservative.
-```
-
-This is the human-readable summary for engineers.
-
----
-
-## 36. Validation Rules
-
-`safeic-ci` should validate:
+The core idea is:
 
 ```text
-manifest.yaml exists
-ci_config.yaml exists
-ci_gate_policy.yaml exists
-stage_commands.yaml exists
-enabled stages have commands
-required stage commands are runnable
-workspace exists
-output directory is writable
-required artifacts are defined
-gate policy has valid rules
-stage statuses are valid
-artifact index is generated
-gate result is generated
+Every important safety decision should be traceable to the artifacts that support it.
+Every important artifact should have a role, identity, hash, producer, consumer, and confidence level.
+Every database session should be indexed as evidence, not treated as an invisible backend detail.
+Every gate result should explain which metrics, rules, closures, and waivers contributed to it.
 ```
 
-Example messages:
+This is how the safety flow becomes reviewable at scale.
 
-```text
-[PASS] CI config loaded
-[PASS] gate policy loaded
-[PASS] stage command file loaded
-[PASS] workspace found
-[PASS] stage input_preflight completed
-[WARN] stage regression_check produced high-severity review item
-[WARN] dashboard build generated public demo limitation warning
-[ERROR] required artifact D13/fmeda_table.csv missing
-```
+Not a pile of files.
 
-A CI orchestrator should fail clearly when required configuration is invalid.
+Not a manually curated folder.
 
----
+A structured, queryable, reproducible evidence layer.
 
-## 37. Common Mistakes
+D19 does not make the chip safe by itself. It makes the safety argument inspectable.
 
-### 37.1 Treating CI PASS as Safety Signoff
-
-CI pass means the configured checks passed.
-
-It does not mean final safety approval.
-
-### 37.2 Hiding Warnings
-
-Safety warnings should be reported even when they do not fail the gate.
-
-### 37.3 Reusing Cached Artifacts Without Disclosure
-
-If a stage uses cache, the summary must say so.
-
-### 37.4 Running Stages Without Dependency Awareness
-
-Downstream artifacts can become stale if dependencies are ignored.
-
-### 37.5 Mixing Public Demo and Private Project Data
-
-Public CI must be sanitized.
-
-Private project artifacts should not leak into public dashboards or repositories.
-
-### 37.6 Failing CI on Every Low-Confidence Metric
-
-Low confidence may be expected in early demos.
-
-Use manual review or warning status where appropriate.
-
-### 37.7 Not Archiving Artifacts
-
-Without archived artifacts, regression tracking becomes unreliable.
-
----
-
-## 38. How D19 Connects to Later Demos
-
-D19 creates the automation foundation for public demo packaging, user trials, and platform delivery.
-
-```mermaid
-flowchart LR
-    A[D19 CI Automation] --> B[D20 Public Demo Package]
-    A --> C[D21 User Trial Flow]
-    A --> D[D22 Training Package]
-    A --> E[D23 Deployment Profile]
-    B --> F[Shareable GitHub Release]
-    C --> G[External User Evaluation]
-    D --> H[Course / Workshop Material]
-    E --> I[Internal or Customer Deployment]
-```
-
-**Figure 7. D19 provides the automation foundation for demo packaging, trials, training, and deployment.**
-
-Once CI automation exists, each later output can be regenerated consistently.
-
----
-
-## 39. Recommended Implementation Stages
-
-D19 can be implemented in stages.
-
-### Stage 1: Stage Runner
-
-Run configured commands and capture status.
-
-Deliverables:
-
-```text
-ci_status.csv
-logs/
-```
-
-### Stage 2: Artifact Collection
-
-Collect expected artifacts and generate hashes.
-
-Deliverables:
-
-```text
-ci_artifact_index.csv
-```
-
-### Stage 3: Gate Policy Evaluation
-
-Apply pass/warn/fail/manual-review rules.
-
-Deliverables:
-
-```text
-ci_gate_result.json
-ci_failure_reasons.csv
-ci_warnings.csv
-```
-
-### Stage 4: Summary and Archive
-
-Generate summary and archive run directory.
-
-Deliverables:
-
-```text
-ci_summary.md
-ci_run_manifest.yaml
-ci_runs/
-```
-
-### Stage 5: Dashboard Refresh and Publication Hook
-
-Automatically rebuild dashboard and prepare public demo bundle.
-
-Deliverables:
-
-```text
-site/
-public_demo_bundle.zip
-```
-
-This staged approach makes D19 immediately useful as an orchestration layer and extensible toward real CI integration.
-
----
-
-## 40. Summary
-
-CI automation turns the safety workflow into a repeatable engineering gate.
-
-The D19 demo:
-
-```text
-D19_ci_automation
-```
-
-introduces the generic tool:
-
-```text
-safeic-ci
-```
-
-The tool consumes:
-
-```text
-ci_config.yaml
-ci_gate_policy.yaml
-stage_commands.yaml
-workspace artifacts
-previous demo tools and scripts
-```
-
-and generates:
-
-```text
-ci_summary.md
-ci_status.csv
-ci_gate_result.json
-ci_stage_status.csv
-ci_artifact_index.csv
-ci_warnings.csv
-ci_failure_reasons.csv
-ci_run_manifest.yaml
-```
-
-The central lesson is:
-
-> Safety CI is not certification. It is repeatability, artifact completeness, regression detection, and evidence freshness. It helps ensure that design and policy changes do not silently invalidate the safety argument.
-
-D19 turns the previous demo sequence into an automatable workflow suitable for internal engineering, public methodology demos, and future customer-facing evaluation.
-
----
-
-## 41. D19 Demo Checklist
-
-For `D19_ci_automation`, the expected deliverables are:
-
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/ci_config.yaml
-[ ] inputs/ci_gate_policy.yaml
-[ ] inputs/design_manifest.yaml
-[ ] inputs/stage_commands.yaml
-[ ] inputs/public_data_policy.yaml
-
-[ ] scripts/run_stage.csh
-[ ] scripts/run_ci.csh
-[ ] scripts/run_ci.sh
-
-[ ] tools/safeic_ci.py
-
-[ ] workspace/D01/
-[ ] workspace/D11/
-[ ] workspace/D12/
-[ ] workspace/D13/
-[ ] workspace/D14/
-[ ] workspace/D15/
-[ ] workspace/D16/
-[ ] workspace/D18/
-
-[ ] outputs/ci_summary.md
-[ ] outputs/ci_status.csv
-[ ] outputs/ci_gate_result.json
-[ ] outputs/ci_stage_status.csv
-[ ] outputs/ci_artifact_index.csv
-[ ] outputs/ci_warnings.csv
-[ ] outputs/ci_failure_reasons.csv
-[ ] outputs/ci_run_manifest.yaml
-
-[ ] ci_runs/ci_demo_latest/logs/
-[ ] ci_runs/ci_demo_latest/artifacts/
-[ ] ci_runs/ci_demo_latest/summaries/
-```
-
-A successful D19 run should answer:
-
-```text
-Which CI profile was used?
-Which stages ran?
-Which stages passed, warned, failed, skipped, or were blocked?
-Which artifacts were generated?
-Which required artifacts are missing?
-Which warnings should be reviewed?
-Which issues fail the gate?
-Which issues require manual review?
-Was the dashboard refreshed?
-Were artifacts archived?
-Can the run be used as a baseline for later regression tracking?
-```
+That is the foundation for D20, where the full mini flow can be presented as a complete end-to-end evidence chain.
