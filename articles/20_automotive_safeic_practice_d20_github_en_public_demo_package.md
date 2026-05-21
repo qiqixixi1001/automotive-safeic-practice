@@ -1,1672 +1,1532 @@
-# [Automotive Safe-IC Practice 20] Public Demo Package: From CI Artifacts to a Shareable GitHub Release
+# Automotive Safe-IC Practice 20: End-to-End Mini Flow — BFR → Safety Mechanism → Fault Campaign → Final Metrics
 
 **Author**: Darren H. Chen  
 **Direction**: Automotive Chip Functional Safety Analysis and Fault Injection Practice  
-**Demo**: D20_public_demo_package  
-**Tags**: Automotive Chip, Functional Safety, Public Demo Package, GitHub Release, Evidence Package, Fault Injection, FMEDA, Diagnostic Coverage, CI Automation, Dashboard, Open Engineering Practice
+**Demo**: `D20_end_to_end_mini_flow_bfr_sm_fault_campaign_final_metrics`  
+**Tags**: Automotive Chip, Functional Safety, ISO 26262, BFR, FIT, Diagnostic Coverage, Safety Mechanism, Fault Campaign, FMEDA, Common FuSa Database, Evidence Traceability, Regression Gate, End-to-End Flow
 
 ---
 
-## 1. Why This Article Matters
+## 1. The Moment a Safety Flow Becomes a System
 
-In the previous article, we introduced CI automation for the safety-analysis workflow.
+A functional safety flow does not become convincing because one report looks good.
 
-D19 generated outputs such as:
-
-```text
-ci_summary.md
-ci_status.csv
-ci_gate_result.json
-ci_stage_status.csv
-ci_artifact_index.csv
-ci_warnings.csv
-ci_failure_reasons.csv
-ci_run_manifest.yaml
-```
-
-That CI layer makes the workflow repeatable.
-
-However, repeatability inside a local workspace is not enough if the goal is to communicate methodology, publish engineering demos, build credibility, or prepare external collaboration.
-
-The next question is:
-
-> How do we package the safety workflow into a public-safe, reproducible, shareable GitHub demo release?
-
-The twentieth demo in this repository is:
+It becomes convincing when the same safety intent can be traced through every engineering layer:
 
 ```text
-D20_public_demo_package
+initial failure-rate assumptions
+  -> base FIT estimate
+  -> endpoint and safety mechanism mapping
+  -> fault list preparation
+  -> simulation context
+  -> fault campaign execution
+  -> outcome classification
+  -> final metric writeback
+  -> FMEDA interpretation
+  -> closure actions
+  -> regression gate
+  -> evidence traceability
 ```
 
-The generic tool introduced in this article is:
+That is the purpose of D20.
+
+The previous stages built individual capabilities. D01 prepared input packages. D02 and D03 handled base FIT and FIT standards. D04-D08 connected structure, endpoints, safety mechanisms, and fault-list generation. D09-D12 prepared and executed fault campaigns. D13-D17 converted raw fault outcomes into classified safety evidence and closure actions. D18 made the safety state CI-aware. D19 built a unified evidence index.
+
+D20 now asks a different question:
 
 ```text
-safeic-package
+Can all of these pieces be connected into one small, reviewable, reproducible safety flow?
 ```
 
-The purpose of `safeic-package` is to collect selected public-safe artifacts from the CI run, evidence package, safety report, regression results, dashboard site, and demo scripts into a release-ready package:
+This is not a full signoff flow. It is not a production SoC campaign. It is a mini flow designed to demonstrate the complete shape of a safety engineering platform.
+
+A good D20 demo should show that the platform has a coherent internal logic:
 
 ```text
-source demo files
-sanitized input data
-sample outputs
-evidence package summaries
-safety reports
-dashboard site
-CI summaries
-release manifest
-artifact index
-public-data validation
-license and disclaimer files
-reproduction scripts
+BFR and FIT are not isolated numbers.
+Safety mechanisms are not isolated design notes.
+Fault campaigns are not isolated simulations.
+Final metrics are not isolated reports.
+Regression gates are not isolated scripts.
+Evidence traceability is not an afterthought.
 ```
 
-and generate:
-
-```text
-release/
-  README.md
-  RELEASE_NOTES.md
-  QUICKSTART.md
-  DEMO_SCOPE.md
-  DISCLAIMER.md
-  public_artifact_index.csv
-  public_data_validation.csv
-  reproducibility_manifest.yaml
-  demos/
-  reports/
-  dashboard/
-  data/
-  scripts/
-  docs/
-```
-
-The central idea is:
-
-> A public demo package is not a random upload of scripts and reports. It is a curated, sanitized, reproducible release that explains what is included, what is excluded, how to run it, and what claims it does not make.
+They are parts of the same safety evidence chain.
 
 ---
 
-## 2. Where D20 Fits in the Flow
+## 2. D20 Position in the Twenty-Part Practice Series
 
-D20 is the release packaging layer.
+D20 is the stage summary and end-to-end integration point.
 
-```mermaid
-flowchart LR
-    A[D19 CI Artifacts] --> D[D20 Public Demo Package]
-    B[D14-D18 Public-Safe Artifacts] --> D
-    C[Release Policy] --> D
-    D --> E[GitHub Repository]
-    D --> F[Release Archive]
-    D --> G[Public Demo Site]
-    D --> H[External Reviewer Package]
-```
-
-**Figure 1. D20 turns CI-generated artifacts and public-safe demo data into a shareable release package.**
-
-D19 answered:
-
-```text
-Did the automated flow run?
-Which artifacts were generated?
-What did the CI gate decide?
-```
-
-D20 answers:
-
-```text
-Which artifacts are safe to publish?
-Which scripts should be included?
-Which reports should be included?
-How can another user reproduce the demo?
-What assumptions and limitations must be stated?
-What should be excluded from public release?
-How should the package be structured for GitHub?
-```
-
-This is the transition from internal automation to external communication.
-
----
-
-## 3. Public Demo Package Is a Product Boundary
-
-A public package is a boundary.
-
-Inside the private workspace, there may be:
-
-```text
-private experiments
-temporary scripts
-raw logs
-absolute paths
-license-related environment
-commercial tool exports
-internal notes
-customer-like data
-```
-
-A public package should contain only:
-
-```text
-sanitized sample data
-generic scripts
-public-safe outputs
-methodology reports
-reproducible demo commands
-clear disclaimers
-source-visible examples
-```
+It sits after evidence traceability because the final mini flow must not merely run a sequence. It must explain what each sequence step produced, which artifacts were consumed, which database sessions were referenced, which metrics were trusted, which warnings remain, and which downstream review decisions are still open.
 
 ```mermaid
 flowchart TD
-    A[Private Workspace] --> B[Public Data Filter]
-    B --> C[Release Builder]
-    C --> D[Public Demo Package]
-    A -. excluded .-> E[Private / Confidential Artifacts]
+    D01[D01 Analysis Input Package] --> D02[D02 Base FIT Rate]
+    D02 --> D03[D03 FIT Standards]
+    D03 --> D04[D04 Structural Safety Blocks]
+    D04 --> D05[D05 Common FuSa Database]
+    D05 --> D06[D06 Safety Exploration]
+    D06 --> D07[D07 Safety Mechanism Map]
+    D07 --> D08[D08 Fault List Generation]
+    D08 --> D09[D09 Simulation Safety Context]
+    D09 --> D10[D10 Alarm and Observe Boundary]
+    D10 --> D11[D11 Fault Campaign Setup]
+    D11 --> D12[D12 Fault Injection Execution]
+    D12 --> D13[D13 Fault Outcome Classification]
+    D13 --> D14[D14 Result Writeback and Final Metrics]
+    D14 --> D15[D15 FMEDA Data Model]
+    D15 --> D16[D16 Top-down FMEDA Flow]
+    D16 --> D17[D17 Diagnostic Coverage Closure]
+    D17 --> D18[D18 Regression Gate]
+    D18 --> D19[D19 Evidence Traceability]
+    D19 --> D20[D20 End-to-End Mini Flow]
 ```
 
-**Figure 2. D20 acts as a release boundary between private workspace artifacts and public demo assets.**
+D20 should read D19 as its immediate upstream index, but it must still understand the whole chain.
 
-This boundary is important because public demos become part of your professional identity.
+D19 says:
 
-A careless public package can leak information or overclaim results.
+```text
+Here are the indexed artifacts, hashes, logs, database sessions, rule traces, and evidence edges.
+```
 
-A clean public package can demonstrate strong engineering discipline.
+D20 says:
+
+```text
+Here is the end-to-end safety story assembled from those artifacts.
+```
+
+The difference matters. An evidence index is a map. An end-to-end mini flow is a guided path through the map.
 
 ---
 
-## 4. What a Public Demo Package Should Prove
+## 3. What “End-to-End” Means in This Context
 
-A public demo package should prove:
+The phrase end-to-end is often overused. In D20, it has a precise meaning.
 
-```text
-the workflow is structured
-the demo can be run or inspected
-the artifact chain is understandable
-the data is public-safe
-the methodology is reproducible at sample scale
-the reports and dashboard are generated from known inputs
-the limitations are explicit
-```
-
-It should not claim:
+It does not mean that every real SoC-level safety campaign has been completed. It means that a representative design can be taken through the entire safety evidence path:
 
 ```text
-production safety signoff
-ISO 26262 certification
-commercial tool equivalence
-customer project validation
-complete automotive SoC coverage
-proprietary tool replacement
+BFR setup
+FIT standard selection
+structural endpoint extraction
+safety mechanism mapping
+fault list generation
+simulation context construction
+alarm and observe boundary definition
+fault campaign input packaging
+fault campaign execution or execution evidence ingestion
+outcome classification
+final metric preparation
+FMEDA interpretation
+closure management
+regression gate decision
+evidence traceability packaging
 ```
 
-This distinction protects credibility.
+D20 should demonstrate integration across four major tool/documentation streams:
 
-A public demo can be impressive without pretending to be final product signoff.
+```text
+safety analysis inputs and FIT criteria
+structural diagnostic coverage and safety mechanism modeling
+fault campaign setup, execution, and result classification
+FMEDA, database, GUI-review, and evidence-management concepts
+```
+
+A D20 mini flow is therefore a stitched safety argument.
+
+It starts with failure-rate assumptions and ends with a final package that a reviewer can inspect.
+
+The key word is not “large”. The key word is “connected”.
 
 ---
 
-## 5. Demo Package vs Source Repository
+## 4. BFR: The Root of Quantitative Safety Evidence
 
-A GitHub repository can contain multiple layers:
+BFR means Base Failure Rate.
+
+In the safety flow, BFR is the starting quantitative estimate of how frequently a hardware element may fail before safety mechanisms are credited. Depending on the methodology and standard, the base failure rate may depend on:
 
 ```text
-source code
-demo input data
-demo output data
-documentation
-reports
-dashboard site
-release archives
+device type
+technology node
+mission profile
+temperature profile
+year of manufacture
+package or environment assumptions
+transistor or cell counts
+permanent and transient failure models
 ```
 
-A public demo package is a curated subset.
+D20 should not treat BFR as a magic number. It should show that BFR is an input assumption with traceability.
+
+A good mini flow records:
+
+```text
+which FIT standard or reliability model was used
+which mission profile was selected
+which FIT setup file was used
+which design boundary was included
+which scope was excluded
+which output report contains the base FIT contribution
+```
+
+In a simplified demo, the design may be small. The BFR may not be meaningful as a production number. That is acceptable. The point of D20 is to show that the platform can carry BFR assumptions forward into later metrics.
+
+The important trace is:
+
+```text
+BFR source
+  -> base FIT contribution
+  -> endpoint or cone contribution
+  -> failure mode allocation
+  -> residual FIT after safety mechanism credit
+  -> FMEDA row
+  -> final review status
+```
+
+Without that trace, final metrics become unreviewable.
+
+---
+
+## 5. FIT, Residual FIT, and PMHF-Like Thinking
+
+FIT means failures in time, usually expressed as failures per billion operating hours.
+
+A safety flow often distinguishes several failure-rate quantities:
+
+```text
+base FIT: failure-rate estimate before safety mechanism credit
+safe FIT: fault portion that does not violate the safety goal
+single-point FIT: fault portion that can directly violate a safety goal
+residual FIT: remaining dangerous contribution after diagnostic credit
+multi-point FIT: fault contribution involving latent multiple-fault scenarios
+PMHF-like value: top-level probabilistic hardware failure metric summary
+```
+
+Different methodologies and tool flows may name these buckets differently, but the engineering idea is the same: not all hardware failures have the same safety consequence.
+
+D20 should make the bucket movement visible:
+
+```text
+before safety mechanism mapping:
+  more contribution remains uncovered
+
+after safety mechanism mapping:
+  some contribution receives diagnostic credit
+
+after fault campaign validation:
+  detected / safe / unsafe / unresolved classification refines the credit
+
+after final metric writeback:
+  the remaining contribution becomes FMEDA-ready residual evidence
+```
+
+This prevents a common mistake: treating final diagnostic coverage as if it came from a single calculation.
+
+In reality, final metrics depend on both structural estimation and dynamic validation.
+
+---
+
+## 6. Safety Mechanism: More Than a Signal Name
+
+A safety mechanism is a technical means to detect, control, correct, or tolerate a fault so that the system can reach or maintain a safe state.
+
+Examples include:
+
+```text
+parity checking
+ECC
+lockstep comparison
+duplication with comparison
+range check
+timeout watchdog
+control-flow monitor
+protocol consistency check
+end-to-end data protection
+alarm generation
+safe-state transition logic
+```
+
+In D20, a safety mechanism should be modeled as an object with relationships:
+
+```text
+safety_mechanism_id
+mechanism_type
+covered_failure_mode
+covered_endpoint_or_cone
+alarm_signal
+observe_point
+expected_detection_window
+credit_source
+validation_status
+```
+
+The important point is that a safety mechanism is not just “present in RTL”. It must be tied to a failure mode and supported by evidence.
+
+A signal called `alarm` is not automatically a valid safety mechanism.
+
+D20 should show the chain:
+
+```text
+failure mode
+  -> endpoint / cone
+  -> safety mechanism map
+  -> alarm and observe boundary
+  -> fault campaign outcome
+  -> diagnostic coverage credit
+  -> FMEDA residual FIT
+```
+
+That is the difference between design intent and safety evidence.
+
+---
+
+## 7. Endpoint, Startpoint, and Diagnostic Coverage Element
+
+Structural safety analysis often starts by identifying where data or control originates, where it is consumed, and what logic lies between these points.
+
+Three useful concepts are:
+
+```text
+startpoint: a source of data or control propagation
+endpoint: a destination where the propagated value affects observable or safety-relevant behavior
+DCE: diagnostic coverage element, a structural object or cone used to evaluate whether faults are covered by a safety mechanism
+```
+
+The exact naming may vary between tools, but the method is stable.
+
+D20 should not bury these concepts. It should show that safety mechanisms are attached to structure.
+
+For example:
+
+```text
+counter register bit
+  -> endpoint candidate
+  -> covered by range / alarm logic
+  -> included in fault list
+  -> evaluated during campaign
+  -> linked to FMEDA row
+```
+
+Without this structural layer, a fault campaign may run, but its result cannot easily be mapped back to FMEDA.
+
+D20 should therefore include a structural map in its output package:
+
+```text
+endpoint inventory
+startpoint or source inventory
+DCE or cone map
+EP-to-SM map
+fault-to-endpoint map
+fault-to-failure-mode map
+```
+
+The value of the mini flow is that every object has a place in the chain.
+
+---
+
+## 8. End-to-End Data Path Safety Mechanisms
+
+Some safety mechanisms do not protect only a local signal. They protect a data path from generation to checking.
+
+This is commonly seen in:
+
+```text
+end-to-end CRC
+transaction tag checking
+packet parity
+source-to-sink duplication
+data path consistency checking
+control/data correlation checking
+```
+
+An end-to-end mechanism has two important points:
+
+```text
+generation point: where protection information or checked data originates
+check point: where the data is validated or alarmed
+```
+
+D20 should explain this because it connects structural analysis with fault campaign behavior.
+
+A local safety mechanism may only cover a small cone. An end-to-end safety mechanism may cover a longer propagation path. Its diagnostic credit depends on:
+
+```text
+whether the data path is structurally connected
+whether faults along the path can propagate
+whether the check point is active in the simulation context
+whether the alarm signal is included in the observe boundary
+whether timing is within the allowed FTTI window
+```
+
+If any of these are missing, the mechanism may exist in RTL but fail to receive credible diagnostic credit.
+
+---
+
+## 9. Common FuSa Database as an Evidence Center
+
+A functional safety flow produces many intermediate objects. Storing them only as loose files is fragile.
+
+A common safety database provides a shared evidence center. A database session can represent different stages:
+
+```text
+fault list session
+fault campaign result session
+final metrics session
+review or model mirror session
+```
+
+A session-style reference is useful because it expresses both the database file and the logical partition:
+
+```text
+common_database_file::session_name
+```
+
+D20 should treat the database as evidence infrastructure, not as a hidden black box.
+
+The end-to-end package should record:
+
+```text
+which database file was used
+which sessions were written
+which sessions were read
+which sessions are execution-backed
+which sessions are review-only mirrors
+which native reports were exported
+which downstream metrics depend on each session
+```
+
+This distinction is important.
+
+A real execution-backed session may support native report extraction. A review-only session may support traceability but not direct execution report generation.
+
+D20 should not confuse the two.
+
+---
+
+## 10. Fault List Generation as the Bridge from Analysis to Campaign
+
+A fault campaign cannot start from a vague safety goal.
+
+It needs a concrete fault population:
+
+```text
+fault_id
+fault_site
+fault_type
+fault_value
+permanent_or_transient
+mapped_endpoint
+mapped_failure_mode
+safety_mechanism_context
+campaign_priority
+sampling_policy
+```
+
+D20 should show that fault list generation is the bridge between safety analysis and fault campaign execution.
+
+A good mini flow keeps several layers visible:
+
+```text
+candidate fault population
+primary fault list
+campaign-ready fault list
+sampled or reduced list
+fault-to-FMEDA mapping
+fault-to-endpoint mapping
+fault-to-safety-mechanism mapping
+```
+
+The fault list is not just an execution input. It is an evidence contract.
+
+If a fault is excluded, the reason should be recorded. If a fault is sampled, the sampling policy should be recorded. If a fault is collapsed or represented by an equivalent fault, the equivalence rule should be recorded.
+
+D20 should show that campaign evidence is anchored to this contract.
+
+---
+
+## 11. Simulation Safety Context: Good Machine, VCD, and Timing Window
+
+Fault campaign results are only meaningful relative to a simulation context.
+
+A typical context includes:
+
+```text
+good-machine waveform
+clock definition
+reset behavior
+input stimulus
+state trajectory
+alarm signal behavior
+observe point activity
+fault injection window
+observation window
+FTTI assumption
+```
+
+Good Machine means the design behavior without fault injection. It is the baseline against which faulty behavior is compared.
+
+VCD, or Value Change Dump, is a common waveform format used to record signal transitions over time. For a safety campaign, the VCD is not merely debug data. It is the temporal contract that tells the fault campaign engine when signals are active and when faults can be meaningfully injected or observed.
+
+D20 should connect:
+
+```text
+Good Machine VCD
+  -> signal catalog
+  -> activity windows
+  -> fault injection schedule
+  -> observe point comparison
+  -> detected / safe / unsafe / unresolved outcome
+```
+
+If the VCD does not activate a relevant cone, an unresolved result may reflect insufficient stimulus rather than a real design weakness.
+
+That distinction must be visible in the end-to-end story.
+
+---
+
+## 12. Alarm and Observe Boundary
+
+A fault can be present in the design but invisible at the chosen outputs.
+
+Therefore, D20 must distinguish two concepts:
+
+```text
+alarm signal: a signal that indicates a safety mechanism detected or controlled a fault
+observe point: a signal used to compare good and faulty behavior
+```
+
+A fault outcome depends heavily on these boundaries.
+
+For example:
+
+```text
+if an alarm toggles within the allowed window:
+  the fault may be classified as detected
+
+if the alarm does not toggle but the functional output deviates:
+  the fault may be unsafe
+
+if neither alarm nor observable deviation appears:
+  the fault may be safe or unresolved depending on propagation and activity context
+```
+
+D20 should show that alarm and observe point lists are not arbitrary. They must be derived from safety mechanism design intent and top-level safety goals.
+
+The mini flow should record:
+
+```text
+alarm list
+observe point list
+FTTI window
+fault outcome boundary policy
+alarm-to-safety-mechanism mapping
+observe-to-failure-mode mapping
+```
+
+Without this layer, campaign results are easy to misinterpret.
+
+---
+
+## 13. Fault Campaign Setup as an Execution Contract
+
+The setup stage binds together design, fault list, simulation context, alarms, observe points, and database sessions.
+
+A campaign setup package should include:
+
+```text
+filelist
+clock definition
+top module
+fault list or database session
+VCD list
+alarm list
+observe point list
+output directory
+campaign mode
+resource plan
+result database session
+```
+
+D20 should treat the setup package as an execution contract.
+
+If a later stage quietly changes one of these inputs, the final metrics may no longer correspond to the intended campaign.
+
+The mini flow should therefore store:
+
+```text
+campaign setup manifest
+campaign command template
+configuration snapshot
+input hash summary
+planned result session
+handoff to execution layer
+```
+
+This is where methodology becomes engineering control.
+
+---
+
+## 14. Fault Injection Execution: Controlled Perturbation
+
+Fault injection is not random chaos. It is controlled perturbation.
+
+Each fault injection should have a structured definition:
+
+```text
+fault site
+fault type
+fault value
+injection time
+injection duration
+expected observation window
+alarm boundary
+observe boundary
+classification rule
+```
+
+D20 does not need to run a massive campaign. It needs to demonstrate that the execution evidence is carried forward.
+
+The execution layer should produce or reference:
+
+```text
+execution plan
+partition map
+resource plan
+execution status
+raw result index
+campaign result database session
+native report artifacts
+known diagnostics
+```
+
+Even in a mini flow, this structure matters because final metrics depend on execution quality.
+
+A fault campaign with missing or ambiguous execution evidence should not become final safety evidence.
+
+---
+
+## 15. Fault Outcome Classification
+
+After execution, raw campaign results must be classified.
+
+D20 should preserve four core outcome categories:
+
+```text
+detected: the safety mechanism detected or controlled the fault within the expected boundary
+safe: the fault did not cause a safety-relevant violation under the defined context
+unsafe: the fault caused an unacceptable deviation without valid detection or control
+unresolved: the evidence is insufficient to classify the fault confidently
+```
+
+The unresolved category is especially important.
+
+It should not be hidden or treated as safe. It may represent:
+
+```text
+insufficient VCD activity
+fault not introduced
+no observable deviation
+missing simulation data
+insufficient observation window
+black-box boundary
+campaign setup mismatch
+unknown tool diagnostic
+```
+
+D20 should show how unresolved results flow into closure and regression gate decisions.
+
+A mature end-to-end flow is not one where every row magically passes. It is one where every problematic row is visible and actionable.
+
+---
+
+## 16. Final Metrics Are a Reconciliation Layer
+
+Final metrics are not simply a report pasted at the end.
+
+They are a reconciliation layer between structural analysis, campaign outcome, diagnostic credit, FIT allocation, and FMEDA interpretation.
+
+D20 should show that final metrics consume:
+
+```text
+base FIT or FIT contribution evidence
+safety mechanism map
+fault campaign result session
+classification outcome
+safe / detected / unsafe / unresolved counts
+failure mode allocation
+```
+
+Final metrics should produce:
+
+```text
+diagnostic coverage
+residual FIT
+safe contribution
+single-point contribution
+multi-point or latent contribution
+SPFM-like summary
+LFM-like summary
+PMHF-like summary
+FMEDA-ready metric seeds
+```
+
+The key principle is that final metrics must be linked backward.
+
+A residual FIT value without source evidence is not reviewable.
+
+D20 should therefore report final metrics together with:
+
+```text
+source database session
+source campaign result
+source fault list
+source FIT setup
+source safety mechanism mapping
+confidence level
+remaining open issues
+```
+
+---
+
+## 17. FMEDA Interpretation
+
+FMEDA stands for Failure Modes, Effects, and Diagnostic Analysis.
+
+In D20, FMEDA is not an external spreadsheet exercise. It is the point where safety evidence becomes architecture review.
+
+A row in the FMEDA model should connect:
+
+```text
+part
+sub-part
+failure mode
+failure effect
+safety mechanism
+diagnostic coverage
+FIT contribution
+residual FIT
+fault outcome evidence
+review status
+```
+
+D20 should show that final metrics can be interpreted in a part/sub-part context.
+
+The mini flow does not need a large part hierarchy. It needs a correct chain.
+
+Example chain:
+
+```text
+sub-part: counter control logic
+failure mode: counter value corruption
+safety mechanism: alarm boundary for invalid counter state
+fault evidence: injected faults in counter cone
+outcome evidence: detected / safe / unresolved classification
+metric evidence: residual FIT and diagnostic coverage
+review evidence: closure action if unresolved remains
+```
+
+This makes FMEDA more than a table. It becomes a view of the evidence graph.
+
+---
+
+## 18. Top-down FMEDA and Safety Architecture Review
+
+Bottom-up fault evidence is not enough. A safety review also needs top-down intent.
+
+Top-down FMEDA starts from:
+
+```text
+item boundary
+part and sub-part hierarchy
+safety goal
+failure mode
+safety mechanism allocation
+expected diagnostic behavior
+```
+
+It then asks whether the evidence supports the intent.
+
+D20 should connect bottom-up evidence to top-down review:
+
+```text
+fault outcome evidence
+  -> FMEDA row
+  -> part/sub-part rollup
+  -> safety goal view
+  -> closure queue
+```
+
+This is where many safety flows become weak. They can run fault simulation, but they cannot explain which failure mode was covered and which review action remains.
+
+D20 should explicitly preserve:
+
+```text
+top-down review workbook
+metric rollup
+affected failure modes
+review queue
+open assumptions
+handoff to closure
+```
+
+The end-to-end flow should not skip this layer.
+
+---
+
+## 19. Closure: The Safety Flow’s Risk Management Layer
+
+Closure is where unresolved evidence becomes an engineering decision.
+
+A closure issue may come from:
+
+```text
+unresolved fault
+unsafe outcome
+missing safety mechanism binding
+metric rollup review
+residual FIT gap
+FMEDA row without evidence
+stale or incomplete artifact
+```
+
+D20 should show closure outputs as part of the final story:
+
+```text
+closure issue register
+closure action plan
+closure disposition
+root cause matrix
+residual FIT gap analysis
+handoff to regression gate
+```
+
+Closure does not mean everything is fixed. It means every open issue has a status, owner, scope, expected evidence, and next action.
+
+For a mini flow, this is critical.
+
+A demo that hides unresolved results is less credible than a demo that exposes them and carries them into closure.
+
+---
+
+## 20. Regression Gate: Turning the Flow into a CI Decision
+
+D18 introduced the regression gate. D20 should integrate that result.
+
+A regression gate consumes normalized metrics and evidence state, then produces:
+
+```text
+PASS
+WARN
+FAIL
+BLOCK
+```
+
+In an end-to-end mini flow, the gate decision should not be the only conclusion, but it should be visible.
+
+D20 should report:
+
+```text
+which rules were evaluated
+which metrics were consumed
+which rules passed
+which rules warned
+which rules failed
+which evidence supported each rule
+which waiver status was applied
+which open closure actions remain
+```
+
+This makes the mini flow CI-ready.
+
+The important principle is:
+
+```text
+a safety flow is not complete because scripts exited successfully;
+it is complete when the evidence satisfies a declared gate policy or produces an explicit review decision.
+```
+
+D20 should preserve this distinction.
+
+---
+
+## 21. Evidence Traceability: From File Collection to Safety Case Skeleton
+
+D19 builds the evidence traceability index. D20 should consume it as the evidence backbone.
+
+A useful evidence traceability layer contains:
+
+```text
+artifact catalog
+hash manifest
+CSV schema inventory
+log index
+database session index
+native report index
+gate decision traceability
+trace graph edges
+D20 handoff package
+```
+
+D20 should not re-discover everything from scratch. It should read D19 and construct the final narrative from indexed artifacts.
+
+The traceability layer answers:
+
+```text
+Which file supports this metric?
+Which database session supports this report?
+Which gate rule consumed this metric?
+Which closure action came from this unresolved fault?
+Which evidence is tool-generated, review-level, or synthetic?
+Which artifact hash identifies this result?
+```
+
+In a real organization, this is the difference between “we have a report” and “we have a reviewable safety evidence package”.
+
+---
+
+## 22. D20 Architecture
+
+D20 can be implemented as a five-layer mini-flow architecture.
 
 ```mermaid
-flowchart LR
-    A[Repository] --> B[Source Tree]
-    A --> C[Demo Workspace]
-    A --> D[Generated Outputs]
-    A --> E[Release Package]
-    E --> F[Downloadable Archive]
+flowchart TD
+    A[Upstream Evidence Snapshot] --> B[End-to-End Chain Builder]
+    B --> C[Metric and Closure Summary Layer]
+    C --> D[Readiness and Confidence Gate]
+    D --> E[Review Packet Publisher]
+    B --> F[Trace Graph Export]
+    F --> E
 ```
 
-**Figure 3. The release package is a curated, reproducible subset of the repository.**
+The layers are:
 
-Do not put every local file into the release.
+```text
+snapshot layer:
+  collect D19 index and key D01-D18 artifacts
 
-Instead, define what belongs in the public artifact set.
+chain builder:
+  build BFR -> SM -> campaign -> final metrics trace
+
+summary layer:
+  summarize metrics, outcomes, closure state, and CI gate result
+
+readiness layer:
+  determine whether the mini flow is complete, warning-only, failed, or blocked
+
+publisher layer:
+  emit human-readable and machine-readable final packages
+```
+
+D20 should not be a monolithic script.
+
+It should be a small integration platform.
 
 ---
 
-## 6. Suggested Repository Layout
+## 23. Suggested D20 Project Structure
 
-A good repository layout for this topic can be:
+A clean D20 demo can be organized as follows:
 
 ```text
-automotive-safeic-fault-injection-practice/
+D20_end_to_end_mini_flow_bfr_sm_fault_campaign_final_metrics/
   README.md
-  LICENSE
-  DISCLAIMER.md
-  QUICKSTART.md
-  DEMO_SCOPE.md
-  RELEASE_NOTES.md
-
-  docs/
-    articles/
-    methodology/
-    figures/
-
-  demos/
-    D01_safa_sa_bfr_input_package/
-    D02_safety_assumption_setup/
-    ...
-    D20_public_demo_package/
-
+  configs/
+    end_to_end_policy.yaml
+    evidence_confidence_policy.csv
+    readiness_rules.csv
+  inputs/
+    from_D19/
+    from_D18/
+    from_D17/
+    from_D16/
+    from_D14/
+    from_D13/
+    from_D08/
+  scripts/
+    run_demo.csh
+    run_demo.sh
   tools/
-    safeic_input/
-    safeic_fit/
-    safeic_faultgen/
-    safeic_classify/
-    safeic_measdc/
-    safeic_fmeda/
-    safeic_evidence/
-    safeic_report/
-    safeic_regress/
-    safeic_compare/
-    safeic_dashboard/
-    safeic_package/
-
-  examples/
-    toy_counter/
-      rtl/
-      policies/
-      manifests/
-
-  releases/
-    D20_public_demo_package/
-      release/
+    build_d20_end_to_end_flow.py
+  outputs/
+    end_to_end_stage_map.csv
+    end_to_end_artifact_flow.csv
+    bfr_to_final_metric_trace.csv
+    sm_to_fault_campaign_trace.csv
+    campaign_to_fmeda_trace.csv
+    final_metric_readiness.csv
+    end_to_end_readiness_gate.csv
+    end_to_end_dashboard.md
+    final_review_packet.md
+    d20_quality_gate.csv
+    demo_summary.md
 ```
 
-This structure separates:
+The directory structure should communicate the method.
+
+D20 is not merely copying outputs. It is building a traceable flow summary.
+
+---
+
+## 24. Input Contract from D19
+
+D20 should treat D19 as its primary evidence index.
+
+Core inputs from D19 include:
 
 ```text
-methodology documentation
-demo implementations
-tool code
-sample design
-release outputs
+evidence_artifact_catalog.csv
+evidence_hash_manifest.csv
+common_fusa_db_session_index.csv
+safa_db_session_enabled_for_report.csv
+native_report_index.csv
+gate_decision_traceability.csv
+evidence_trace_edges.csv
+d19_handoff_to_d20.csv
+evidence_traceability_dashboard.md
 ```
 
----
-
-## 7. Public Release Package Structure
-
-The D20 release package can be organized as:
+D20 should also read selected upstream artifacts directly when needed:
 
 ```text
-release/
-  README.md
-  QUICKSTART.md
-  RELEASE_NOTES.md
-  DEMO_SCOPE.md
-  DISCLAIMER.md
-
-  reproducibility_manifest.yaml
-  public_artifact_index.csv
-  public_data_validation.csv
-  package_warnings.csv
-
-  demos/
-    D01/
-    D11/
-    D12/
-    D13/
-    D14/
-    D15/
-    D16/
-    D18/
-    D19/
-
-  data/
-    toy_counter/
-      rtl/
-      policies/
-      sample_faults/
-      sample_results/
-
-  reports/
-    safety_report.md
-    evidence_package_summary.md
-    regression_summary.md
-    ci_summary.md
-
-  dashboard/
-    index.html
-    assets/
-    data/
-
-  scripts/
-    run_quickstart.sh
-    run_quickstart.csh
-    validate_public_package.sh
-    validate_public_package.csh
-
-  docs/
-    methodology_notes.md
-    artifact_map.md
-    limitations.md
+D18 ci_status.json
+D17 closure_action_plan.csv
+D16 topdown_metric_rollup.csv
+D14 final_metrics_summary.csv
+D13 fault_outcome_classified.csv
+D08 Common FuSa database reference
 ```
 
-This release package should be readable even without the full development workspace.
+But the direct reads should not bypass traceability. D20 should record that these artifacts were referenced through the D19 index.
 
 ---
 
-## 8. Public Artifact Classes
+## 25. End-to-End Stage Map
 
-D20 should classify artifacts before release.
+One of D20’s most useful outputs is an end-to-end stage map.
 
-Suggested classes:
+A stage map answers:
 
 ```text
-include_public
-include_sanitized
-include_generated_summary
-include_sample_only
-exclude_private
-exclude_license_restricted
-exclude_temporary
-exclude_unknown
+what each stage contributes
+which artifact represents the contribution
+which downstream stage consumes it
+whether the artifact exists
+whether it is tool-generated or review-level
+whether it is required for the final readiness gate
 ```
 
-Example:
-
-```csv
-artifact,file_path,classification,reason
-toy_counter.v,examples/toy_counter/rtl/toy_counter.v,include_public,synthetic demo RTL
-safety_report.md,reports/safety_report.md,include_generated_summary,public methodology report
-commercial_raw.log,private/commercial_raw.log,exclude_license_restricted,raw tool output
-/tmp/run123.log,tmp/run123.log,exclude_temporary,temporary local run log
-```
-
-The release builder should not include unknown artifacts by default.
-
-Default-deny is safer than default-include.
-
----
-
-## 9. Public Data Validation
-
-Public release must validate data safety.
-
-Validation checks may include:
+Example fields:
 
 ```text
-no absolute private paths
-no license server strings
-no customer names
-no internal usernames
-no private hostnames
-no raw commercial tool outputs
-no confidential labels
-no unsupported file extensions
-no oversized binary dumps
-no temporary files
+stage_id
+stage_name
+main_contribution
+primary_artifact
+artifact_hash
+confidence_level
+consumer_stage
+readiness_status
 ```
 
-Example output:
+This table is valuable because reviewers often lose context when faced with hundreds of files.
 
-```csv
-check,status,details
-absolute_path_scan,PASS,no private absolute paths found
-license_string_scan,PASS,no license strings found
-customer_name_scan,PASS,no customer names found
-raw_commercial_output_scan,PASS,no raw commercial reports included
-unknown_file_scan,WARN,2 files require manual review
-binary_file_scan,PASS,no unexpected binary files
-```
-
-This output should be included in the release.
-
-It demonstrates responsible publication discipline.
+The stage map provides the minimal path through the evidence tree.
 
 ---
 
-## 10. Sanitization Is Not an Afterthought
+## 26. BFR-to-Final-Metric Trace
 
-Public packaging should include a sanitization layer.
+D20 should explicitly build a BFR-to-final-metric trace.
 
-Sanitization examples:
+Suggested columns:
 
 ```text
-replace private paths with relative paths
-remove usernames and hostnames
-remove license environment variables
-replace raw commercial tool references with normalized sample references
-replace project-specific IDs with demo IDs
-truncate large logs
-remove timestamps if they reveal private workflow details
+trace_id
+bfr_source
+fit_standard
+mission_profile
+base_fit_artifact
+sm_map_artifact
+campaign_result_session
+final_metric_artifact
+residual_fit_metric
+spfm_metric
+lfm_metric
+pmhf_metric
+confidence_level
+review_status
 ```
 
-Example mapping:
+This trace is the quantitative backbone of the flow.
 
-```yaml
-sanitize:
-  path_replacements:
-    "/home/private/project": "<DEMO_ROOT>"
-    "/tools/vendor/license": "<LICENSE_PATH_REDACTED>"
-
-  string_replacements:
-    "LM_LICENSE_FILE": "LICENSE_ENV_REDACTED"
-    "customer_alpha": "demo_customer"
-```
-
-For public release, it is better to generate clean data from the start than to clean risky data later.
-
----
-
-## 11. Reproducibility Manifest
-
-The release should include a reproducibility manifest.
-
-Example:
-
-```yaml
-release:
-  name: D20_public_demo_package
-  version: 0.1.0
-  profile: public_methodology_demo
-  design: toy_counter
-
-source:
-  generated_from_ci_run: ci_demo_latest
-  generated_by: safeic-package
-  generation_mode: sanitized_public_release
-
-included:
-  demos:
-    - D01_safa_sa_bfr_input_package
-    - D11_fault_outcome_classification
-    - D12_measured_diagnostic_coverage
-    - D13_fmeda_update
-    - D14_safety_evidence_package
-    - D15_safety_report_generation
-    - D16_regression_and_trend_tracking
-    - D18_dashboard_and_website_demo
-    - D19_ci_automation
-
-reproduce:
-  quickstart_csh: scripts/run_quickstart.csh
-  quickstart_bash: scripts/run_quickstart.sh
-```
-
-This tells users how the package was built.
-
----
-
-## 12. Artifact Index
-
-The public package should include `public_artifact_index.csv`.
-
-Example:
-
-```csv
-artifact_id,path,type,source_stage,public_classification,sha256,description
-P001,data/toy_counter/rtl/toy_counter.v,rtl,D01,include_public,abc123,synthetic demo RTL
-P002,reports/safety_report.md,report,D15,include_generated_summary,def456,safety report
-P003,dashboard/index.html,dashboard,D18,include_public,789abc,static dashboard entry
-P004,outputs/ci_summary.md,ci_summary,D19,include_generated_summary,555aaa,CI run summary
-```
-
-This index makes the release auditable.
-
-A public package should not be a black box.
-
----
-
-## 13. Quickstart Is Critical
-
-A public demo package must have a simple quickstart.
-
-Example `QUICKSTART.md`:
-
-```md
-# Quickstart
-
-## 1. Check Python
-
-```bash
-python3 --version
-```
-
-## 2. Run the public demo
-
-```bash
-bash scripts/run_quickstart.sh
-```
-
-or:
-
-```csh
-csh scripts/run_quickstart.csh
-```
-
-## 3. Inspect outputs
-
-- `reports/safety_report.md`
-- `reports/regression_summary.md`
-- `dashboard/index.html`
-- `public_data_validation.csv`
-
-## 4. Open dashboard
-
-Open:
+It helps answer:
 
 ```text
-dashboard/index.html
+Which base failure-rate assumption produced the final metric?
+Which safety mechanism map influenced diagnostic coverage?
+Which campaign result session was used for writeback?
+Which FMEDA row consumed the final metric?
 ```
 
-in a browser.
-```
-
-The first successful experience matters.
-
-If a user cannot run or inspect the demo in five minutes, the package loses impact.
+Without this table, D20 would be only a folder-level summary.
 
 ---
 
-## 14. csh Compatibility
+## 27. Safety-Mechanism-to-Campaign Trace
 
-For this series, csh scripts are important because many legacy EDA environments still use csh-style setup and execution.
+Another key table is the safety-mechanism-to-campaign trace.
 
-D20 should provide:
+Suggested columns:
 
 ```text
-scripts/run_quickstart.csh
-scripts/validate_public_package.csh
+trace_id
+failure_mode_id
+safety_mechanism_id
+endpoint_or_cone
+alarm_signal
+observe_point
+fault_list_artifact
+fault_count
+campaign_result_session
+detected_count
+safe_count
+unsafe_count
+unresolved_count
+closure_action_ref
 ```
 
-Example:
+This table connects design intent to campaign evidence.
 
-```csh
-#!/bin/csh -f
+It should make visible whether a safety mechanism was:
 
-set ROOT = `cd "$0:h/.." && pwd`
-echo "[INFO] Demo root: $ROOT"
-
-cd "$ROOT"
-
-echo "[INFO] Validating public package..."
-python3 tools/safeic_package/validate_public_package.py \
-  --manifest reproducibility_manifest.yaml \
-  --policy docs/public_data_policy.yaml
-
-echo "[INFO] Quickstart completed."
+```text
+mapped structurally
+included in the fault campaign boundary
+observed through alarm or observe point
+validated by detected outcomes
+reviewed when unresolved outcomes remain
 ```
 
-Providing both bash and csh improves portability.
-
-But for older EDA environments, csh should be treated as a first-class path.
+This is one of the most important engineering outputs of D20.
 
 ---
 
-## 15. What to Include in Public Demo
+## 28. Campaign-to-FMEDA Trace
 
-Include:
+Fault campaign results must eventually become FMEDA evidence.
+
+A campaign-to-FMEDA trace can include:
 
 ```text
-small synthetic RTL
-small sample filelists
-public-safe policy files
-sample fault lists
-sample fault outcomes
-sample measured DC tables
-sample FMEDA tables
-sample evidence package
-sample safety report
-sample regression output
-sample dashboard
-scripts to validate and inspect package
-README and quickstart
+failure_mode_id
+part_id
+subpart_id
+fault_population
+campaign_detected
+campaign_safe
+campaign_unsafe
+campaign_unresolved
+diagnostic_coverage
+residual_fit
+fmeda_row_id
+review_status
+closure_status
 ```
 
-The goal is to show methodology, not to expose full private tool capability.
+This table helps prevent a common disconnect:
 
-A small and clean demo is better than a large risky demo.
+```text
+campaign teams produce fault results;
+safety teams maintain FMEDA rows;
+the mapping between them is unclear.
+```
+
+D20 should show that the mapping is explicit.
 
 ---
 
-## 16. What to Exclude
+## 29. Readiness Gate for the Mini Flow
 
-Exclude:
+D20 should have its own readiness gate.
+
+It is not the same as the D18 regression gate.
+
+D18 asks:
 
 ```text
-raw commercial tool reports
-license-protected logs
-real customer RTL
-real supplier FIT data
-private absolute paths
-internal project scripts that reveal proprietary flows
-large waveform dumps
-private screenshots
-temporary run directories
-unreviewed experimental files
+Is the safety state acceptable under the CI policy?
 ```
 
-When unsure, exclude or replace with sanitized synthetic data.
+D20 asks:
 
-The public package should be boring from a confidentiality perspective.
+```text
+Is the end-to-end mini flow complete and reviewable?
+```
 
-Its value should come from structure and clarity.
+A D20 readiness gate may check:
+
+```text
+required stage artifacts exist
+BFR-to-final-metric trace exists
+SM-to-campaign trace exists
+campaign-to-FMEDA trace exists
+D18 gate decision is imported
+D19 evidence index is complete
+Common FuSa DB canonical sessions are indexed
+native report status is recorded
+closure backlog is visible
+final review packet is generated
+```
+
+Possible decisions:
+
+```text
+PASS: complete and clean
+WARN: complete but open review items remain
+FAIL: required safety evidence is inconsistent or gate failed
+BLOCK: required artifacts are missing
+```
 
 ---
 
-## 17. Release Notes
+## 30. Confidence Levels
 
-`RELEASE_NOTES.md` should describe:
+D20 should not overstate evidence quality.
+
+Each artifact should carry a confidence label such as:
 
 ```text
-release version
-date
-included demos
-included reports
-known limitations
-known warnings
-changes since previous release
-validation status
+synthetic
+review_level
+tool_parsed
+tool_generated
+database_backed
+signoff_candidate
 ```
 
-Example:
+A mini flow may mix these levels.
 
-```md
-# Release Notes
+For example:
 
-Version: 0.1.0  
-Demo: D20_public_demo_package  
-
-## Included
-
-- D01 input package preflight
-- D11-D13 fault outcome, measured DC, and FMEDA sample outputs
-- D14 evidence package summary
-- D15 safety report
-- D16 regression summary
-- D18 dashboard static site
-- D19 CI summary
-
-## Known Limitations
-
-- Synthetic toy design only
-- Small sample fault campaign
-- No production safety signoff claim
-- Commercial comparison uses normalized sample data
-
-## Validation
-
-Public data validation: PASS with warnings
+```text
+fault outcome classification: tool-parsed from upstream result
+final metric summary: database-backed or review-level depending on run mode
+FMEDA table: review-level model
+Common database session: tool database
+regression gate: script-generated control evidence
+evidence catalog: hash-backed traceability evidence
 ```
 
-Release notes help external readers understand maturity.
+This honesty improves credibility.
+
+A demo does not have to claim signoff quality. It has to show that evidence confidence is visible.
 
 ---
 
-## 18. Demo Scope Document
+## 31. Handling Remaining Warnings
 
-`DEMO_SCOPE.md` should be explicit.
+An end-to-end mini flow may finish with warnings.
 
-It should answer:
-
-```text
-What is demonstrated?
-What is not demonstrated?
-Which design is used?
-Which fault models are included?
-Which metrics are computed?
-Which outputs are synthetic?
-Which outputs are generated?
-Which outputs are manually provided?
-```
-
-Example scope statement:
-
-```md
-This package demonstrates a methodology for functional safety analysis and fault injection workflow organization using a synthetic `toy_counter` design.
-
-It demonstrates artifact structure, evidence traceability, measured DC calculation, FMEDA update, regression tracking, CI orchestration, and dashboard presentation.
-
-It does not claim production readiness, ISO 26262 compliance, or equivalence with any commercial tool.
-```
-
-A clear scope document prevents misunderstanding.
-
----
-
-## 19. Disclaimer
-
-`DISCLAIMER.md` should clearly state:
-
-```text
-methodology demo only
-not safety certification
-not legal or compliance advice
-not production signoff
-not a replacement for certified tools or qualified process
-sample data may be synthetic or simplified
-commercial tool comparison data may be normalized examples
-```
-
-Example:
-
-```md
-# Disclaimer
-
-This repository is a functional safety methodology and engineering workflow demonstration.
-
-The included examples, metrics, reports, and dashboards are not production safety signoff evidence and do not constitute ISO 26262 compliance certification.
-
-Users must perform their own safety analysis, tool qualification, process review, and independent verification for real projects.
-```
-
-This protects both credibility and safety.
-
----
-
-## 20. License and Usage
-
-The release should include a license file.
-
-The appropriate license depends on your publication strategy.
-
-Common choices:
-
-```text
-MIT
-Apache-2.0
-BSD-3-Clause
-custom evaluation license
-```
-
-For a public demo intended to show methodology and encourage adoption, a permissive license can work.
-
-For a tool that may become commercial, you may choose:
-
-```text
-open documentation
-restricted tool code
-binary-only demo tool
-evaluation license
-```
-
-D20 should not decide the legal strategy.
-
-But it should create placeholders:
-
-```text
-LICENSE
-NOTICE
-THIRD_PARTY_NOTICES.md
-```
-
-Do not include third-party files unless their license allows redistribution.
-
----
-
-## 21. Third-Party and Commercial Tool Boundaries
-
-If the public demo references commercial tools, keep the boundary clear.
-
-Allowed public-safe approach:
-
-```text
-describe the comparison methodology
-provide normalized synthetic sample tables
-provide adapter interface
-avoid raw report redistribution
-avoid vendor-specific confidential content
-avoid license-protected screenshots
-```
-
-Example note:
-
-```md
-Commercial-tool comparison examples in this package use normalized sample data for methodology demonstration. Raw commercial reports are not included.
-```
-
-This avoids creating unnecessary legal and licensing risk.
-
----
-
-## 22. Package Build Policy
-
-D20 should be controlled by a release policy.
-
-Example `package_policy.yaml`:
-
-```yaml
-package_policy:
-  default_action: exclude_unknown
-
-  include:
-    - README.md
-    - QUICKSTART.md
-    - DEMO_SCOPE.md
-    - DISCLAIMER.md
-    - reports/*.md
-    - dashboard/**
-    - data/toy_counter/**
-    - scripts/run_quickstart.*
-
-  exclude:
-    - "**/*.log.raw"
-    - "**/private/**"
-    - "**/commercial_raw/**"
-    - "**/license/**"
-    - "**/*.fsdb"
-    - "**/*.vcd"
-    - "**/tmp/**"
-
-  validation:
-    scan_private_paths: true
-    scan_license_strings: true
-    scan_customer_names: true
-    require_disclaimer: true
-    require_quickstart: true
-```
-
-A policy-driven package builder reduces accidental mistakes.
-
----
-
-## 23. Package Build Flow
-
-D20 build flow:
-
-```mermaid
-flowchart TD
-    A[Load Package Manifest] --> B[Load Package Policy]
-    B --> C[Select Candidate Artifacts]
-    C --> D[Classify Public Safety]
-    D --> E[Sanitize Files]
-    E --> F[Copy to Release Directory]
-    F --> G[Generate Artifact Index]
-    G --> H[Run Public Data Validation]
-    H --> I[Generate Release Notes]
-    I --> J[Generate Archive]
-```
-
-**Figure 4. D20 builds a public demo package by selecting, sanitizing, validating, indexing, and archiving artifacts.**
-
-The release builder should not simply copy a folder.
-
-It should make release decisions explicit.
-
----
-
-## 24. Validation Gate for Public Package
-
-A public package should pass a release gate.
-
-Suggested statuses:
-
-```text
-RELEASE_READY
-RELEASE_READY_WITH_WARNINGS
-BLOCKED
-MANUAL_REVIEW_REQUIRED
-```
+Warnings can be acceptable if they are structured.
 
 Examples:
 
 ```text
-RELEASE_READY:
-  all required files exist and validation passes
-
-RELEASE_READY_WITH_WARNINGS:
-  minor warnings exist, but no privacy or required-file issue
-
-MANUAL_REVIEW_REQUIRED:
-  unknown files or policy exceptions exist
-
-BLOCKED:
-  private data, license strings, or missing disclaimer detected
+unresolved detail faults remain but all have closure actions
+high-priority actions remain but none are critical
+native report extraction is optional and not enabled
+FMEDA row requires manual safety review
+release policy would fail but development policy warns
 ```
 
-Example `public_release_status.json`:
+D20 should distinguish:
+
+```text
+expected review warnings
+policy warnings
+execution warnings
+evidence completeness warnings
+blocking errors
+```
+
+This prevents the final flow from being judged by a single noisy word.
+
+A warning with owner, scope, evidence, and action is part of engineering control.
+
+A warning with no owner or evidence is a process weakness.
+
+---
+
+## 32. The Final Review Packet
+
+D20 should produce a final review packet.
+
+This is a human-readable Markdown artifact that summarizes:
+
+```text
+flow scope
+design boundary
+FIT setup and BFR source
+safety mechanism summary
+fault campaign summary
+final metric summary
+FMEDA summary
+closure state
+regression gate result
+evidence traceability result
+remaining risks
+next recommended action
+```
+
+The review packet should not contain raw tool logs. It should link to indexed evidence.
+
+A good review packet answers:
+
+```text
+What was analyzed?
+What safety mechanisms were credited?
+What campaign evidence was used?
+What final metrics were produced?
+What remains open?
+Can the evidence be reproduced?
+Which artifacts support the conclusion?
+```
+
+This makes D20 useful not only for demo execution, but also for technical communication.
+
+---
+
+## 33. Machine-Readable End-to-End Status
+
+Besides Markdown, D20 should emit machine-readable status.
+
+A compact JSON status can include:
 
 ```json
 {
-  "release_status": "RELEASE_READY_WITH_WARNINGS",
-  "required_files_present": true,
-  "privacy_scan": "PASS",
-  "unknown_files": 2,
-  "manual_review_required": false,
-  "warnings": [
-    "sample commercial comparison data is synthetic",
-    "dashboard includes demo-only limitations"
-  ]
+  "demo": "D20_end_to_end_mini_flow_bfr_sm_fault_campaign_final_metrics",
+  "flow": "end_to_end_safety_mini_flow",
+  "readiness": "WARN",
+  "stages_total": 20,
+  "stages_indexed": 20,
+  "required_artifacts_missing": 0,
+  "regression_gate_status": "WARN",
+  "traceability_status": "PASS",
+  "review_required": true
 }
 ```
 
-This makes release decisions auditable.
+A CI system or dashboard can consume this without parsing a long report.
+
+D20 should therefore publish both:
+
+```text
+end_to_end_dashboard.md
+end_to_end_status.json
+```
+
+The Markdown explains. The JSON integrates.
 
 ---
 
-## 25. GitHub README Structure
+## 34. Native Tool Usage in D20
 
-The repository README should be clear.
+D20 should not rerun the entire toolchain by default.
 
-Recommended sections:
+That would make the mini flow heavy and fragile.
+
+Instead, D20 should use native tool integration in a focused way:
 
 ```text
-Project Overview
-What This Repository Demonstrates
-Quickstart
-Demo Flow
-Repository Structure
-Key Outputs
-Dashboard
-Public Data Policy
-Limitations
-License
-Citation / Contact
+read canonical database session references
+optionally export native reports from enabled database sessions
+optionally validate that expected sessions are accessible
+optionally verify that native report artifacts match the traceability index
 ```
 
-Example opening:
+The canonical execution sessions typically include:
 
-```md
-# Automotive Safe-IC Functional Safety and Fault Injection Practice
-
-This repository demonstrates an engineering workflow for automotive chip functional safety analysis and fault injection practice using public-safe demo data.
-
-It covers input packaging, fault outcome classification, measured diagnostic coverage, FMEDA update, evidence packaging, report generation, regression tracking, dashboard presentation, and CI-style automation.
+```text
+fault list session
+final metrics session
+fault campaign result session
 ```
 
-This README should communicate the value within the first screen.
+Review-only sessions should remain indexed but should not be treated as executable native-report targets.
+
+This distinction keeps D20 stable.
 
 ---
 
-## 26. Documentation Map
+## 35. What D20 Should Not Do
 
-D20 should provide a documentation map.
+D20 should avoid several mistakes.
 
-Example:
+It should not:
 
 ```text
-README.md:
-  repository overview
-
-QUICKSTART.md:
-  how to run or inspect the demo
-
-DEMO_SCOPE.md:
-  what is and is not demonstrated
-
-DISCLAIMER.md:
-  safety and compliance disclaimer
-
-docs/methodology_notes.md:
-  flow-level explanation
-
-docs/artifact_map.md:
-  mapping from artifacts to demos
-
-reports/safety_report.md:
-  generated safety report
-
-dashboard/index.html:
-  static dashboard entry
+rerun all previous stages by default
+hide unresolved faults
+claim certification signoff
+merge review-only sessions with execution-backed sessions
+count aggregate unresolved rows as new detail faults
+judge quality only by script exit code
+copy raw logs into the article or review packet
+ignore evidence confidence labels
+ignore regression gate warnings
+ignore closure backlog
 ```
 
-A public demo package should be easy to navigate.
+D20 is a summary and integration demo. Its strength is clarity, not brute force.
 
-A reader should not need to guess where to start.
+A clean D20 flow should be reproducible, inspectable, and honest about what remains open.
 
 ---
 
-## 27. Artifact Map
+## 36. Example D20 Output Set
 
-`docs/artifact_map.md` can connect artifacts to demos.
+A practical D20 demo can produce:
 
-Example:
-
-```md
-# Artifact Map
-
-| Demo | Artifact | Purpose |
-|---|---|---|
-| D11 | `data/sample_fault_outcomes.csv` | classified fault outcomes |
-| D12 | `data/measured_dc_by_failure_mode.csv` | measured diagnostic coverage |
-| D13 | `data/fmeda_table.csv` | FMEDA update |
-| D14 | `reports/evidence_package_summary.md` | evidence summary |
-| D15 | `reports/safety_report.md` | review-ready report |
-| D16 | `reports/regression_summary.md` | trend and regression result |
-| D18 | `dashboard/index.html` | interactive dashboard |
-| D19 | `reports/ci_summary.md` | CI run summary |
+```text
+outputs/end_to_end_stage_map.csv
+outputs/end_to_end_artifact_flow.csv
+outputs/bfr_to_final_metric_trace.csv
+outputs/sm_to_fault_campaign_trace.csv
+outputs/campaign_to_fmeda_trace.csv
+outputs/closure_and_gate_summary.csv
+outputs/end_to_end_readiness_gate.csv
+outputs/end_to_end_status.json
+outputs/end_to_end_dashboard.md
+outputs/final_review_packet.md
+outputs/native_report_bridge.csv
+outputs/d20_quality_gate.csv
+outputs/evidence_index.csv
+outputs/demo_summary.md
 ```
 
-Artifact maps help users understand the package quickly.
+These outputs should support both machine review and human review.
+
+The CSV files expose the evidence graph. The JSON exposes the final status. The Markdown files explain the story.
 
 ---
 
-## 28. Release Archive
+## 37. D20 Review Checklist
 
-D20 can generate a release archive:
-
-```text
-automotive_safeic_practice_D20_public_demo_package_v0.1.0.zip
-```
-
-Archive contents should match `release/`.
-
-Do not archive:
+A reviewer should be able to answer:
 
 ```text
-.git/
-__pycache__/
-temporary logs
-private folders
-license files from third-party tools
-raw commercial reports
-large waveform dumps
+What design boundary was used?
+Which BFR and FIT setup drove the flow?
+Which safety mechanisms were mapped?
+Which endpoints and failure modes were covered?
+Which fault list was used?
+Which VCD and observe boundary defined the campaign context?
+Which campaign result session was used?
+Which final metrics were produced?
+Which FMEDA rows consumed those metrics?
+Which unresolved or warning items remain?
+Which regression gate rules warned or failed?
+Which evidence artifacts support the conclusion?
+Which database sessions are execution-backed?
+Can the entire result be reproduced from indexed artifacts?
 ```
 
-The archive should be small enough to download and inspect.
-
-For public GitHub, keep it lightweight.
+If D20 can answer these questions, the mini flow has succeeded.
 
 ---
 
-## 29. The `safeic-package` Tool Architecture
+## 38. From Demo Platform to Engineering Platform
 
-The generic tool `safeic-package` can be implemented as a staged release builder.
+D20 is a demo, but its architecture points toward a real platform.
 
-```mermaid
-flowchart TD
-    A[manifest.yaml] --> T[safeic-package]
-    B[package_config.yaml] --> T
-    C[package_policy.yaml] --> T
-    D[CI Run Artifacts] --> T
-    E[Public-Safe Source Data] --> T
-
-    T --> F[Discover Artifacts]
-    F --> G[Classify Artifacts]
-    G --> H[Apply Sanitization]
-    H --> I[Copy Release Files]
-    I --> J[Generate Index and Manifests]
-    J --> K[Validate Public Data]
-    K --> L[Generate Release Notes]
-    L --> M[Create Archive]
-```
-
-**Figure 5. `safeic-package` discovers, classifies, sanitizes, indexes, validates, and archives public demo artifacts.**
-
-Suggested internal modules:
+A production platform would add:
 
 ```text
-safeic_package/
-  cli.py
-  manifest.py
-  load_config.py
-  artifact_discovery.py
-  classification.py
-  sanitizer.py
-  copy_release.py
-  artifact_index.py
-  validation.py
-  release_notes.py
-  archive.py
-  summary.py
+larger RTL designs
+formalized safety requirements
+ASIL-specific policy
+multi-IP hierarchy
+real regression scheduler integration
+waiver approval workflow
+versioned database repository
+artifact storage service
+review dashboard
+signoff candidate packaging
 ```
 
-Responsibilities:
+However, the core flow remains the same:
 
-| Module | Responsibility |
-|---|---|
-| `artifact_discovery.py` | Find candidate release artifacts |
-| `classification.py` | Classify include/exclude/public-safe status |
-| `sanitizer.py` | Remove private paths and forbidden strings |
-| `copy_release.py` | Copy approved artifacts into release directory |
-| `artifact_index.py` | Generate public artifact index |
-| `validation.py` | Run public data checks |
-| `release_notes.py` | Generate release notes and scope docs |
-| `archive.py` | Create release archive |
-| `summary.py` | Generate packaging summary |
+```text
+BFR
+  -> safety mechanism
+  -> fault campaign
+  -> final metrics
+  -> FMEDA
+  -> closure
+  -> regression gate
+  -> traceability
+  -> end-to-end review
+```
+
+That is why the mini flow matters.
+
+It demonstrates the skeleton of a safety platform without requiring a production-scale SoC.
 
 ---
 
-## 30. D20 Directory Structure
+## 39. Summary
 
-Suggested directory:
+D20 is the stage where the previous nineteen practices become one coherent safety engineering story.
 
-```text
-D20_public_demo_package/
-  README.md
-  run_demo.sh
-  run_demo.csh
-  manifest.yaml
-
-  inputs/
-    package_config.yaml
-    package_policy.yaml
-    public_data_policy.yaml
-    release_notes_template.md
-    demo_scope_template.md
-    disclaimer_template.md
-
-  source_artifacts/
-    ci_run/
-      ci_summary.md
-      ci_status.csv
-      ci_gate_result.json
-    reports/
-      safety_report.md
-      regression_summary.md
-    dashboard/
-      index.html
-      assets/
-      data/
-    sample_data/
-      toy_counter/
-      fmeda/
-      campaign/
-      metrics/
-
-  tools/
-    safeic_package.py
-
-  scripts/
-    run_package.csh
-    run_package.sh
-    validate_release.csh
-    validate_release.sh
-
-  release/
-    README.md
-    QUICKSTART.md
-    RELEASE_NOTES.md
-    DEMO_SCOPE.md
-    DISCLAIMER.md
-    reproducibility_manifest.yaml
-    public_artifact_index.csv
-    public_data_validation.csv
-    package_warnings.csv
-    demos/
-    data/
-    reports/
-    dashboard/
-    scripts/
-    docs/
-
-  outputs/
-    package_summary.md
-    public_release_status.json
-    package_validation.csv
-    package_warnings.csv
-    release_archive_manifest.csv
-```
-
-This structure separates inputs, candidate artifacts, generated release, and packaging outputs.
-
----
-
-## 31. D20 Manifest
-
-Example:
-
-```yaml
-project:
-  name: automotive_safeic_practice
-  demo: D20_public_demo_package
-  top_module: toy_counter
-
-inputs:
-  package_config: inputs/package_config.yaml
-  package_policy: inputs/package_policy.yaml
-  public_data_policy: inputs/public_data_policy.yaml
-  source_artifacts: source_artifacts
-
-outputs:
-  release_dir: release
-  package_summary: outputs/package_summary.md
-  release_status: outputs/public_release_status.json
-  validation: outputs/package_validation.csv
-  warnings: outputs/package_warnings.csv
-  archive_manifest: outputs/release_archive_manifest.csv
-```
-
-The manifest defines the release build.
-
----
-
-## 32. D20 Execution Flow
-
-```mermaid
-flowchart TD
-    A[Load Manifest] --> B[Load Package Config]
-    B --> C[Load Package Policy]
-    C --> D[Load Public Data Policy]
-    D --> E[Discover Source Artifacts]
-    E --> F[Classify Include/Exclude]
-    F --> G[Sanitize Approved Files]
-    G --> H[Copy to Release Directory]
-    H --> I[Generate Public Artifact Index]
-    I --> J[Run Public Data Validation]
-    J --> K[Generate Docs and Release Notes]
-    K --> L[Generate Reproducibility Manifest]
-    L --> M[Create Release Archive]
-    M --> N[Write Package Summary]
-```
-
-**Figure 6. D20 execution flow: load policy, discover artifacts, classify, sanitize, copy, validate, document, archive, and summarize.**
-
-Example bash script:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-safeic-package \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Example csh script:
-
-```csh
-#!/bin/csh -f
-
-set DEMO = D20_public_demo_package
-echo "Running $DEMO"
-
-safeic-package \
-  --manifest manifest.yaml \
-  --output-dir outputs
-```
-
-Expected outputs:
+It connects:
 
 ```text
-release/README.md
-release/QUICKSTART.md
-release/RELEASE_NOTES.md
-release/DEMO_SCOPE.md
-release/DISCLAIMER.md
-release/reproducibility_manifest.yaml
-release/public_artifact_index.csv
-release/public_data_validation.csv
-release/package_warnings.csv
-outputs/package_summary.md
-outputs/public_release_status.json
-outputs/package_validation.csv
-outputs/package_warnings.csv
-outputs/release_archive_manifest.csv
+BFR and FIT assumptions
+structural endpoint analysis
+safety mechanism mapping
+fault list generation
+simulation safety context
+fault campaign execution evidence
+fault outcome classification
+final metric writeback
+FMEDA modeling
+top-down review
+closure actions
+regression gate decisions
+evidence traceability
 ```
 
----
-
-## 33. Example `public_artifact_index.csv`
-
-```csv
-artifact_id,path,type,source,classification,sha256
-P001,README.md,doc,generated,include_public,abc001
-P002,QUICKSTART.md,doc,generated,include_public,abc002
-P003,data/toy_counter/rtl/toy_counter.v,rtl,D01,include_public,abc003
-P004,reports/safety_report.md,report,D15,include_generated_summary,abc004
-P005,reports/regression_summary.md,report,D16,include_generated_summary,abc005
-P006,dashboard/index.html,dashboard,D18,include_public,abc006
-P007,reports/ci_summary.md,ci_report,D19,include_generated_summary,abc007
-```
-
-This file makes the public release transparent.
-
----
-
-## 34. Example `public_data_validation.csv`
-
-```csv
-check,status,details
-required_docs_present,PASS,README/QUICKSTART/DEMO_SCOPE/DISCLAIMER found
-absolute_private_path_scan,PASS,no private paths found
-license_string_scan,PASS,no license strings found
-raw_commercial_report_scan,PASS,no raw commercial reports found
-large_binary_scan,PASS,no unexpected binary files
-unknown_artifact_scan,WARN,2 files require manual review
-dashboard_links,PASS,site/index.html and data files found
-```
-
-This validation result should be included in the release package.
-
----
-
-## 35. Example `package_summary.md`
-
-```md
-# D20 Public Demo Package Summary
-
-Release: D20_public_demo_package  
-Profile: public_methodology_demo  
-Design: toy_counter  
-
-## Package Status
-
-Status: RELEASE_READY_WITH_WARNINGS
-
-## Included
-
-- Public-safe toy counter demo data
-- Safety report
-- Evidence package summary
-- Regression summary
-- CI summary
-- Static dashboard
-- Quickstart scripts
-- Public data validation report
-
-## Warnings
-
-- Two unknown files require manual review before final publication.
-- Commercial comparison uses normalized sample data.
-- Demo data is not production safety signoff evidence.
-
-## Next Step
-
-Review warnings, then publish the release folder or archive to GitHub.
-```
-
-A packaging summary helps decide whether the release is ready.
-
----
-
-## 36. Validation Rules
-
-`safeic-package` should validate:
+The core idea is simple:
 
 ```text
-manifest.yaml exists
-package_config.yaml exists
-package_policy.yaml exists
-public_data_policy.yaml exists
-required docs exist or are generated
-release directory is writable
-unknown files are not included by default
-excluded patterns are honored
-public artifact index is generated
-public data validation is generated
-disclaimer exists
-quickstart exists
-release notes exist
-dashboard entry exists if dashboard is enabled
-archive generation succeeds if enabled
+A safety flow is not a collection of reports.
+It is a chain of justified transformations.
 ```
 
-Example messages:
+D20 should show each transformation:
 
 ```text
-[PASS] package config loaded
-[PASS] package policy loaded
-[PASS] public data policy loaded
-[PASS] 42 artifacts classified
-[PASS] 35 artifacts included
-[PASS] 7 artifacts excluded
-[WARN] 2 unknown artifacts require manual review
-[PASS] no private paths detected
-[PASS] release README generated
-[PASS] release archive generated
+assumption -> input package
+input package -> structural model
+structural model -> safety mechanism map
+safety mechanism map -> fault list
+fault list -> campaign setup
+campaign setup -> campaign result
+campaign result -> outcome classification
+outcome classification -> final metrics
+final metrics -> FMEDA evidence
+FMEDA evidence -> closure action
+closure action -> regression gate
+gate result -> traceability package
+traceability package -> final review packet
 ```
 
-The package builder should stop if private data is detected.
+This is the difference between a one-time tool run and an automotive chip safety engineering platform.
 
----
+The mini flow does not claim that every risk is closed. It shows whether the evidence chain is complete, which metrics are supported, which warnings remain, and where the next engineering action should occur.
 
-## 37. Common Mistakes
-
-### 37.1 Uploading the Whole Workspace
-
-A workspace is not a release package.
-
-It may contain private paths, temporary files, and unnecessary artifacts.
-
-### 37.2 Publishing Raw Commercial Tool Outputs
-
-Do not publish raw commercial reports unless redistribution is explicitly allowed.
-
-Use normalized sample data for public methodology demos.
-
-### 37.3 Missing Disclaimer
-
-A functional safety demo must clearly state that it is not production safety signoff.
-
-### 37.4 No Quickstart
-
-If users cannot run or inspect the demo quickly, the package loses value.
-
-### 37.5 No Artifact Index
-
-Without an index, users do not know what files are included and why.
-
-### 37.6 Mixing Estimated and Measured Outputs Without Explanation
-
-Public readers need clear labels.
-
-### 37.7 Leaving Private Paths in Generated Files
-
-Private paths reduce professionalism and may leak information.
-
----
-
-## 38. How D20 Connects to Later Demos
-
-D20 creates the public release boundary.
-
-Later demos can build user trials, training packages, and deployment profiles.
-
-```mermaid
-flowchart LR
-    A[D20 Public Demo Package] --> B[D21 User Trial Flow]
-    A --> C[D22 Training Package]
-    A --> D[D23 Deployment Profile]
-    A --> E[D24 Documentation Website]
-    B --> F[External Evaluation]
-    C --> G[Workshop / Course]
-    D --> H[Customer or Internal Deployment]
-    E --> I[Public Knowledge Base]
-```
-
-**Figure 7. D20 provides the release package foundation for user trials, training, deployment, and documentation.**
-
-A clean public package makes later outreach much easier.
-
----
-
-## 39. Recommended Implementation Stages
-
-D20 can be implemented in stages.
-
-### Stage 1: Manual Release Folder
-
-Create a curated release folder manually.
-
-Deliverables:
-
-```text
-release/README.md
-release/QUICKSTART.md
-release/DEMO_SCOPE.md
-release/DISCLAIMER.md
-```
-
-### Stage 2: Artifact Index and Validation
-
-Generate artifact index and public data validation.
-
-Deliverables:
-
-```text
-public_artifact_index.csv
-public_data_validation.csv
-```
-
-### Stage 3: Policy-Based Packaging
-
-Use `package_policy.yaml` to select and exclude files.
-
-Deliverables:
-
-```text
-safeic-package
-package_summary.md
-```
-
-### Stage 4: Sanitization and Archive
-
-Sanitize files and generate release archive.
-
-Deliverables:
-
-```text
-release_archive.zip
-release_archive_manifest.csv
-```
-
-### Stage 5: GitHub Release Workflow
-
-Add release tagging, release notes, and publication checklist.
-
-Deliverables:
-
-```text
-RELEASE_NOTES.md
-github_release_checklist.md
-```
-
-This staged approach makes D20 useful immediately and safe to automate later.
-
----
-
-## 40. Summary
-
-Public demo packaging turns internal CI artifacts into a shareable GitHub-ready release.
-
-The D20 demo:
-
-```text
-D20_public_demo_package
-```
-
-introduces the generic tool:
-
-```text
-safeic-package
-```
-
-The tool consumes:
-
-```text
-CI run artifacts
-safety reports
-dashboard site
-sample data
-package_config.yaml
-package_policy.yaml
-public_data_policy.yaml
-```
-
-and generates:
-
-```text
-release/README.md
-release/QUICKSTART.md
-release/RELEASE_NOTES.md
-release/DEMO_SCOPE.md
-release/DISCLAIMER.md
-release/reproducibility_manifest.yaml
-release/public_artifact_index.csv
-release/public_data_validation.csv
-release/package_warnings.csv
-outputs/package_summary.md
-outputs/public_release_status.json
-outputs/package_validation.csv
-outputs/package_warnings.csv
-outputs/release_archive_manifest.csv
-```
-
-The central lesson is:
-
-> A public demo package is a release artifact, not a folder dump. It must be curated, sanitized, indexed, documented, reproducible, and honest about scope and limitations.
-
-D20 makes the methodology suitable for GitHub publication, company website demos, external review, and future user trial workflows.
-
----
-
-## 41. D20 Demo Checklist
-
-For `D20_public_demo_package`, the expected deliverables are:
-
-```text
-[ ] README.md
-[ ] run_demo.sh
-[ ] run_demo.csh
-[ ] manifest.yaml
-
-[ ] inputs/package_config.yaml
-[ ] inputs/package_policy.yaml
-[ ] inputs/public_data_policy.yaml
-[ ] inputs/release_notes_template.md
-[ ] inputs/demo_scope_template.md
-[ ] inputs/disclaimer_template.md
-
-[ ] source_artifacts/ci_run/ci_summary.md
-[ ] source_artifacts/ci_run/ci_status.csv
-[ ] source_artifacts/ci_run/ci_gate_result.json
-[ ] source_artifacts/reports/safety_report.md
-[ ] source_artifacts/reports/regression_summary.md
-[ ] source_artifacts/dashboard/index.html
-[ ] source_artifacts/sample_data/toy_counter/
-[ ] source_artifacts/sample_data/fmeda/
-[ ] source_artifacts/sample_data/campaign/
-[ ] source_artifacts/sample_data/metrics/
-
-[ ] tools/safeic_package.py
-
-[ ] scripts/run_package.csh
-[ ] scripts/run_package.sh
-[ ] scripts/validate_release.csh
-[ ] scripts/validate_release.sh
-
-[ ] release/README.md
-[ ] release/QUICKSTART.md
-[ ] release/RELEASE_NOTES.md
-[ ] release/DEMO_SCOPE.md
-[ ] release/DISCLAIMER.md
-[ ] release/reproducibility_manifest.yaml
-[ ] release/public_artifact_index.csv
-[ ] release/public_data_validation.csv
-[ ] release/package_warnings.csv
-[ ] release/demos/
-[ ] release/data/
-[ ] release/reports/
-[ ] release/dashboard/
-[ ] release/scripts/
-[ ] release/docs/
-
-[ ] outputs/package_summary.md
-[ ] outputs/public_release_status.json
-[ ] outputs/package_validation.csv
-[ ] outputs/package_warnings.csv
-[ ] outputs/release_archive_manifest.csv
-```
-
-A successful D20 run should answer:
-
-```text
-Which artifacts are included in the public package?
-Which artifacts were excluded and why?
-Does the package contain any private paths or license strings?
-Are all required public documents present?
-Can another user run or inspect the demo quickly?
-Is the dashboard included and valid?
-Are generated reports included?
-Are limitations and disclaimers clear?
-Is the release package reproducible?
-Is the package ready for GitHub release or manual review?
-```
+That is exactly what an end-to-end safety demo should do.
